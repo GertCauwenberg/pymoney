@@ -221,8 +221,9 @@ class RationalAmount:
     value: Fraction
 
     def __post_init__(self) -> None:
-        if not isinstance(self.value, Fraction):
-            object.__setattr__(self, "value", to_fraction(self.value))
+        # Unconditional: to_fraction returns a Fraction untouched, and accepting
+        # str/Decimal here keeps call sites readable.
+        object.__setattr__(self, "value", to_fraction(self.value))
 
     @classmethod
     def zero(cls, commodity: Commodity) -> RationalAmount:

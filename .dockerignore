@@ -1,0 +1,35 @@
+# Keep the build context small and the image reproducible: everything the
+# build needs comes from pyproject.toml and src/.
+.git/
+.github/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+.env
+.env.*
+!.env.example
+
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Docs and compose files do not belong in the image
+compose*.yaml
+docker/
+*.md
+!README.md

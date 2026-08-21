@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import date
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from . import commands as cmd
@@ -570,22 +570,29 @@ class Book:
         }
         return stores[kind]
 
-    def _put(
+    def _put[E: Entity](
         self,
         kind: EntityKind,
-        entity: Entity,
+        entity: E,
         *,
         created: bool = False,
         note: str = "",
-    ) -> Any:
+    ) -> E:
         """Insert or replace an entity, stamping it with the new revision."""
         assert self._undo is not None, "mutations must happen inside execute()"
-        stamped = entity.stamped(
-            at=self.clock.now(), revision=self._current_revision, created=created
+        # cast: Entity.stamped returns Self, which mypy resolves to the TypeVar's
+        # bound rather than to E.
+        stamped = cast(
+            E,
+            entity.stamped(
+                at=self.clock.now(),
+                revision=self._current_revision,
+                created=created,
+            ),
         )
         if kind is EntityKind.PRICE:
             previous_price = self.prices.get(stamped.id)
-            self.prices.add(stamped)  # type: ignore[arg-type]
+            self.prices.add(cast(Price, stamped))
 
             def undo_price() -> None:
                 self.prices.remove(stamped.id)
@@ -626,7 +633,7 @@ class Book:
                 raise NotFoundError(f"no price {entity_id}")
 
             def undo_price() -> None:
-                self.prices.add(previous_price)  # type: ignore[arg-type]
+                self.prices.add(previous_price)
 
             self._undo.append(undo_price)
             removed: Any = previous_price

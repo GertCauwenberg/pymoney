@@ -29,38 +29,58 @@ src/pymoney/core/
 
 | | |
 |---|---|
-| Tests | 693 passing |
+| Tests | 506 passing |
 | Coverage | 100% statements, 100% branches |
 | Type checking | `mypy` clean |
 | Lint | `ruff` clean |
 | Dependencies | none (stdlib only) |
 
-```bash
-python -m venv .venv && .venv/bin/pip install -e '.[dev]'
-.venv/bin/python -m pytest --cov=pymoney
-.venv/bin/python -m pymoney -v    # smoke test: posts transactions, runs reports
-```
-
-CI (`.github/workflows/ci.yml`) runs the same steps on Ubuntu, macOS and
-Windows against Python 3.12 and 3.13, plus `ruff`, `ruff format --check`,
-`mypy`, and a Docker build that ends by running the image's self-check.
-
-## Deployment skeleton
-
-The server itself is Phase 4; the Dockerfile and `compose.yaml` are in place
-now so nothing has to be revisited later:
+## Development
 
 ```bash
-cp .env.example .env && $EDITOR .env       # set PYMONEY_DB_PASSWORD
-docker compose build
-docker compose run --rm app                # runs the self-check and exits
-docker compose up -d db                    # bring Postgres online
+make install        # venv + editable install with dev extras
+make check          # exactly what CI runs: lint, types, tests
+make test           # fast loop (50 Hypothesis examples per property)
+make test-thorough  # 5000 examples; use this when touching rounding
+make help           # everything else
 ```
 
-The image is multi-stage, non-root, and its `HEALTHCHECK` calls
-`python -m pymoney` — the same smoke test CI runs, so a broken build fails
-there instead of at first request. Postgres data lives in a named volume so
-`docker compose down` never drops the ledger.
+Optionally `pip install pre-commit && pre-commit install` for the fast checks on
+commit.
+
+Three Hypothesis profiles, because the property tests are the only real check on
+the rounding invariants: `dev` (50 examples, the default), `ci` (500,
+derandomised so a CI failure is reproducible) and `thorough` (5000).
+
+### Containers
+
+Nothing to deploy yet — the core is a library — but the infrastructure is in
+place and exercised by CI:
+
+```bash
+cp .env.example .env            # then change the password
+docker compose up -d            # PostgreSQL only; that is all that exists
+make image-test                 # build the image and run the suite inside it
+```
+
+`compose.yaml` has three services. `db` is real and needed from Phase 2, where
+the store layer must pass this same suite against PostgreSQL as well as SQLite;
+its init script creates a separate `pymoney_test` database so tests can never
+touch development data. `tests` runs the suite in the shipped image. `api` is
+wired but **not implemented** — it exists so the environment, dependency
+ordering and port binding are settled before the code lands; its command is
+currently the component inventory, which honestly reports `pymoney.api` as
+missing.
+
+### CI
+
+`.github/workflows/ci.yml` runs lint + format, `mypy`, the suite on Python 3.12
+and 3.13 with the `ci` Hypothesis profile and the coverage gate, and a container
+job that builds both image targets, runs the suite inside the test image and
+validates `compose.yaml`. A single aggregate `CI` check is the one to require in
+branch protection. There is a weekly scheduled run: the core has no runtime
+dependencies, but the dev tools do, and a new ruff or mypy release should not
+first show up on someone's unrelated pull request.
 
 ## Five-minute tour
 

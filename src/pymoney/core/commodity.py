@@ -25,6 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from fractions import Fraction
+from typing import Any
 
 from .entity import Entity
 from .errors import ValidationError
@@ -123,7 +124,7 @@ class Commodity(Entity):
         scale: int = 2,
         symbol: str | None = None,
         minor_unit_factor: int | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Commodity:
         """Build a currency from a decimal ``scale`` (digits after the point)."""
         if scale < 0:
@@ -135,7 +136,7 @@ class Commodity(Entity):
             name=name or code,
             symbol=symbol,
             minor_unit_factor=factor,
-            **kwargs,  # type: ignore[arg-type]
+            **kwargs,
         )
 
     @classmethod
@@ -146,7 +147,7 @@ class Commodity(Entity):
         name: str = "",
         kind: CommodityKind = CommodityKind.STOCK,
         scale: int = 4,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Commodity:
         """Build a security; defaults to 4 fractional-share decimals."""
         if scale < 0:
@@ -156,7 +157,7 @@ class Commodity(Entity):
             code=code,
             name=name or code,
             minor_unit_factor=10**scale,
-            **kwargs,  # type: ignore[arg-type]
+            **kwargs,
         )
 
     def __str__(self) -> str:

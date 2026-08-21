@@ -29,6 +29,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from fractions import Fraction
+from typing import Any
 from uuid import UUID
 
 from .amount import Amount, RationalAmount
@@ -101,7 +102,7 @@ class Price(Entity):
         effective_date: date,
         as_of: datetime,
         source: str = PriceSource.USER,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Price:
         """Build a price from any exact numeric rate."""
         value = to_fraction(rate)
@@ -115,7 +116,7 @@ class Price(Entity):
             effective_date=effective_date,
             as_of=as_of,
             source=source,
-            **kwargs,  # type: ignore[arg-type]
+            **kwargs,
         )
 
     @property

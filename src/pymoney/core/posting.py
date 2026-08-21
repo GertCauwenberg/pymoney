@@ -27,6 +27,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
+from typing import Any
 from uuid import UUID
 
 from .account import Account
@@ -102,7 +103,7 @@ class LegSpec:
         *,
         quantity: Numeric | None = None,
         price: Numeric | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> LegSpec:
         """Convenience constructor accepting ``str``/``Decimal``/``int``."""
         return cls(
@@ -110,7 +111,7 @@ class LegSpec:
             value=_maybe_fraction(value),
             quantity=_maybe_fraction(quantity),
             price=_maybe_fraction(price),
-            **kwargs,  # type: ignore[arg-type]
+            **kwargs,
         )
 
 

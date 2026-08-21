@@ -19,7 +19,7 @@ The intended entry point is :class:`~pymoney.core.book.Book`::
         [LegSpec.of(cash.id, "-23.40"), LegSpec.of(food.id)],
         memo="Market",
     )
-    book.balance(cash.id)      # Amount(EUR -23.40)
+    book.balance(cash.id)  # Amount(EUR -23.40)
 
 Mutations only happen through commands (``book.execute(...)``, or the thin
 ``add_*``/``post`` façade that wraps them), so every change lands in the change

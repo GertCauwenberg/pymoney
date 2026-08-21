@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # Pinned action majors still need patch bumps; this is the cheapest supply
+  # chain hygiene available.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps"
+    groups:
+      dev-tools:
+        patterns: ["ruff", "mypy", "pytest*", "hypothesis", "coverage"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "docker"

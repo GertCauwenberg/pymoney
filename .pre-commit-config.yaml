@@ -1,0 +1,32 @@
+# Catches locally what CI would catch 10 minutes later.
+#   pip install pre-commit && pre-commit install
+#
+# Deliberately fast: no mypy, no pytest. Run `make check` before pushing.
+default_language_version:
+  python: python3.12
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-added-large-files
+        args: [--maxkb=256]
+      - id: detect-private-key
+      # .env must never be committed; .env.example must be.
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

@@ -1,0 +1,100 @@
+# PyMoney local stack.
+#
+#   cp .env.example .env          # then edit the password
+#   docker compose up -d          # PostgreSQL only: nothing else exists yet
+#   docker compose --profile test run --rm tests
+#
+# Profiles keep the default `up` to the one service that is genuinely useful
+# today. The api service is wired but not implemented; see its comment.
+name: pymoney
+
+x-postgres-env: &postgres-env
+  POSTGRES_DB: ${POSTGRES_DB:-pymoney}
+  POSTGRES_USER: ${POSTGRES_USER:-pymoney}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+  POSTGRES_TEST_DB: ${POSTGRES_TEST_DB:-pymoney_test}
+
+services:
+  # Needed from Phase 2 onwards: the store layer has to pass the same test
+  # suite against PostgreSQL as against SQLite, and that needs a real server.
+  db:
+    image: postgres:17-alpine
+    environment: *postgres-env
+    # Bound to loopback on purpose. A development database must not be
+    # reachable from the network just because someone ran `compose up`.
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/initdb.d:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready --username "$$POSTGRES_USER" --dbname "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  # The suite, run inside the image that would be shipped. Today it exercises
+  # only the in-memory core; from Phase 2 it will also run against `db`, which
+  # is why the dependency and the URL are already here.
+  tests:
+    build:
+      context: .
+      target: test
+    profiles: [test]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PYMONEY_TEST_DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-pymoney}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_TEST_DB:-pymoney_test}
+      HYPOTHESIS_STORAGE_DIRECTORY: /tmp/hypothesis
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - pytest
+      - --hypothesis-profile=ci
+      - --cov=pymoney
+      - --cov-report=term-missing
+
+  # NOT IMPLEMENTED YET (Phase 4). The service exists so the wiring --
+  # environment, dependency ordering, port binding -- is settled before the
+  # code lands. Its command is the component inventory, which will honestly
+  # report `pymoney.api` as missing; replace it with:
+  #     command: [uvicorn, pymoney.api:app, --host, 0.0.0.0, --port, "8000"]
+  # and uncomment the healthcheck at the same time.
+  api:
+    build:
+      context: .
+      target: runtime
+    profiles: [api]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PYMONEY_DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-pymoney}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pymoney}
+      PYMONEY_LOG_LEVEL: ${PYMONEY_LOG_LEVEL:-info}
+    ports:
+      - "127.0.0.1:${PYMONEY_API_PORT:-8000}:8000"
+    # healthcheck:
+    #   test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+    #   interval: 10s
+    #   timeout: 3s
+    #   retries: 5
+    #   start_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    command: [python, -m, pymoney]
+
+volumes:
+  pgdata:

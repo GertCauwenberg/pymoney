@@ -9,7 +9,7 @@ from decimal import Decimal
 from fractions import Fraction
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from pymoney.core import (
@@ -450,9 +450,6 @@ class TestLegSpec:
 class TestPostingProperties:
     """Hypothesis: the guarantees that must hold for every possible input."""
 
-    @settings(
-        max_examples=250, suppress_health_check=[HealthCheck.function_scoped_fixture]
-    )
     @given(
         amounts=st.lists(
             st.fractions(min_value=-(10**5), max_value=10**5, max_denominator=997),
@@ -469,9 +466,6 @@ class TestPostingProperties:
         result = book_legs(legs, currency=currency, resolve_account=world.resolve)
         assert sum(s.value.minor for s in result.splits) == 0
 
-    @settings(
-        max_examples=250, suppress_health_check=[HealthCheck.function_scoped_fixture]
-    )
     @given(
         amounts=st.lists(
             st.fractions(min_value=-(10**5), max_value=10**5, max_denominator=997),
@@ -489,9 +483,6 @@ class TestPostingProperties:
         for adjustment in result.rounding_adjustments:
             assert abs(adjustment) < 1
 
-    @settings(
-        max_examples=250, suppress_health_check=[HealthCheck.function_scoped_fixture]
-    )
     @given(
         exact=st.integers(min_value=-(10**7), max_value=10**7),
         inexact=st.lists(
@@ -511,9 +502,6 @@ class TestPostingProperties:
         result = book_legs(legs, currency=currency, resolve_account=world.resolve)
         assert result.splits[0].value.minor == exact * 1
 
-    @settings(
-        max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture]
-    )
     @given(
         value=st.fractions(min_value=1, max_value=10**5, max_denominator=997),
         rate=st.fractions(min_value=F(1, 997), max_value=1000, max_denominator=997),

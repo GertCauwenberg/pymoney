@@ -7,6 +7,7 @@ from datetime import date, datetime, timezone
 from fractions import Fraction
 
 import pytest
+from hypothesis import HealthCheck, settings
 
 from pymoney.core import (
     Account,
@@ -17,6 +18,21 @@ from pymoney.core import (
     ManualClock,
     PriceSource,
 )
+
+# Property-based tests are the only real check on the rounding invariants, so CI
+# runs them much harder than a local edit-test loop would tolerate.  Select with
+# ``pytest --hypothesis-profile=ci``.
+_HEALTH = [HealthCheck.function_scoped_fixture]
+settings.register_profile(
+    "dev", max_examples=50, deadline=None, suppress_health_check=_HEALTH
+)
+settings.register_profile(
+    "ci", max_examples=500, deadline=None, derandomize=True, suppress_health_check=_HEALTH
+)
+settings.register_profile(
+    "thorough", max_examples=5000, deadline=None, suppress_health_check=_HEALTH
+)
+settings.load_profile("dev")
 
 START = datetime(2026, 1, 1, 9, 0, 0, tzinfo=timezone.utc)
 

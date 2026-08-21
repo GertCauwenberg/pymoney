@@ -64,24 +64,30 @@ def to_fraction(value: Numeric) -> Fraction:
 
     ``float`` is intentionally rejected: ``0.1`` is not one tenth, and silently
     accepting it would put inexact data into the ledger.
+
+    The body deliberately works on ``object`` rather than the declared type.
+    A type checker knows a ``float`` can never arrive here, but a JSON payload,
+    a REPL session or an importer does not have a type checker, and those are
+    exactly the callers the guard is for.
     """
-    if isinstance(value, Fraction):
-        return value
-    if isinstance(value, bool):  # bool is an int subclass; almost surely a bug
+    raw: object = value
+    if isinstance(raw, Fraction):
+        return raw
+    if isinstance(raw, bool):  # bool is an int subclass; almost surely a bug
         raise TypeError("refusing to coerce bool to Fraction")
-    if isinstance(value, int):
-        return Fraction(value)
-    if isinstance(value, Decimal):
-        if not value.is_finite():
-            raise ValueError(f"cannot convert non-finite Decimal: {value}")
-        return Fraction(value)
-    if isinstance(value, str):
-        return Fraction(value)
-    if isinstance(value, float):
+    if isinstance(raw, int):
+        return Fraction(raw)
+    if isinstance(raw, Decimal):
+        if not raw.is_finite():
+            raise ValueError(f"cannot convert non-finite Decimal: {raw}")
+        return Fraction(raw)
+    if isinstance(raw, str):
+        return Fraction(raw)
+    if isinstance(raw, float):
         raise TypeError(
             "float is not accepted: use str, Decimal or Fraction to keep amounts exact"
         )
-    raise TypeError(f"cannot convert {type(value).__name__} to Fraction")
+    raise TypeError(f"cannot convert {type(raw).__name__} to Fraction")
 
 
 def round_fraction(value: Fraction, mode: RoundingMode = DEFAULT_ROUNDING) -> int:

@@ -1,100 +1,55 @@
-"""``python -m pymoney`` — the module's own smoke test and version probe.
+"""``python -m pymoney`` -- report what this installation can do.
 
-A real CLI belongs in a later phase; this is deliberately tiny.  It exists so
-that an image built from the current tree has *something* useful to run -- a
-Docker ``HEALTHCHECK`` can invoke it, a CI job can use it as a final sanity
-gate, and a user poking at a release can verify that the package imports and
-its invariants hold.
-
-The self-check posts a handful of transactions, runs the reports, and calls
-``check_integrity``.  It is fast (<100 ms) and catches any packaging or
-environment problem that would only otherwise surface when the server starts.
+There is no server yet, so the module entry point is a diagnostic rather than an
+application.  That is deliberately useful: it is the smoke test for the
+container image and for a fresh checkout, and it will not lie about components
+that do not exist.
 """
 
 from __future__ import annotations
 
-import argparse
+import importlib.util
+import platform
 import sys
-from datetime import date
-from fractions import Fraction
+from collections.abc import Sequence
 
-from . import __version__
-from .core import (
-    AccountType,
-    Book,
-    Commodity,
-    LegSpec,
-    ManualClock,
-    balance_sheet,
-    income_statement,
+from pymoney import __version__
+
+# Planned packages, in the order they are being built.  Each becomes importable
+# as the corresponding phase lands; until then it is honestly reported missing.
+_COMPONENTS = (
+    ("pymoney.core", "domain model: accounts, transactions, prices, reports"),
+    ("pymoney.store", "persistence: SQLAlchemy over SQLite and PostgreSQL"),
+    ("pymoney.api", "HTTP API: FastAPI, commands in, revisions out"),
+    ("pymoney.desktop", "desktop client: PySide6"),
 )
 
 
-def self_check(verbose: bool = False) -> int:
-    """Build a small book, run the reports, assert everything balances."""
-    book = Book(
-        name="self-check",
-        base_currency=Commodity.currency("EUR", symbol="\u20ac"),
-        clock=ManualClock(),
-    )
-    cash = book.add_account("Cash", AccountType.CASH)
-    food = book.add_account("Food", AccountType.EXPENSE)
-    rent = book.add_account("Rent", AccountType.EXPENSE)
-    opening = book.add_account("Opening", AccountType.EQUITY)
+def _available(module: str) -> bool:
+    try:
+        return importlib.util.find_spec(module) is not None
+    except ModuleNotFoundError:
+        # A parent package is missing, so the child cannot exist either.
+        return False
 
-    book.post(
-        date(2026, 1, 1),
-        [LegSpec.of(cash.id, "2500.00"), LegSpec.of(opening.id)],
-        memo="Opening balance",
-    )
-    third = Fraction(10, 3)
-    book.post(
-        date(2026, 1, 2),
-        [
-            LegSpec.of(cash.id, "-10.00"),
-            LegSpec.of(food.id, third),
-            LegSpec.of(food.id, third),
-            LegSpec.of(rent.id, third),
-        ],
-        memo="The 10/3 problem",
-    )
 
-    problems = book.check_integrity()
-    if problems:
-        print("integrity check failed:", file=sys.stderr)
-        for problem in problems:
-            print(f"  - {problem}", file=sys.stderr)
-        return 1
+def main(argv: Sequence[str] | None = None) -> int:
+    """Print a component inventory.  Always succeeds if the core imports."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in {"-V", "--version"}:
+        print(__version__)
+        return 0
 
-    policy = book.default_policy(date(2026, 1, 31))
-    sheet = balance_sheet(book, policy)
-    pnl = income_statement(book, policy, start=date(2026, 1, 1))
-
-    if verbose:
-        print(f"pymoney {__version__}")
-        print(f"  revision     {book.revision}")
-        print(f"  transactions {len(book.transactions())}")
-        print(f"  net worth    {sheet.net_worth}")
-        print(f"  period net   {pnl.net}")
-    else:
-        print(f"pymoney {__version__}: OK")
+    print(f"PyMoney {__version__}")
+    print(f"Python {platform.python_version()} on {platform.system()}")
+    print()
+    for module, description in _COMPONENTS:
+        mark = "ok     " if _available(module) else "missing"
+        print(f"  [{mark}] {module:<18} {description}")
+    print()
+    print("No server component yet; this build is the domain library.")
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="python -m pymoney",
-        description="PyMoney self-check and version probe.",
-    )
-    parser.add_argument("--version", action="store_true", help="print version and exit")
-    parser.add_argument("-v", "--verbose", action="store_true")
-    args = parser.parse_args(argv)
-
-    if args.version:
-        print(__version__)
-        return 0
-    return self_check(verbose=args.verbose)
-
-
 if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(main())
+    sys.exit(main())

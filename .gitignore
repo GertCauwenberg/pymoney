@@ -2,33 +2,26 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-*.egg
 build/
 dist/
 .eggs/
-pip-wheel-metadata/
-.installed.cfg
-MANIFEST
 
-# Testing & coverage
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-coverage.xml
-coverage.json
-.hypothesis/
-
-# Type checkers / linters
-.mypy_cache/
-.ruff_cache/
-.pyre/
-.pytype/
-
-# Environments
+# Virtual environments
 .venv/
 venv/
 env/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Local environment overrides (never commit secrets)
 .env
 .env.*
 !.env.example
@@ -37,8 +30,12 @@ env/
 .idea/
 .vscode/
 *.swp
-*.swo
-
-# OS
 .DS_Store
-Thumbs.db
+
+# Local data
+*.sqlite
+*.sqlite3
+*.db
+!tests/**/fixtures/*.sqlite
+transcripts/
+*.zip

@@ -6,7 +6,7 @@ from decimal import Decimal
 from fractions import Fraction
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from pymoney.core import ValidationError
@@ -220,7 +220,6 @@ class TestAllocate:
         ),
         mode=st.sampled_from(list(RoundingMode)),
     )
-    @settings(max_examples=300)
     def test_allocation_is_exact(self, total, weights, mode):
         fractions = [F(w) for w in weights]
         result = allocate(total, fractions, mode)
@@ -266,7 +265,6 @@ class TestAllocateToZeroSum:
             max_size=10,
         )
     )
-    @settings(max_examples=300)
     def test_zero_sum_is_preserved_and_exact_legs_untouched(self, values):
         balanced = [*list(values), -sum(values, F(0))]
         result = allocate_to_zero_sum(balanced)
