@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE KMYMONEY-FILE>
+<KMYMONEY-FILE>
+ <FILEINFO>
+  <CREATION_DATE date="2016-03-04"/>
+  <LAST_MODIFIED_DATE date="2026-02-01"/>
+  <VERSION id="1"/>
+  <FIXVERSION id="5"/>
+ </FILEINFO>
+ <USER email="someone@example.invalid" name="A User">
+  <ADDRESS street="" zipcode="" city="" county="" telephone=""/>
+ </USER>
+ <INSTITUTIONS count="1">
+  <INSTITUTION sortcode="" id="I000001" manager="" name="Example Bank">
+   <ADDRESS street="1 High Street" zip="12345" city="Town" telephone=""/>
+  </INSTITUTION>
+ </INSTITUTIONS>
+ <PAYEES count="4">
+  <PAYEE email="" matchingenabled="0" reference="" name="Supermarket" id="P000001">
+   <ADDRESS street="2 Market Row" postcode="12345" zip="" city="Town" state="" country=""/>
+  </PAYEE>
+  <PAYEE email="payroll@acme.invalid" matchingenabled="0" reference="" name="ACME Corp" id="P000002">
+   <ADDRESS street="" postcode="" city="" state="" country=""/>
+  </PAYEE>
+  <PAYEE email="" matchingenabled="0" reference="" name="Broker Ltd" id="P000003">
+   <ADDRESS street="" postcode="" city="" state="" country=""/>
+  </PAYEE>
+  <PAYEE email="" matchingenabled="0" reference="" name="Supermarket" id="P000004">
+   <ADDRESS street="" postcode="" city="" state="" country=""/>
+  </PAYEE>
+ </PAYEES>
+ <COSTCENTERS count="0"/>
+ <TAGS count="2">
+  <TAG tagcolor="#ff0000" id="G000001" name="holiday" notes="" closed="0"/>
+  <TAG tagcolor="#00ff00" id="G000002" name="work" notes="" closed="0"/>
+ </TAGS>
+ <ACCOUNTS count="12">
+  <ACCOUNT parentaccount="AStd::Asset" lastmodified="2026-02-01" institution="I000001" name="Current Account" number="12345678" description="Everyday banking" currency="EUR" id="A000001" type="1" opened="2016-03-04" lastreconciled="2026-01-31">
+   <KEYVALUEPAIRS>
+    <PAIR key="iban" value="DE02120300000000202051"/>
+    <PAIR key="lastNumberUsed" value="104"/>
+    <PAIR key="PreferredAccount" value="Yes"/>
+   </KEYVALUEPAIRS>
+  </ACCOUNT>
+  <ACCOUNT parentaccount="AStd::Asset" lastmodified="2026-02-01" institution="" name="Old Savings" number="" description="" currency="EUR" id="A000002" type="2" opened="2016-03-04" lastreconciled="">
+   <KEYVALUEPAIRS>
+    <PAIR key="mm-closed" value="yes"/>
+   </KEYVALUEPAIRS>
+  </ACCOUNT>
+  <ACCOUNT parentaccount="AStd::Asset" lastmodified="2026-02-01" institution="" name="Dollar Wallet" number="" description="" currency="USD" id="A000003" type="3" opened="2016-03-04" lastreconciled=""/>
+  <ACCOUNT parentaccount="AStd::Asset" lastmodified="2026-02-01" institution="" name="Brokerage" number="" description="" currency="USD" id="A000004" type="7" opened="2016-03-04" lastreconciled=""/>
+  <ACCOUNT parentaccount="A000004" lastmodified="2026-02-01" institution="" name="Apple" number="" description="" currency="E000001" id="A000005" type="15" opened="2016-03-04" lastreconciled=""/>
+  <ACCOUNT parentaccount="AStd::Liability" lastmodified="2026-02-01" institution="I000001" name="Credit Card" number="" description="" currency="EUR" id="A000006" type="4" opened="2016-03-04" lastreconciled=""/>
+  <ACCOUNT parentaccount="AStd::Income" lastmodified="2026-02-01" institution="" name="Salary" number="" description="" currency="EUR" id="A000007" type="12" opened="2016-03-04" lastreconciled=""/>
+  <ACCOUNT parentaccount="AStd::Expense" lastmodified="2026-02-01" institution="" name="Food:Groceries" number="" description="Colon in the name on purpose" currency="EUR" id="A000008" type="13" opened="2016-03-04" lastreconciled=""/>
+  <ACCOUNT parentaccount="AStd::Expense" lastmodified="2026-02-01" institution="" name="Shared Taxi" number="" description="" currency="EUR" id="A000009" type="13" opened="2016-03-04" lastreconciled=""/>
+  <ACCOUNT parentaccount="AStd::Expense" lastmodified="2026-02-01" institution="" name="Bank Charges" number="" description="" currency="EUR" id="A000010" type="13" opened="2016-03-04" lastreconciled=""/>
+  <ACCOUNT parentaccount="AStd::Equity" lastmodified="2026-02-01" institution="" name="Opening Balances" number="" description="" currency="EUR" id="A000011" type="16" opened="2016-03-04" lastreconciled=""/>
+  <ACCOUNT parentaccount="AStd::Expense" lastmodified="2026-02-01" institution="" name="Certificate" number="" description="A CD filed under expenses, which PyMoney will not allow" currency="EUR" id="A000012" type="6" opened="2016-03-04" lastreconciled=""/>
+ </ACCOUNTS>
+ <TRANSACTIONS count="15">
+  <TRANSACTION postdate="2016-03-04" memo="Opening balance" id="T000000000000000001" commodity="EUR" entrydate="2016-03-04">
+   <SPLITS>
+    <SPLIT payee="" reconciledate="" shares="500000/100" action="" bankid="" number="" reconcileflag="2" memo="" value="500000/100" account="A000001" id="S0001" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="-500000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-500000/100" account="A000011" id="S0002" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-05" memo="Weekly shop" id="T000000000000000002" commodity="EUR" entrydate="2026-01-05">
+   <SPLITS>
+    <SPLIT payee="P000001" reconciledate="2026-01-31" shares="-8420/100" action="" bankid="ID-0001" number="101" reconcileflag="2" memo="card" value="-8420/100" account="A000001" id="S0001" price="1/1"/>
+    <SPLIT payee="P000001" reconciledate="" shares="8420/100" action="" bankid="" number="" reconcileflag="0" memo="" value="8420/100" account="A000008" id="S0002" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-25" memo="January salary" id="T000000000000000003" commodity="EUR" entrydate="2026-01-25">
+   <SPLITS>
+    <SPLIT payee="P000002" reconciledate="" shares="320000/100" action="" bankid="" number="" reconcileflag="1" memo="" value="320000/100" account="A000001" id="S0001" price="1/1"/>
+    <SPLIT payee="P000002" reconciledate="" shares="-320000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-320000/100" account="A000007" id="S0002" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-10" memo="Taxi split three ways" id="T000000000000000004" commodity="EUR" entrydate="2026-01-10">
+   <SPLITS>
+    <SPLIT payee="" reconciledate="" shares="-1000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-1000/100" account="A000001" id="S0001" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="1000/300" action="" bankid="" number="" reconcileflag="0" memo="one third" value="1000/300" account="A000009" id="S0002" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="1000/300" action="" bankid="" number="" reconcileflag="0" memo="one third" value="1000/300" account="A000009" id="S0003" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="1000/300" action="" bankid="" number="" reconcileflag="0" memo="one third" value="1000/300" account="A000009" id="S0004" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-11" memo="Another third" id="T000000000000000005" commodity="EUR" entrydate="2026-01-11">
+   <SPLITS>
+    <SPLIT payee="" reconciledate="" shares="-1000/300" action="" bankid="" number="" reconcileflag="0" memo="" value="-1000/300" account="A000001" id="S0001" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="1000/300" action="" bankid="" number="" reconcileflag="0" memo="" value="1000/300" account="A000009" id="S0002" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-12" memo="Buy dollars" id="T000000000000000006" commodity="EUR" entrydate="2026-01-12">
+   <SPLITS>
+    <SPLIT payee="" reconciledate="" shares="-9174/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-9174/100" account="A000001" id="S0001" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="10000/100" action="" bankid="" number="" reconcileflag="0" memo="100 USD at 0.9174" value="9174/100" account="A000003" id="S0002" price="9174/10000"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-15" memo="Fund the brokerage" id="T000000000000000007" commodity="USD" entrydate="2026-01-15">
+   <SPLITS>
+    <SPLIT payee="" reconciledate="" shares="-5000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-5000/100" account="A000003" id="S0001" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="5000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="5000/100" account="A000004" id="S0002" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-20" memo="Buy 12 AAPL" id="T000000000000000008" commodity="USD" entrydate="2026-01-20">
+   <SPLITS>
+    <SPLIT payee="P000003" reconciledate="" shares="120000/10000" action="Buy" bankid="" number="" reconcileflag="0" memo="" value="219892/100" account="A000005" id="S0001" price="1832433/10000"/>
+    <SPLIT payee="P000003" reconciledate="" shares="-219892/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-219892/100" account="A000004" id="S0002" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-31" memo="Monthly fee" id="T000000000000000009" commodity="EUR" entrydate="2026-01-31">
+   <SPLITS>
+    <SPLIT payee="" reconciledate="" shares="-450/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-450/100" account="A000006" id="S0001" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="450/100" action="" bankid="" number="" reconcileflag="0" memo="" value="450/100" account="A000010" id="S0002" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-16" memo="Third of a dollar" id="T000000000000000010" commodity="EUR" entrydate="2026-01-16">
+   <SPLITS>
+    <SPLIT payee="" reconciledate="" shares="-100/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-100/100" account="A000001" id="S0001" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="100/300" action="" bankid="" number="" reconcileflag="0" memo="a third of a dollar" value="100/100" account="A000003" id="S0002" price="3/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-17" memo="Third of a dollar" id="T000000000000000011" commodity="EUR" entrydate="2026-01-17">
+   <SPLITS>
+    <SPLIT payee="" reconciledate="" shares="-100/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-100/100" account="A000001" id="S0001" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="100/300" action="" bankid="" number="" reconcileflag="0" memo="a third of a dollar" value="100/100" account="A000003" id="S0002" price="3/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-18" memo="Third of a dollar" id="T000000000000000012" commodity="EUR" entrydate="2026-01-18">
+   <SPLITS>
+    <SPLIT payee="" reconciledate="" shares="-100/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-100/100" account="A000001" id="S0001" price="1/1"/>
+    <SPLIT payee="" reconciledate="" shares="100/300" action="" bankid="" number="" reconcileflag="0" memo="a third of a dollar" value="100/100" account="A000003" id="S0002" price="3/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-21" memo="Reinvest a third of a share" id="T000000000000000013" commodity="USD" entrydate="2026-01-21">
+   <SPLITS>
+    <SPLIT payee="P000003" reconciledate="" shares="10000/30000" action="Reinvest" bankid="" number="" reconcileflag="0" memo="one third of a share" value="1000/100" account="A000005" id="S0001" price="30/1"/>
+    <SPLIT payee="P000003" reconciledate="" shares="-1000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-1000/100" account="A000004" id="S0002" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-22" memo="Reinvest a third of a share" id="T000000000000000014" commodity="USD" entrydate="2026-01-22">
+   <SPLITS>
+    <SPLIT payee="P000003" reconciledate="" shares="10000/30000" action="Reinvest" bankid="" number="" reconcileflag="0" memo="one third of a share" value="1000/100" account="A000005" id="S0001" price="30/1"/>
+    <SPLIT payee="P000003" reconciledate="" shares="-1000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-1000/100" account="A000004" id="S0002" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+  <TRANSACTION postdate="2026-01-23" memo="Reinvest a third of a share" id="T000000000000000015" commodity="USD" entrydate="2026-01-23">
+   <SPLITS>
+    <SPLIT payee="P000003" reconciledate="" shares="10000/30000" action="Reinvest" bankid="" number="" reconcileflag="0" memo="one third of a share" value="1000/100" account="A000005" id="S0001" price="30/1"/>
+    <SPLIT payee="P000003" reconciledate="" shares="-1000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-1000/100" account="A000004" id="S0002" price="1/1"/>
+   </SPLITS>
+  </TRANSACTION>
+ </TRANSACTIONS>
+ <KEYVALUEPAIRS>
+  <PAIR key="kmm-baseCurrency" value="EUR"/>
+  <PAIR key="kmm-id" value="{0c3b2f0a-0000-0000-0000-000000000001}"/>
+ </KEYVALUEPAIRS>
+ <SCHEDULES count="2">
+  <SCHEDULED_TX startDate="2026-01-01" autoEnter="1" weekendOption="2" lastPayment="2026-01-01" paymentType="2" endDate="" type="1" name="Rent" fixed="1" occurenceMultiplier="1" occurence="32" id="SCH000001">
+   <TRANSACTION postdate="2026-02-01" memo="" id="" commodity="EUR" entrydate="2026-01-01">
+    <SPLITS>
+     <SPLIT payee="" reconciledate="" shares="-80000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-80000/100" account="A000001" id="S0001" price="1/1"/>
+     <SPLIT payee="" reconciledate="" shares="80000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="80000/100" account="A000010" id="S0002" price="1/1"/>
+    </SPLITS>
+   </TRANSACTION>
+  </SCHEDULED_TX>
+  <SCHEDULED_TX startDate="2026-01-01" autoEnter="0" weekendOption="2" lastPayment="" paymentType="2" endDate="" type="1" name="Insurance" fixed="1" occurenceMultiplier="1" occurence="1024" id="SCH000002">
+   <TRANSACTION postdate="2026-03-01" memo="" id="" commodity="EUR" entrydate="2026-01-01">
+    <SPLITS>
+     <SPLIT payee="" reconciledate="" shares="-12000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="-12000/100" account="A000001" id="S0001" price="1/1"/>
+     <SPLIT payee="" reconciledate="" shares="12000/100" action="" bankid="" number="" reconcileflag="0" memo="" value="12000/100" account="A000010" id="S0002" price="1/1"/>
+    </SPLITS>
+   </TRANSACTION>
+  </SCHEDULED_TX>
+ </SCHEDULES>
+ <SECURITIES count="1">
+  <SECURITY trading-currency="USD" saf="10000" name="Apple Inc." symbol="AAPL" trading-market="NASDAQ" id="E000001" type="0" pp="4">
+   <KEYVALUEPAIRS>
+    <PAIR key="kmm-security-id" value="US0378331005"/>
+   </KEYVALUEPAIRS>
+  </SECURITY>
+ </SECURITIES>
+ <CURRENCIES count="3">
+  <CURRENCY saf="100" id="EUR" scf="100" symbol="€" type="2" name="Euro" ppp="10000"/>
+  <CURRENCY saf="100" id="USD" scf="100" symbol="$" type="2" name="US Dollar" ppp="10000"/>
+  <CURRENCY saf="1" id="JPY" scf="1" symbol="¥" type="2" name="Yen" ppp="10000"/>
+ </CURRENCIES>
+ <PRICES count="2">
+  <PRICEPAIR from="USD" to="EUR">
+   <PRICE date="2026-01-31" price="9174/10000" source="KMyMoney"/>
+   <PRICE date="2026-01-12" price="9100/10000" source="User"/>
+  </PRICEPAIR>
+  <PRICEPAIR from="E000001" to="USD">
+   <PRICE date="2026-01-31" price="1905/10" source="Yahoo"/>
+  </PRICEPAIR>
+ </PRICES>
+ <REPORTS count="0"/>
+ <BUDGETS count="1">
+  <BUDGET start="2026-01-01" version="2" name="2026" id="B000001"/>
+ </BUDGETS>
+</KMYMONEY-FILE>

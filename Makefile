@@ -8,7 +8,8 @@ COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := help
 .PHONY: help install fmt lint types test test-ci test-all test-postgres \
-        test-thorough cov check bench bench-scaling migrate migration clean \
+        test-thorough cov check bench bench-scaling bench-import migrate \
+        migration clean \
         up down logs db-shell image image-test compose-config
 
 help:  ## Show this help
@@ -60,6 +61,9 @@ bench:  ## Storage benchmark
 
 bench-scaling:  ## Does the ledger stay fast as it grows?
 	$(BIN)/python benchmarks/bench_store.py --scaling 25000,50000,100000,200000
+
+bench-import:  ## How long does a KMyMoney migration take?
+	$(BIN)/python benchmarks/bench_kmymoney.py --transactions 50000
 
 migrate:  ## Apply migrations ($$PYMONEY_DATABASE_URL)
 	$(BIN)/alembic upgrade head

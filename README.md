@@ -1,7 +1,8 @@
 # PyMoney
 
-Double-entry accounting that runs everywhere. **Phases 1 and 2**: the domain
-model, and persistence over SQLite and PostgreSQL. No network, no UI yet.
+Double-entry accounting that runs everywhere. So far: the domain model,
+persistence over SQLite and PostgreSQL, and a KMyMoney importer. No network, no
+UI yet.
 
 ```
 src/pymoney/core/               the domain. pure stdlib, no dependencies
@@ -33,6 +34,13 @@ src/pymoney/store/              persistence. SQLAlchemy Core, no ORM mapping
     sql.py          SqlStore: the Store contract over a database
     engine.py       engine creation, SQLite pragmas, open_book
     migrations/     Alembic
+
+src/pymoney/importers/kmymoney/   migration from KMyMoney
+    model.py        the file's own structures, unintepreted
+    parser.py       .kmy reading: gzip, XML, streamed transactions
+    importer.py     model -> book, including the rounding reconciliation
+    report.py       what was done, approximated, and skipped
+    __main__.py     the command line
 ```
 
 ## Status
@@ -206,6 +214,72 @@ A few tests are memory-only, and deliberately so: `check_integrity` looks for
 damage like a split pointing at no account, and a relational store makes that
 *unrepresentable*. Those skip with an explanation rather than pretending to pass.
 
+## Importing from KMyMoney
+
+```bash
+python -m pymoney.importers.kmymoney money.kmy --inspect   # what is in there?
+python -m pymoney.importers.kmymoney money.kmy --dry-run   # what would happen?
+python -m pymoney.importers.kmymoney money.kmy --database ledger.sqlite
+```
+
+The guarantee: the same accounts exist, and **every balance matches the figure
+KMyMoney displayed, to the minor unit.** The importer verifies that itself, on
+your data, and says so in the report.
+
+Reads gzipped or plain XML; refuses GPG-encrypted files with the `gpg --decrypt`
+command line rather than asking for your passphrase. Transactions are streamed,
+so memory does not depend on how long you have been using KMyMoney. Measured:
+**772 transactions/second**, so a 50,000-entry ledger takes about a minute and a
+200,000-entry one about four.
+
+### The rounding problem, which is the whole difficulty
+
+KMyMoney stores split amounts as **unbounded rationals**; PyMoney stores them as
+**integer minor units** (decision #3). Both are deliberate, and the consequence
+is arithmetic: *summing rounded amounts is not the same as rounding a summed
+amount.* Three splits of `1000/3` come to exactly 1000 in KMyMoney, which
+displays 1000.00. Booked individually they are 333.33 × 3 = 999.99.
+
+So the importer measures the drift per account, posts a correcting entry against
+a dedicated equity account, and reports every one:
+
+```
+  rounding adjustments: 2 account(s), 2 minor unit(s) in total
+      Assets:Dollar Wallet: imported 50.99, KMyMoney shows 51.00,
+          adjusted by 0.01 USD over 5 split(s)
+      Assets:Brokerage:Apple: imported 12.9999, KMyMoney shows 13.0000,
+          adjusted by 0.0001 AAPL over 4 split(s)
+```
+
+Two things worth knowing:
+
+**It happens less than you would expect.** The value column is booked by the
+zero-sum allocator, which only floors or ceils and never disturbs a leg that was
+already exact — so a bill split three ways comes to 10.00 without any help. Drift
+survives only where a *quantity* is rounded independently of the value column:
+foreign-currency holdings and fractional shares.
+
+**The correction is dated at the end of the ledger.** A balance queried
+*mid-history* can therefore still be a minor unit away from KMyMoney's. Closing
+that would need a correction wherever the drift crosses a unit, which is a lot of
+register noise for a cent. `--no-rounding-adjustments` reports the differences and
+posts nothing, if you would rather see the raw sums.
+
+### What does not come across
+
+Scheduled transactions, budgets, saved reports, cost centres, tags, online
+banking jobs, and per-account settings like `PreferredAccount`. None of it is
+dropped quietly — the report counts every one. Also reported: KMyMoney types we
+narrow (a certificate of deposit becomes a savings account), colons stripped from
+account names (we use them as the path separator), duplicate payee names
+disambiguated, and any transaction that could not be stored at all.
+
+An import is one unit of work, so a failure leaves no half-imported book — but a
+single malformed transaction is skipped and reported rather than fatal, which is
+what `book.bulk()`'s per-command savepoints are for. A second import of the same
+file is refused up front, before anything is created, on the strength of the
+`imported_id` prefix.
+
 ## Performance
 
 `benchmarks/bench_store.py` measures it; `tests/test_performance.py` keeps it
@@ -302,6 +376,9 @@ invalidation complexity before then.
 **Value-column aggregation pushdown.** `value_balance` still goes through the
 register. It is used by one report over a handful of accounts, so it has not
 earned a second covering index yet.
+
+And from the importer: **per-point rounding corrections** (see above), and
+reading KMyMoney's SQL storage backend rather than only `.kmy` files.
 
 ## What Phase 3 has to honour
 

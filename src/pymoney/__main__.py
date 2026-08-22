@@ -20,6 +20,7 @@ from pymoney import __version__
 _COMPONENTS = (
     ("pymoney.core", "domain model: accounts, transactions, prices, reports"),
     ("pymoney.store", "persistence: SQLAlchemy over SQLite and PostgreSQL"),
+    ("pymoney.importers.kmymoney", "importer: KMyMoney .kmy files"),
     ("pymoney.api", "HTTP API: FastAPI, commands in, revisions out"),
     ("pymoney.desktop", "desktop client: PySide6"),
 )
@@ -51,7 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print()
     for module, description in _COMPONENTS:
         mark = "ok     " if _available(module) else "missing"
-        print(f"  [{mark}] {module:<18} {description}")
+        print(f"  [{mark}] {module:<26} {description}")
     print()
     print("No server component yet; this build is the domain library.")
     return 0

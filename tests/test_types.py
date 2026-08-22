@@ -88,7 +88,10 @@ class TestJsonList:
 
     def test_empty(self, dialect):
         column = JsonList()
-        assert column.process_result_value(column.process_bind_param((), dialect), dialect) == ()
+        assert (
+            column.process_result_value(column.process_bind_param((), dialect), dialect)
+            == ()
+        )
 
     def test_none_reads_as_empty(self, dialect):
         """A payee with no match keys and one with an empty list are the same."""
