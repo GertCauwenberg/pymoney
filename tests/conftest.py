@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import atexit
+import os
+import tempfile
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from fractions import Fraction
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 import pytest
 from hypothesis import HealthCheck, settings
@@ -37,6 +44,170 @@ settings.load_profile("dev")
 START = datetime(2026, 1, 1, 9, 0, 0, tzinfo=timezone.utc)
 
 
+# ==========================================================================
+# storage backends
+# ==========================================================================
+class StoreFactory:
+    """Opens books on one backend, and cleans up after itself."""
+
+    name = "memory"
+
+    def __init__(self, tmp_path: Path) -> None:
+        self.tmp_path = tmp_path
+        self._closeables: list[Any] = []
+
+    def open(self, **kwargs: Any) -> Book:
+        return Book(**kwargs)
+
+    def teardown(self) -> None:
+        # Registration order *is* teardown order: the book's connection has to
+        # go back to the pool before the engine disposes of it.
+        for item in self._closeables:
+            item()
+        self._closeables.clear()
+
+
+class SqlFactory(StoreFactory):
+    """Shared by every SQL backend; only the URL differs."""
+
+    def url(self) -> str:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+    def open(self, **kwargs: Any) -> Book:
+        from pymoney.store import create_engine, create_schema, open_book
+
+        engine = create_engine(self.url())
+        create_schema(engine)
+        book = open_book(engine, **kwargs)
+        self._closeables.append(book.close)
+        self._closeables.append(engine.dispose)
+        return book
+
+
+class SqliteMemoryFactory(SqlFactory):
+    name = "sqlite"
+
+    def url(self) -> str:
+        return "sqlite+pysqlite:///:memory:"
+
+
+class SqliteFileFactory(SqlFactory):
+    """A real file, so WAL, pragmas and durability are exercised too."""
+
+    name = "sqlite-file"
+
+    def url(self) -> str:
+        return f"sqlite+pysqlite:///{self.tmp_path / 'ledger.sqlite'}"
+
+
+class PostgresFactory(SqlFactory):
+    """One throwaway schema per test, so tests cannot see each other's rows."""
+
+    name = "postgres"
+
+    def url(self) -> str:
+        return postgres_url()
+
+    def open(self, **kwargs: Any) -> Book:
+        from sqlalchemy import text
+
+        from pymoney.store import create_engine, create_schema, open_book
+
+        schema_name = f"t{uuid4().hex[:16]}"
+        engine = create_engine(
+            self.url(),
+            connect_args={"options": f"-csearch_path={schema_name}"},
+        )
+        with engine.begin() as conn:
+            conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
+        create_schema(engine)
+
+        def drop() -> None:
+            with engine.begin() as conn:
+                # Fail fast rather than hang if a connection was leaked.
+                conn.execute(text("SET lock_timeout = '10s'"))
+                conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE'))
+
+        book = open_book(engine, **kwargs)
+        self._closeables.append(book.close)
+        self._closeables.append(drop)
+        self._closeables.append(engine.dispose)
+        return book
+
+
+BACKENDS: dict[str, type[StoreFactory]] = {
+    "memory": StoreFactory,
+    "sqlite": SqliteMemoryFactory,
+    "sqlite-file": SqliteFileFactory,
+    "postgres": PostgresFactory,
+}
+
+_PG_URL_ENV = "PYMONEY_TEST_DATABASE_URL"
+
+
+def postgres_url() -> str:
+    """Where the PostgreSQL tests point.
+
+    ``$PYMONEY_TEST_DATABASE_URL`` in CI and in the compose stack. Failing that,
+    ``pgserver`` is used to start a throwaway local server, so contributors can
+    run the PostgreSQL suite without Docker.
+    """
+    url = os.environ.get(_PG_URL_ENV)
+    if url:
+        return url
+    return _pgserver_url()
+
+
+@lru_cache(maxsize=1)
+def _pgserver_url() -> str:
+    try:
+        import pgserver
+    except ImportError:  # pragma: no cover - depends on the environment
+        pytest.skip(
+            f"PostgreSQL tests need ${_PG_URL_ENV} or the optional 'pgserver' "
+            f"package (pip install -e '.[postgres]')"
+        )
+    data_dir = Path(tempfile.mkdtemp(prefix="pymoney-pg-"))
+    server = pgserver.get_server(str(data_dir))
+    atexit.register(server.cleanup)
+    return server.get_uri().replace("postgresql://", "postgresql+psycopg://", 1)
+
+
+@pytest.fixture
+def store_backend(request: pytest.FixtureRequest, tmp_path: Path) -> Any:
+    factory = BACKENDS[request.param](tmp_path)
+    yield factory
+    factory.teardown()
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--stores",
+        default="memory,sqlite",
+        help=(
+            "comma-separated storage backends to run the whole suite against: "
+            "memory, sqlite, sqlite-file, postgres. postgres needs "
+            "PYMONEY_TEST_DATABASE_URL."
+        ),
+    )
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """Parametrise every test that takes a book over each selected backend.
+
+    The promise in the Phase 1 README was that the SQL layer would reproduce the
+    in-memory behaviour "test for test". This is that promise, mechanised: the
+    same 700 tests, the same assertions, a different store underneath.
+    """
+    if "store_backend" not in metafunc.fixturenames:
+        return
+    selected = [s.strip() for s in metafunc.config.getoption("--stores").split(",")]
+    unknown = set(selected) - set(BACKENDS)
+    if unknown:
+        raise pytest.UsageError(f"unknown --stores value(s): {sorted(unknown)}")
+    metafunc.parametrize("store_backend", selected, ids=selected, indirect=True)
+
+
 @pytest.fixture
 def clock() -> ManualClock:
     return ManualClock(START)
@@ -48,9 +219,9 @@ def eur() -> Commodity:
 
 
 @pytest.fixture
-def book(clock: ManualClock, eur: Commodity) -> Book:
-    """An empty book whose base currency is EUR."""
-    return Book(name="Test Book", base_currency=eur, clock=clock)
+def book(store_backend: StoreFactory, clock: ManualClock, eur: Commodity) -> Book:
+    """An empty book whose base currency is EUR, on the backend under test."""
+    return store_backend.open(name="Test Book", base_currency=eur, clock=clock)
 
 
 @dataclass
@@ -212,6 +383,23 @@ def corrupt(book: Book, kind, entity) -> None:
     book.store.begin()
     book.store.put(kind, entity)
     book.store.commit()
+
+
+@pytest.fixture
+def lax_store(store_backend: StoreFactory) -> None:
+    """Skip a test that needs to write referentially broken rows.
+
+    ``check_integrity`` looks for several classes of damage. A relational store
+    makes some of them *unrepresentable* -- a dangling parent or a split pointing
+    at no account is a foreign key violation, and the database refuses it. That
+    is a feature, so the tests for those cases only run where corruption is
+    possible at all.
+    """
+    if store_backend.name != "memory":
+        pytest.skip(
+            f"{store_backend.name} enforces referential integrity: this "
+            f"corruption cannot be written"
+        )
 
 
 @pytest.fixture

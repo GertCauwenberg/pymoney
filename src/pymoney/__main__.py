@@ -8,7 +8,7 @@ that do not exist.
 
 from __future__ import annotations
 
-import importlib.util
+import importlib
 import platform
 import sys
 from collections.abc import Sequence
@@ -26,11 +26,17 @@ _COMPONENTS = (
 
 
 def _available(module: str) -> bool:
+    """Whether a component can actually be used.
+
+    Imports rather than just locating: ``pymoney.store`` ships in the wheel but
+    needs the ``store`` extra to work, and reporting it present when importing it
+    would fail is exactly the kind of lie this command exists not to tell.
+    """
     try:
-        return importlib.util.find_spec(module) is not None
-    except ModuleNotFoundError:
-        # A parent package is missing, so the child cannot exist either.
+        importlib.import_module(module)
+    except ImportError:
         return False
+    return True
 
 
 def main(argv: Sequence[str] | None = None) -> int:
