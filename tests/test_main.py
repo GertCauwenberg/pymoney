@@ -52,5 +52,8 @@ class TestAvailable:
         assert not _available("pymoney.api")
 
     def test_a_missing_parent_package_is_not_an_error(self):
-        """find_spec raises rather than returning None when the parent is absent."""
         assert not _available("pymoney.nope.deeper")
+
+    def test_the_store_counts_as_present_only_if_it_imports(self):
+        """It ships in the wheel but needs the `store` extra to work."""
+        assert _available("pymoney.store") == _available("sqlalchemy")

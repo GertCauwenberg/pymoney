@@ -421,7 +421,7 @@ class TestAtomicity:
                         LegSpec.of(chart.checking.id, "-5.00"),
                         LegSpec.of(chart.fuel.id),
                     ),
-                )
+                ),
             )
 
         with pytest.raises(RuntimeError):
@@ -507,7 +507,7 @@ class TestIntegrity:
     def test_a_healthy_book_reports_nothing(self, priced: Chart):
         assert priced.book.check_integrity() == ()
 
-    def test_a_dangling_parent_is_detected(self, chart: Chart):
+    def test_a_dangling_parent_is_detected(self, chart: Chart, lax_store):
         book = chart.book
         corrupt(
             book,
@@ -527,7 +527,7 @@ class TestIntegrity:
         )
         assert any("ASSET parent" in p for p in book.check_integrity())
 
-    def test_an_unknown_commodity_is_detected(self, chart: Chart):
+    def test_an_unknown_commodity_is_detected(self, chart: Chart, lax_store):
         from dataclasses import replace
 
         from pymoney.core import Commodity
@@ -561,7 +561,7 @@ class TestIntegrity:
         corrupt(book, EntityKind.TRANSACTION, broken)
         assert any("sum to zero" in p for p in book.check_integrity())
 
-    def test_a_missing_account_reference_is_detected(self, funded: Chart):
+    def test_a_missing_account_reference_is_detected(self, funded: Chart, lax_store):
         from dataclasses import replace
 
         book = funded.book
@@ -594,9 +594,7 @@ class TestIntegrity:
                 splits=(
                     replace(
                         transaction.splits[0],
-                        quantity=Amount(
-                            funded.usd, transaction.splits[0].quantity.minor
-                        ),
+                        quantity=Amount(funded.usd, transaction.splits[0].quantity.minor),
                     ),
                     transaction.splits[1],
                 ),
@@ -605,14 +603,12 @@ class TestIntegrity:
         problems = book.check_integrity()
         assert any("posts USD to a EUR account" in p for p in problems)
 
-    def test_a_missing_payee_reference_is_detected(self, funded: Chart):
+    def test_a_missing_payee_reference_is_detected(self, funded: Chart, lax_store):
         from dataclasses import replace
 
         book = funded.book
         transaction = book.transactions()[0]
-        corrupt(
-            book, EntityKind.TRANSACTION, replace(transaction, payee_id=new_id())
-        )
+        corrupt(book, EntityKind.TRANSACTION, replace(transaction, payee_id=new_id()))
         assert any("missing payee" in p for p in book.check_integrity())
 
 

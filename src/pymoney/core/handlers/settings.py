@@ -21,9 +21,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def initialise_book(book: Book, command: cmd.InitialiseBook) -> BookSettings:
     if book.revision != 0:
-        raise ConflictError(
-            f"book {book.id} is already initialised (r{book.revision})"
-        )
+        raise ConflictError(f"book {book.id} is already initialised (r{book.revision})")
     book.set_book_field("name", command.name, note="book created")
     if command.base_currency is not None:
         commodity: Commodity = command.base_currency
@@ -46,11 +44,7 @@ def set_base_currency(book: Book, command: cmd.SetBaseCurrency) -> BookSettings:
         raise ValidationError(f"{currency.code} is a {currency.kind}, not a currency")
     if currency.id == book.base_currency_id:
         return book.settings
-    previous = (
-        book.base_currency.code
-        if book.base_currency_id is not None
-        else None
-    )
+    previous = book.base_currency.code if book.base_currency_id is not None else None
     return book.set_book_field(
         "_base_currency_id",
         currency.id,
@@ -63,6 +57,4 @@ def rename_book(book: Book, command: cmd.RenameBook) -> BookSettings:
         raise ValidationError("book name must not be empty")
     if command.name == book.name:
         return book.settings
-    return book.set_book_field(
-        "name", command.name, note=f"renamed from {book.name!r}"
-    )
+    return book.set_book_field("name", command.name, note=f"renamed from {book.name!r}")

@@ -45,13 +45,16 @@ RUN groupadd --system --gid 1001 pymoney \
     && useradd --system --uid 1001 --gid pymoney --create-home pymoney
 
 COPY --from=builder /dist/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl && rm -f /tmp/*.whl
+# The `store` and `postgres` extras: the domain core needs nothing, but an image
+# that cannot reach a database is not worth deploying.
+RUN pip install --no-cache-dir "$(echo /tmp/*.whl)[store,postgres]" \
+    && rm -f /tmp/*.whl
 
 USER pymoney
 WORKDIR /home/pymoney
 
 # No server yet, so the default command is the component inventory. It is also
-# the image's smoke test: if the wheel is broken, this fails.
+# the image's smoke test: if the wheel or an extra is broken, this reports it.
 CMD ["python", "-m", "pymoney"]
 
 # --------------------------------------------------------------------------
@@ -69,4 +72,4 @@ RUN pip install --no-cache-dir -e '.[dev]' && chown -R pymoney:pymoney /home/pym
 
 USER pymoney
 ENV HYPOTHESIS_STORAGE_DIRECTORY=/tmp/hypothesis
-CMD ["pytest", "--hypothesis-profile=ci", "--cov=pymoney", "--cov-report=term-missing"]
+CMD ["pytest", "--hypothesis-profile=ci", "--cov=src/pymoney", "--cov-report=term-missing"]

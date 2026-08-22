@@ -30,9 +30,7 @@ def account_for_posting(book: Book, account_id: UUID) -> Account:
             f"{book.path(account)!r} is a placeholder and accepts no postings"
         )
     if account.closed:
-        raise ValidationError(
-            f"{book.path(account)!r} is closed and accepts no postings"
-        )
+        raise ValidationError(f"{book.path(account)!r} is closed and accepts no postings")
     return account
 
 
@@ -69,7 +67,8 @@ def post_transaction(book: Book, command: cmd.PostTransaction) -> Transaction:
         raise ConflictError(
             f"a transaction with imported_id {command.imported_id!r} already exists"
         )
-    splits = build_splits(book,
+    splits = build_splits(
+        book,
         tuple(command.legs),
         currency,
         command.rounding,
@@ -92,7 +91,7 @@ def post_transaction(book: Book, command: cmd.PostTransaction) -> Transaction:
         imported_id=command.imported_id,
     )
     transaction.validate()
-    if book.store.get(EntityKind.TRANSACTION, transaction.id) is not None:
+    if book.store.exists(EntityKind.TRANSACTION, transaction.id):
         raise ConflictError(f"transaction {transaction.id} already exists")
     return book.put(EntityKind.TRANSACTION, transaction, created=True)
 
@@ -121,7 +120,8 @@ def update_transaction(book: Book, command: cmd.UpdateTransaction) -> Transactio
         book.payee(updated.payee_id)
 
     if not isinstance(command.legs, cmd.Unset):
-        splits = build_splits(book,
+        splits = build_splits(
+            book,
             tuple(command.legs),
             currency,
             rounding,

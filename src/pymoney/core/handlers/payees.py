@@ -21,9 +21,7 @@ if TYPE_CHECKING:  # pragma: no cover
 def create_payee(book: Book, command: cmd.CreatePayee) -> Payee:
     existing = book.find_payee(command.name)
     if existing is not None:
-        raise ConflictError(
-            f"payee {command.name!r} already exists as {existing.name!r}"
-        )
+        raise ConflictError(f"payee {command.name!r} already exists as {existing.name!r}")
     payee = Payee(
         id=command.id or new_id(),
         book_id=book.id,
@@ -35,7 +33,7 @@ def create_payee(book: Book, command: cmd.CreatePayee) -> Payee:
     )
     if payee.default_account_id is not None:
         book.account(payee.default_account_id)
-    if book.store.get(EntityKind.PAYEE, payee.id) is not None:
+    if book.store.exists(EntityKind.PAYEE, payee.id):
         raise ConflictError(f"payee {payee.id} already exists")
     return book.put(EntityKind.PAYEE, payee, created=True)
 
@@ -79,7 +77,9 @@ def merge_payees(book: Book, command: cmd.MergePayees) -> Payee:
             target = book.put(EntityKind.PAYEE, merged, note=note)
 
     touched_transactions = {
-        t.id: t for source in sources for t in book.store.transactions_for_payee(source.id)
+        t.id: t
+        for source in sources
+        for t in book.store.transactions_for_payee(source.id)
     }
     for transaction in sorted(
         touched_transactions.values(), key=lambda t: (t.date, t.id.int)

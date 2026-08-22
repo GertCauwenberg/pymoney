@@ -15,7 +15,8 @@ so the same rules and the same tests run over memory or over SQL.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any, cast
@@ -112,6 +113,7 @@ class Book:
         self._current_revision = 0
         self._current_command: cmd.Command | None = None
         self._in_unit_of_work = False
+        self._bulk = False
 
         if self._revision == 0:
             # Bootstrapping is itself a command, so a replica pulling from r0 is
@@ -332,9 +334,7 @@ class Book:
             for split in transaction.splits
             if split.account_id in account_ids
         ]
-        out.sort(
-            key=lambda r: (r.transaction.date, r.transaction.id.int, r.split.id.int)
-        )
+        out.sort(key=lambda r: (r.transaction.date, r.transaction.id.int, r.split.id.int))
         return tuple(out)
 
     # ====================================================================
@@ -410,7 +410,7 @@ class Book:
     def balance(self, account_id: UUID, *, as_of: date | None = None) -> Amount:
         """Booked balance of one account in its own commodity."""
         account = self.account(account_id)
-        totals = self._store.balances_by_account(end=as_of)
+        totals = self._store.balances_by_account(account_ids=[account_id], end=as_of)
         return Amount(self.live(account.commodity), totals.get(account_id, 0))
 
     def balances_by_account(
@@ -432,9 +432,12 @@ class Book:
         self, account_id: UUID, *, as_of: date | None = None
     ) -> Balances:
         """Balance of an account and its descendants, per commodity."""
-        totals = self._store.balances_by_account(end=as_of)
+        subtree = self.subtree(account_id)
+        totals = self._store.balances_by_account(
+            account_ids=[a.id for a in subtree], end=as_of
+        )
         out = Balances()
-        for account in self.subtree(account_id):
+        for account in subtree:
             out.add(Amount(self.live(account.commodity), totals.get(account.id, 0)))
         return out
 
@@ -442,9 +445,12 @@ class Book:
         self, account_class: AccountClass, *, as_of: date | None = None
     ) -> Balances:
         """Balance of every account in one class, per commodity."""
-        totals = self._store.balances_by_account(end=as_of)
+        selected = self.accounts(account_class=account_class)
+        totals = self._store.balances_by_account(
+            account_ids=[a.id for a in selected], end=as_of
+        )
         out = Balances()
-        for account in self.accounts(account_class=account_class):
+        for account in selected:
             out.add(Amount(self.live(account.commodity), totals.get(account.id, 0)))
         return out
 
@@ -489,7 +495,8 @@ class Book:
         if handler is None:
             raise CommandError(f"no handler for command {type(command).__name__}")
 
-        self._store.begin()
+        if not self._bulk:
+            self._store.begin()
         self._in_unit_of_work = True
         self._pending = []
         self._current_revision = self._revision + 1
@@ -500,18 +507,17 @@ class Book:
             changes = tuple(self._pending)
             if changes:
                 self._store.append_changes(changes)
-                self._store.save_book(
-                    replace(
-                        self._store.load_book(),
-                        name=self._name,
-                        base_currency_id=self._base_currency_id,
-                        revision=self._current_revision,
-                        settings_revision=self._settings_revision,
-                    )
-                )
-            self._store.commit()
+                # In bulk mode the book row is written once at the end: it is the
+                # same row on every command, so updating it per command is pure
+                # overhead.
+                if not self._bulk:
+                    self._revision = self._current_revision
+                    self._flush_book_row()
+            if not self._bulk:
+                self._store.commit()
         except Exception:
-            self._store.rollback()
+            if not self._bulk:
+                self._store.rollback()
             self._name, self._base_currency_id, self._settings_revision = snapshot
             raise
         finally:
@@ -546,6 +552,65 @@ class Book:
         """Apply commands in order. Not a transaction: each gets its revision."""
         return tuple(self.execute(c) for c in commands)
 
+    @contextmanager
+    def bulk(self) -> Iterator[Book]:
+        """Group many commands into one unit of work, for imports.
+
+        Normally each command commits on its own, which is what interactive use
+        wants: a rejected entry cannot disturb anything else. An importer wants
+        the opposite -- thousands of commands, all-or-nothing, and not one commit
+        each, since the commit is a large share of the per-command cost.
+
+        Inside this block:
+
+        * every command still validates, still gets its own revision, and still
+          appears in the change log exactly as before;
+        * nothing is durable until the block exits;
+        * **any** failure rolls back the whole block, not just the command that
+          failed.
+
+        That last point is the trade. It is right for an import (half a statement
+        is not worth keeping) and wrong for a UI.
+
+            with book.bulk():
+                for row in statement:
+                    book.post(row.date, legs_for(row))
+        """
+        if self._bulk:
+            # Re-entrant: an importer calling a helper that also batches should
+            # not end up with a half-committed outer block.
+            yield self
+            return
+        self._store.begin()
+        self._bulk = True
+        try:
+            yield self
+        except Exception:
+            self._store.rollback()
+            row = self._store.load_book()
+            self._name = row.name
+            self._base_currency_id = row.base_currency_id
+            self._revision = row.revision
+            self._settings_revision = row.settings_revision
+            raise
+        else:
+            self._flush_book_row()
+            self._store.commit()
+        finally:
+            self._bulk = False
+
+    def _flush_book_row(self) -> None:
+        """Persist the book's own fields and the revision watermark."""
+        self._store.save_book(
+            replace(
+                self._store.load_book(),
+                name=self._name,
+                base_currency_id=self._base_currency_id,
+                revision=self._revision,
+                settings_revision=self._settings_revision,
+            )
+        )
+
     # -- the mutation surface handlers use --------------------------------
     def put[E: Entity](
         self,
@@ -567,7 +632,7 @@ class Book:
                 created=created,
             ),
         )
-        self._store.put(kind, stamped)
+        self._store.put(kind, stamped, created=created)
         self._record(
             kind,
             stamped.id,
@@ -695,13 +760,15 @@ class Book:
     # ====================================================================
     # sync surface
     # ====================================================================
-    def changes_since(self, revision: int) -> tuple[Change, ...]:
+    def changes_since(
+        self, revision: int, *, max_revisions: int | None = None
+    ) -> tuple[Change, ...]:
         """Raw row-level changes above ``revision``.
 
         The low-level view. Most clients want :meth:`pull`, which groups these
         into atomically applicable batches.
         """
-        return self._store.changes_since(revision)
+        return self._store.changes_since(revision, max_revisions=max_revisions)
 
     def revision_batch(self, revision: int) -> RevisionBatch:
         """Everything the command at ``revision`` changed, entities included."""

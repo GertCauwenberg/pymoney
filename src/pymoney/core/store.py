@@ -104,8 +104,23 @@ class Store(ABC):
     @abstractmethod
     def get(self, kind: EntityKind, entity_id: UUID) -> Any | None: ...
 
+    def exists(self, kind: EntityKind, entity_id: UUID) -> bool:
+        """Whether an entity is present, without loading it.
+
+        Worth its own method: a transaction is several rows, and the commands
+        that only need to know "is this id taken?" should not pay to assemble one.
+        """
+        return self.get(kind, entity_id) is not None
+
     @abstractmethod
-    def put(self, kind: EntityKind, entity: Entity) -> None: ...
+    def put(self, kind: EntityKind, entity: Entity, *, created: bool = False) -> None:
+        """Insert or replace an entity.
+
+        ``created`` is not a hint to be verified -- it is what the command
+        already established, so a store must not spend a query asking the
+        database whether the row is there. If it is wrong, the resulting
+        constraint violation is the correct outcome.
+        """
 
     @abstractmethod
     def delete(self, kind: EntityKind, entity_id: UUID) -> bool:
@@ -147,12 +162,18 @@ class Store(ABC):
 
     @abstractmethod
     def balances_by_account(
-        self, *, start: date | None = None, end: date | None = None
+        self,
+        *,
+        account_ids: Iterable[UUID] | None = None,
+        start: date | None = None,
+        end: date | None = None,
     ) -> dict[UUID, int]:
         """Summed split quantities in minor units, per account.
 
         Pushed down to the storage engine on purpose: this is the hot path for
-        every balance, register total and report.
+        every balance, register total and report. ``account_ids`` matters as much
+        as the dates -- one account's balance must not cost a full aggregate over
+        the ledger.
         """
 
     @abstractmethod
@@ -173,7 +194,14 @@ class Store(ABC):
     def append_changes(self, changes: Iterable[Change]) -> None: ...
 
     @abstractmethod
-    def changes_since(self, revision: int) -> tuple[Change, ...]: ...
+    def changes_since(
+        self, revision: int, *, max_revisions: int | None = None
+    ) -> tuple[Change, ...]:
+        """Changes above ``revision``, optionally only the next few revisions.
+
+        ``max_revisions`` lets a paged sync pull avoid dragging the whole log
+        back just to use the first page of it.
+        """
 
     @abstractmethod
     def changes_at(self, revision: int) -> tuple[Change, ...]: ...
@@ -201,8 +229,10 @@ class ChangeLogView:
     def __init__(self, store: Store) -> None:
         self._store = store
 
-    def since(self, revision: int) -> tuple[Change, ...]:
-        return self._store.changes_since(revision)
+    def since(
+        self, revision: int, *, max_revisions: int | None = None
+    ) -> tuple[Change, ...]:
+        return self._store.changes_since(revision, max_revisions=max_revisions)
 
     def at(self, revision: int) -> tuple[Change, ...]:
         return self._store.changes_at(revision)
@@ -280,7 +310,8 @@ class MemoryStore(Store):
             return self._prices.get(entity_id)
         return self._entities[kind].get(entity_id)
 
-    def put(self, kind: EntityKind, entity: Entity) -> None:
+    def put(self, kind: EntityKind, entity: Entity, *, created: bool = False) -> None:
+        del created  # dict assignment covers both cases
         if kind is EntityKind.PRICE:
             previous_price = self._prices.get(entity.id)
             self._prices.add(entity)  # type: ignore[arg-type]
@@ -313,6 +344,7 @@ class MemoryStore(Store):
             previous_price = self._prices.remove(entity_id)
             if previous_price is None:
                 return False
+
             def undo_price_delete() -> None:
                 self._prices.add(previous_price)
 
@@ -399,11 +431,18 @@ class MemoryStore(Store):
         return len(self._txns_by_account.get(account_id, ()))
 
     def balances_by_account(
-        self, *, start: date | None = None, end: date | None = None
+        self,
+        *,
+        account_ids: Iterable[UUID] | None = None,
+        start: date | None = None,
+        end: date | None = None,
     ) -> dict[UUID, int]:
+        wanted = None if account_ids is None else set(account_ids)
         totals: dict[UUID, int] = {}
-        for transaction in self.transactions(start=start, end=end):
+        for transaction in self.transactions(account_ids=wanted, start=start, end=end):
             for split in transaction.splits:
+                if wanted is not None and split.account_id not in wanted:
+                    continue
                 totals[split.account_id] = (
                     totals.get(split.account_id, 0) + split.quantity.minor
                 )
@@ -435,8 +474,15 @@ class MemoryStore(Store):
         self._log.extend(changes)
         self._record_undo(lambda: self._log.discard_after(before))
 
-    def changes_since(self, revision: int) -> tuple[Change, ...]:
-        return self._log.since(revision)
+    def changes_since(
+        self, revision: int, *, max_revisions: int | None = None
+    ) -> tuple[Change, ...]:
+        found = self._log.since(revision)
+        if max_revisions is None:
+            return found
+        cutoff = sorted({c.revision for c in found})[:max_revisions]
+        allowed = set(cutoff)
+        return tuple(c for c in found if c.revision in allowed)
 
     def changes_at(self, revision: int) -> tuple[Change, ...]:
         return self._log.at(revision)

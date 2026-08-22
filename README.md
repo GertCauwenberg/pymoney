@@ -1,10 +1,10 @@
-# PyMoney — core domain library
+# PyMoney
 
-Double-entry accounting that runs everywhere. This repository currently contains
-**Phase 1 only**: the pure-Python domain layer. No database, no network, no UI.
+Double-entry accounting that runs everywhere. **Phases 1 and 2**: the domain
+model, and persistence over SQLite and PostgreSQL. No network, no UI yet.
 
 ```
-src/pymoney/core/
+src/pymoney/core/               the domain. pure stdlib, no dependencies
     ids.py          UUIDv7, monotonic
     clock.py        injectable clock (UTC instants)
     entity.py       id / book_id / created_at / updated_at / revision
@@ -20,9 +20,19 @@ src/pymoney/core/
     changelog.py    revisions, tombstones, audit trail
     sync.py         revision batches and pages: the pull protocol
     settings.py     book-level settings as a syncable entity
+    store.py        the storage contract, and the in-memory implementation
     commands.py     the intents clients send
-    book.py         the aggregate: one tenant's ledger
+    handlers/       command handlers, one module per aggregate
+    book.py         the aggregate: consistency boundary, dispatcher, read model
     reports.py      balance sheet, income statement, holdings
+
+src/pymoney/store/              persistence. SQLAlchemy Core, no ORM mapping
+    types.py        portable UUID / JSON / timezone-aware timestamp columns
+    schema.py       tables and indexes
+    mapper.py       domain objects <-> rows
+    sql.py          SqlStore: the Store contract over a database
+    engine.py       engine creation, SQLite pragmas, open_book
+    migrations/     Alembic
 ```
 
 ## Status
@@ -39,9 +49,11 @@ src/pymoney/core/
 
 ```bash
 make install        # venv + editable install with dev extras
-make check          # exactly what CI runs: lint, types, tests
-make test           # fast loop (50 Hypothesis examples per property)
-make test-thorough  # 5000 examples; use this when touching rounding
+make check          # what CI runs: lint, types, tests (no PostgreSQL)
+make test           # fast loop: memory + sqlite
+make test-all       # every backend, PostgreSQL included
+make bench-scaling  # does the ledger stay fast as it grows?
+make test-thorough  # 5000 Hypothesis examples; when touching rounding
 make help           # everything else
 ```
 
@@ -51,6 +63,15 @@ commit.
 Three Hypothesis profiles, because the property tests are the only real check on
 the rounding invariants: `dev` (50 examples, the default), `ci` (500,
 derandomised so a CI failure is reproducible) and `thorough` (5000).
+
+### Refactoring note
+
+`book.py` was 1,600 lines doing four jobs. It is now 880 and does three, all of
+which belong to an aggregate: enforce the invariants, dispatch commands, answer
+reads. The rest moved out — storage to `core/store.py`, the 25 command handlers
+to `core/handlers/` (one module per aggregate), the pull protocol into
+`core/sync.py`. Nothing about the public API changed, which the unchanged test
+suite is the evidence for.
 
 ### Containers
 
@@ -141,6 +162,78 @@ book.post(date(2026, 1, 6), [
 | 13 | Renames, moves and merges are first-class commands | `MergeAccounts`, `MergePayees` |
 | 14 | One writer per store | `Book` is the only mutator; `_put`/`_drop`/`_set_book_field` assert |
 
+## Persistence
+
+The domain does not know the store exists. `SqlStore` implements
+`pymoney.core.store.Store`, so the same `Book` — same invariants, same commands,
+same tests — runs over memory or over a database. That promise is mechanised:
+`pytest --stores=memory,sqlite,sqlite-file,postgres` runs **the entire
+behavioural suite against every backend**, 367 tests × 4.
+
+Three decisions carry most of the weight:
+
+**`post_date` is denormalised onto `splits`.** Every register, balance and report
+asks "this account, up to this date", and with the date on the split that is
+answered from one index without touching `transactions` at all. Splits are only
+ever written as part of their transaction, so the copy cannot drift — and there
+is a test asserting it stays in step after a date edit.
+
+**The hot index is covering.** `ix_splits_book_id_account_id_post_date` includes
+`quantity_minor`, which is never filtered on — it is there so the aggregate
+`SELECT account_id, SUM(quantity_minor) … GROUP BY account_id` is answered from
+the index alone. Without it SQLite walks the index and then fetches every row,
+which is *slower than the table scan it was avoiding*. Measured at 50k
+transactions: every balance in the book 173 ms → 16 ms, one account's balance
+9.1 ms → 1.0 ms, for 0.6% more disk.
+
+**Small tables are cached, large tables are queried.** Commodities, accounts,
+payees and prices are tiny and read constantly, so the store holds them in
+memory; transactions, splits and the change log are never cached. This assumes
+the store is the only writer — which is decision #14 — and `reload()` exists for
+when that has to be re-established.
+
+### Running the backends
+
+```bash
+pytest                                  # memory + sqlite (the default)
+pytest --stores=postgres                # needs PYMONEY_TEST_DATABASE_URL,
+                                        # or falls back to a throwaway pgserver
+make up                                 # PostgreSQL via compose
+alembic upgrade head                    # uses $PYMONEY_DATABASE_URL
+```
+
+A few tests are memory-only, and deliberately so: `check_integrity` looks for
+damage like a split pointing at no account, and a relational store makes that
+*unrepresentable*. Those skip with an explanation rather than pretending to pass.
+
+## Performance
+
+`benchmarks/bench_store.py` measures it; `tests/test_performance.py` keeps it
+true. The tests make no wall-clock assertions — those are flaky on shared
+runners — and instead pin **statement counts** (an N+1 fails the build) and
+**query plans** (an index that stops being used fails the build).
+
+SQLite, file-backed, 135 accounts, figures in milliseconds:
+
+| ledger size | 1 balance | 1 month register | all balances | balance sheet | sync page | 1 txn by id |
+|---|---|---|---|---|---|---|
+| 25,000 | 0.6 | 6.4 | 8.4 | 12.0 | 1.0 | 0.4 |
+| 50,000 | 0.9 | 6.1 | 14.7 | 20.8 | 1.0 | 0.4 |
+| 100,000 | 1.8 | 6.7 | 28.5 | 39.8 | 1.0 | 0.4 |
+| 200,000 | 4.1 | 10.2 | 71.3 | 112.8 | 1.2 | 0.4 |
+
+Reading that table is the point. A windowed register, a sync page and a
+transaction lookup are **flat** — they cost the same at 200k as at 25k, which is
+what the indexes are for. A balance and a balance sheet are **linear**, and
+inherently so: an as-of-today balance is a sum over all history. Indexes cannot
+fix that; running-balance snapshots would, and that is a deliberate non-goal for
+now (see below).
+
+Writes: 724 transactions/second one command at a time, 1,598/second inside
+`book.bulk()`. The difference is the per-command commit and book-row update,
+which an importer should not pay. A 50,000-transaction migration takes about 30
+seconds.
+
 ## Things worth knowing before you build on this
 
 **The rounding guarantee.** `book_legs` promises three things, and the property
@@ -198,20 +291,29 @@ report hands back the `Conversion` objects it used.
 
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · importers (OFX,
-CSV, KMyMoney XML) · attachments · tags. Each is a separate, bounded piece of
-work on top of this layer.
+CSV, KMyMoney XML) · attachments · tags · the HTTP API · any UI.
 
-## What Phase 2 has to honour
+Two performance items are also deliberate non-goals for now:
 
-The SQLAlchemy layer must reproduce this module's behaviour test for test. The
-things most likely to be got wrong:
+**Running-balance snapshots.** Would make an as-of-today balance O(1) instead of
+O(history). Worth doing when a real book gets big enough to notice; not worth the
+invalidation complexity before then.
 
-- `Fraction` → two integer columns, not `NUMERIC`. Prices are exact.
-- `Amount` → integer minor units plus a commodity reference. Never a float.
-- Revisions are assigned by the book, monotonic per `book_id`. In SQL this is a
-  per-book counter bumped in the same transaction as the write.
-- A command must be one database transaction. The undo log in `Book` exists only
-  because there is no database to roll back yet.
-- Indexes to mirror the in-memory ones: `(book_id, account_id, date)` on splits,
-  `(book_id, base, quote, effective_date, as_of)` on prices,
-  `(book_id, revision)` on the change log.
+**Value-column aggregation pushdown.** `value_balance` still goes through the
+register. It is used by one report over a handful of accounts, so it has not
+earned a second covering index yet.
+
+## What Phase 3 has to honour
+
+- The store is the **only writer** (decision #14). Its caches assume it. A second
+  process writing the same book needs either a different design or `reload()` on
+  every read, and the API server must therefore own its database.
+- A command is one database transaction and one revision. `book.bulk()` widens
+  the transaction but not the revision granularity — and it trades per-command
+  atomicity for throughput, which is right for an importer and wrong for a UI.
+- The wire format must carry `commodity_id`, not a nested commodity. Entities
+  embed a `Commodity` object for convenience; serialising the copy would hand
+  replicas a snapshot that goes stale.
+- `SqlStore.put` takes `created=` from the command rather than asking the
+  database. It is not a hint to be verified: if it is wrong, the constraint
+  violation is the correct outcome.

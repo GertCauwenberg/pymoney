@@ -853,8 +853,13 @@ class TestLiveCommoditySnapshots:
         ref = book.register(funded.checking.id)[0]
         assert ref.quantity.format() == "10000.000 EUR"
         assert ref.value.format() == "10000.000 EUR"
-        # the stored row keeps its historical snapshot untouched
-        assert ref.split.quantity.commodity.precision == 2
+        # Whether the *stored* split still carries the old snapshot is
+        # deliberately unspecified: the memory store hands back the original
+        # object, while a SQL store rehydrates it from the commodity table and so
+        # never has a stale copy at all. What is specified is that the booked
+        # figures are untouched either way.
+        assert ref.split.quantity.minor == 1000000
+        assert ref.split.quantity.commodity.minor_unit_factor == 100
 
     def test_balances_by_account_follows_too(self, funded: Chart):
         book = funded.book

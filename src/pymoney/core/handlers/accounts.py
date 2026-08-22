@@ -65,7 +65,7 @@ def create_account(book: Book, command: cmd.CreateAccount) -> Account:
         institution=command.institution,
         iban=command.iban,
     )
-    if book.store.get(EntityKind.ACCOUNT, account.id) is not None:
+    if book.store.exists(EntityKind.ACCOUNT, account.id):
         raise ConflictError(f"account {account.id} already exists")
     return book.put(EntityKind.ACCOUNT, account, created=True)
 

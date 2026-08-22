@@ -7,7 +7,8 @@ BIN    := $(VENV)/bin
 COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := help
-.PHONY: help install fmt lint types test test-ci test-thorough cov check clean \
+.PHONY: help install fmt lint types test test-ci test-all test-postgres \
+        test-thorough cov check bench bench-scaling migrate migration clean \
         up down logs db-shell image image-test compose-config
 
 help:  ## Show this help
@@ -30,20 +31,41 @@ lint:  ## Lint without modifying anything (as CI does)
 types:  ## Type check
 	$(BIN)/mypy
 
-test:  ## Fast suite (50 Hypothesis examples per property)
+test:  ## Fast suite: memory + sqlite, 50 Hypothesis examples per property
 	$(BIN)/pytest
 
 test-ci:  ## The suite as CI runs it (500 examples, derandomised)
-	$(BIN)/pytest --hypothesis-profile=ci --cov=pymoney --cov-report=term-missing
+	$(BIN)/pytest --hypothesis-profile=ci --stores=memory,sqlite,sqlite-file \
+		-k "not postgres" --cov=src/pymoney --cov-report=term-missing
+
+test-all:  ## Every storage backend, including PostgreSQL
+	$(BIN)/pytest --stores=memory,sqlite,sqlite-file,postgres --cov=src/pymoney \
+		--cov-report=term-missing
+
+test-postgres:  ## PostgreSQL only (uses pgserver if no URL is set)
+	$(BIN)/pytest --stores=postgres
+	$(BIN)/pytest tests/test_store.py -k postgres
 
 test-thorough:  ## 5000 examples per property; for when you touch rounding
 	$(BIN)/pytest --hypothesis-profile=thorough
 
 cov:  ## Coverage with an HTML report
-	$(BIN)/pytest --cov=pymoney --cov-report=html --cov-report=term-missing
+	$(BIN)/pytest --cov=src/pymoney --cov-report=html --cov-report=term-missing
 	@echo "open htmlcov/index.html"
 
-check: lint types test-ci  ## Everything CI checks
+check: lint types test-ci  ## Everything CI checks (without PostgreSQL)
+
+bench:  ## Storage benchmark
+	$(BIN)/python benchmarks/bench_store.py --transactions 20000 --bulk
+
+bench-scaling:  ## Does the ledger stay fast as it grows?
+	$(BIN)/python benchmarks/bench_store.py --scaling 25000,50000,100000,200000
+
+migrate:  ## Apply migrations ($$PYMONEY_DATABASE_URL)
+	$(BIN)/alembic upgrade head
+
+migration:  ## Autogenerate a migration: make migration M="what changed"
+	$(BIN)/alembic revision --autogenerate -m "$(M)"
 
 clean:  ## Remove caches and build output
 	rm -rf build dist htmlcov .coverage coverage.xml junit.xml

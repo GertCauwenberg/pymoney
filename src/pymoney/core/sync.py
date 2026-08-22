@@ -208,8 +208,11 @@ def pull(
             f"is talking to the wrong book or it was restored from a backup"
         )
 
+    # Ask the store for only as many revisions as the page can hold. Without
+    # this, a client paging through a long history re-reads the entire change log
+    # on every request.
     by_revision: dict[int, list[Change]] = {}
-    for change in book.changes_since(since):
+    for change in book.changes_since(since, max_revisions=max_revisions):
         by_revision.setdefault(change.revision, []).append(change)
 
     batches: list[RevisionBatch] = []

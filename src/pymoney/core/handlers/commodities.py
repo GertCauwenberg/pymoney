@@ -31,7 +31,7 @@ def create_commodity(book: Book, command: cmd.CreateCommodity) -> Commodity:
         isin=command.isin,
         quote_source=command.quote_source,
     )
-    if book.store.get(EntityKind.COMMODITY, commodity.id) is not None:
+    if book.store.exists(EntityKind.COMMODITY, commodity.id):
         raise ConflictError(f"commodity {commodity.id} already exists")
     return book.put(EntityKind.COMMODITY, commodity, created=True)
 
@@ -41,9 +41,7 @@ def update_commodity(book: Book, command: cmd.UpdateCommodity) -> Commodity:
     updated = current
     if not isinstance(command.code, cmd.Unset):
         key = command.code.strip().upper()
-        if key != current.key and any(
-            c.key == key for c in book.commodities()
-        ):
+        if key != current.key and any(c.key == key for c in book.commodities()):
             raise ConflictError(f"commodity {command.code} already exists")
         updated = replace(updated, code=command.code)
     for field_name in ("name", "symbol", "display_precision", "isin", "quote_source"):
