@@ -29,9 +29,10 @@ from pymoney.core import (
 from pymoney.core import (
     commands as c,
 )
-from pymoney.core.book import _HANDLERS, Book
-from pymoney.core.book import EntityKind as BookEntityKind
-from tests.conftest import Chart
+from pymoney.core.book import Book
+from pymoney.core.handlers import HANDLERS
+from pymoney.core.handlers.transactions import post_transaction
+from tests.conftest import Chart, corrupt
 
 
 class TestChangeLog:
@@ -350,7 +351,7 @@ class TestAtomicity:
                 mutate(bk)
                 raise error
 
-            _HANDLERS[Sabotage] = handler
+            HANDLERS[Sabotage] = handler
             registered.append(Sabotage)
             return book.execute(Sabotage())
 
@@ -358,7 +359,7 @@ class TestAtomicity:
             yield run
         finally:
             for command_type in registered:
-                _HANDLERS.pop(command_type, None)
+                HANDLERS.pop(command_type, None)
 
     def test_a_rolled_back_update_restores_the_old_row(self, chart: Chart, sabotage):
         book = chart.book
@@ -368,8 +369,8 @@ class TestAtomicity:
         with pytest.raises(RuntimeError, match="boom"):
             sabotage(
                 book,
-                lambda bk: bk._put(
-                    BookEntityKind.ACCOUNT,
+                lambda bk: bk.put(
+                    EntityKind.ACCOUNT,
                     replace(bk.account(chart.fuel.id), description="scribbled"),
                 ),
             )
@@ -385,8 +386,8 @@ class TestAtomicity:
         before_children = book.children(chart.expenses.id)
 
         def mutate(bk: Book) -> None:
-            bk._put(
-                BookEntityKind.ACCOUNT,
+            bk.put(
+                EntityKind.ACCOUNT,
                 Account(
                     id=new_account_id,
                     book_id=bk.id,
@@ -412,7 +413,8 @@ class TestAtomicity:
         book = chart.book
 
         def mutate(bk: Book) -> None:
-            bk._on_post_transaction(
+            post_transaction(
+                bk,
                 c.PostTransaction(
                     date=date(2026, 1, 9),
                     legs=(
@@ -433,7 +435,7 @@ class TestAtomicity:
         book = chart.book
         payee = book.add_payee("Shop")
         with pytest.raises(RuntimeError):
-            sabotage(book, lambda bk: bk._drop(BookEntityKind.PAYEE, payee.id))
+            sabotage(book, lambda bk: bk.drop(EntityKind.PAYEE, payee.id))
         assert book.payee(payee.id).name == "Shop"
 
     def test_a_rolled_back_price_insert_leaves_no_price(self, chart: Chart, sabotage):
@@ -441,8 +443,8 @@ class TestAtomicity:
         before = len(book.prices)
 
         def mutate(bk: Book) -> None:
-            bk._put(
-                BookEntityKind.PRICE,
+            bk.put(
+                EntityKind.PRICE,
                 Price.of(
                     chart.usd,
                     bk.base_currency,
@@ -465,8 +467,8 @@ class TestAtomicity:
         with pytest.raises(RuntimeError):
             sabotage(
                 book,
-                lambda bk: bk._put(
-                    BookEntityKind.PRICE, replace(bk.prices.all()[0], num=999, den=1)
+                lambda bk: bk.put(
+                    EntityKind.PRICE, replace(bk.prices.all()[0], num=999, den=1)
                 ),
             )
         assert {p.id: p.rate for p in book.prices.all()} == before
@@ -475,30 +477,30 @@ class TestAtomicity:
         book = priced.book
         target = book.prices.all()[0]
         with pytest.raises(RuntimeError):
-            sabotage(book, lambda bk: bk._drop(BookEntityKind.PRICE, target.id))
+            sabotage(book, lambda bk: bk.drop(EntityKind.PRICE, target.id))
         assert book.prices.get(target.id).rate == target.rate
 
     def test_dropping_a_missing_price_is_an_error(self, chart: Chart, sabotage):
         with pytest.raises(NotFoundError, match="no price"):
             sabotage(
                 chart.book,
-                lambda bk: bk._drop(BookEntityKind.PRICE, new_id()),
+                lambda bk: bk.drop(EntityKind.PRICE, new_id()),
             )
 
     def test_dropping_a_missing_row_is_an_error(self, chart: Chart, sabotage):
         with pytest.raises(NotFoundError, match="no payee"):
             sabotage(
                 chart.book,
-                lambda bk: bk._drop(BookEntityKind.PAYEE, new_id()),
+                lambda bk: bk.drop(EntityKind.PAYEE, new_id()),
             )
 
     def test_mutations_outside_execute_are_refused(self, chart: Chart):
         """Only the command path may write (decision #14, applied in-process)."""
         book = chart.book
         with pytest.raises(AssertionError, match="inside execute"):
-            book._put(BookEntityKind.PAYEE, book.add_payee("X"))
+            book.put(EntityKind.PAYEE, book.add_payee("X"))
         with pytest.raises(AssertionError, match="inside execute"):
-            book._drop(BookEntityKind.PAYEE, new_id())
+            book.drop(EntityKind.PAYEE, new_id())
 
 
 class TestIntegrity:
@@ -507,8 +509,10 @@ class TestIntegrity:
 
     def test_a_dangling_parent_is_detected(self, chart: Chart):
         book = chart.book
-        book._accounts[chart.fuel.id] = __import__("dataclasses").replace(
-            book.account(chart.fuel.id), parent_id=new_id()
+        corrupt(
+            book,
+            EntityKind.ACCOUNT,
+            replace(book.account(chart.fuel.id), parent_id=new_id()),
         )
         assert any("missing parent" in p for p in book.check_integrity())
 
@@ -516,8 +520,10 @@ class TestIntegrity:
         from dataclasses import replace
 
         book = chart.book
-        book._accounts[chart.fuel.id] = replace(
-            book.account(chart.fuel.id), parent_id=chart.assets.id
+        corrupt(
+            book,
+            EntityKind.ACCOUNT,
+            replace(book.account(chart.fuel.id), parent_id=chart.assets.id),
         )
         assert any("ASSET parent" in p for p in book.check_integrity())
 
@@ -527,8 +533,10 @@ class TestIntegrity:
         from pymoney.core import Commodity
 
         book = chart.book
-        book._accounts[chart.fuel.id] = replace(
-            book.account(chart.fuel.id), commodity=Commodity.currency("ZZZ")
+        corrupt(
+            book,
+            EntityKind.ACCOUNT,
+            replace(book.account(chart.fuel.id), commodity=Commodity.currency("ZZZ")),
         )
         assert any("unknown commodity" in p for p in book.check_integrity())
 
@@ -550,7 +558,7 @@ class TestIntegrity:
                 transaction.splits[1],
             ),
         )
-        book._transactions[transaction.id] = broken
+        corrupt(book, EntityKind.TRANSACTION, broken)
         assert any("sum to zero" in p for p in book.check_integrity())
 
     def test_a_missing_account_reference_is_detected(self, funded: Chart):
@@ -558,11 +566,15 @@ class TestIntegrity:
 
         book = funded.book
         transaction = book.transactions()[0]
-        book._transactions[transaction.id] = replace(
-            transaction,
-            splits=(
-                replace(transaction.splits[0], account_id=new_id()),
-                transaction.splits[1],
+        corrupt(
+            book,
+            EntityKind.TRANSACTION,
+            replace(
+                transaction,
+                splits=(
+                    replace(transaction.splits[0], account_id=new_id()),
+                    transaction.splits[1],
+                ),
             ),
         )
         assert any("missing account" in p for p in book.check_integrity())
@@ -574,14 +586,20 @@ class TestIntegrity:
 
         book = funded.book
         transaction = book.transactions()[0]
-        book._transactions[transaction.id] = replace(
-            transaction,
-            splits=(
-                replace(
-                    transaction.splits[0],
-                    quantity=Amount(funded.usd, transaction.splits[0].quantity.minor),
+        corrupt(
+            book,
+            EntityKind.TRANSACTION,
+            replace(
+                transaction,
+                splits=(
+                    replace(
+                        transaction.splits[0],
+                        quantity=Amount(
+                            funded.usd, transaction.splits[0].quantity.minor
+                        ),
+                    ),
+                    transaction.splits[1],
                 ),
-                transaction.splits[1],
             ),
         )
         problems = book.check_integrity()
@@ -592,7 +610,9 @@ class TestIntegrity:
 
         book = funded.book
         transaction = book.transactions()[0]
-        book._transactions[transaction.id] = replace(transaction, payee_id=new_id())
+        corrupt(
+            book, EntityKind.TRANSACTION, replace(transaction, payee_id=new_id())
+        )
         assert any("missing payee" in p for p in book.check_integrity())
 
 

@@ -27,7 +27,7 @@ from uuid import UUID
 
 from .changelog import Change, ChangeOp, EntityKind
 
-__all__ = ["RevisionBatch", "SyncPage", "build_batch"]
+__all__ = ["RevisionBatch", "SyncPage", "build_batch", "pull", "revision_batch"]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -161,4 +161,70 @@ def build_batch(
         changes=tuple(ordered),
         upserts=tuple(upserts),
         deletions=tuple(deletions),
+    )
+
+
+def revision_batch(book: Any, revision: int) -> RevisionBatch:
+    """Everything the command at ``revision`` changed, entities included.
+
+    One revision is one command, so this is the unit a replica should apply
+    atomically: a merge across 400 transactions arrives whole or not at all.
+
+    :raises NotFoundError: if no command produced that revision.
+    """
+    from .errors import NotFoundError
+
+    changes = book.changelog.at(revision)
+    if not changes:
+        raise NotFoundError(f"no revision {revision} in this book")
+    return build_batch(revision, changes, book.entity_for_change)
+
+
+def pull(
+    book: Any,
+    since: int = 0,
+    *,
+    max_revisions: int | None = None,
+    max_rows: int | None = None,
+) -> SyncPage:
+    """Fetch everything above ``since`` as whole revision batches.
+
+    This is the shape the ``GET /changes`` endpoint should have.
+
+    :param max_revisions: hard cap on the number of commands returned.
+    :param max_rows: *soft* cap on rows. A revision is never split, so the page
+        stops after the first batch that reaches the cap -- a single command
+        bigger than ``max_rows`` is still returned whole, because half of it is
+        not a valid state.
+    """
+    from .errors import ValidationError
+
+    head = book.revision
+    if since < 0:
+        raise ValidationError(f"sync watermark must not be negative: {since}")
+    if since > head:
+        raise ValidationError(
+            f"sync watermark r{since} is ahead of this book (r{head}); the client "
+            f"is talking to the wrong book or it was restored from a backup"
+        )
+
+    by_revision: dict[int, list[Change]] = {}
+    for change in book.changes_since(since):
+        by_revision.setdefault(change.revision, []).append(change)
+
+    batches: list[RevisionBatch] = []
+    watermark = since
+    rows = 0
+    for revision in sorted(by_revision):
+        if max_revisions is not None and len(batches) >= max_revisions:
+            break
+        if max_rows is not None and rows >= max_rows:
+            break
+        batch = build_batch(revision, by_revision[revision], book.entity_for_change)
+        batches.append(batch)
+        watermark = revision
+        rows += batch.rows
+
+    return SyncPage(
+        from_revision=since, to_revision=watermark, head=head, batches=tuple(batches)
     )

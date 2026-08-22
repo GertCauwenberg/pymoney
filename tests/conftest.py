@@ -202,6 +202,18 @@ def priced(funded: Chart) -> Chart:
     return funded
 
 
+def corrupt(book: Book, kind, entity) -> None:
+    """Write straight into the store, bypassing every command and invariant.
+
+    ``check_integrity`` exists because data *can* be wrong -- a buggy importer, a
+    bad migration -- so testing it needs a way to make it wrong. Going through
+    the store rather than a private dict keeps these tests backend-agnostic.
+    """
+    book.store.begin()
+    book.store.put(kind, entity)
+    book.store.commit()
+
+
 @pytest.fixture
 def today() -> date:
     return date(2026, 1, 31)

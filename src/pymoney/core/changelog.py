@@ -93,6 +93,20 @@ class ChangeLog:
         for change in changes:
             self.append(change)
 
+    def discard_after(self, length: int) -> None:
+        """Drop trailing entries, leaving ``length`` of them.
+
+        The one exception to append-only, and only for a store rolling back an
+        aborted unit of work: those changes describe mutations that never
+        happened, so keeping them would be a lie.
+        """
+        if length > len(self._changes):
+            raise ValueError(
+                f"cannot grow the log by discarding: have {len(self._changes)}, "
+                f"asked to keep {length}"
+            )
+        del self._changes[length:]
+
     def since(self, revision: int) -> tuple[Change, ...]:
         """All changes strictly after ``revision``, in order.
 

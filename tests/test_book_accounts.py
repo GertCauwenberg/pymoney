@@ -734,16 +734,16 @@ class TestBookSettings:
 
     def test_a_failed_settings_change_rolls_back(self, book: Book):
         from pymoney.core import Command
-        from pymoney.core.book import _HANDLERS
+        from pymoney.core.handlers import HANDLERS
 
         class Sabotage(Command):
             pass
 
         def handler(bk, command):
-            bk._set_book_field("name", "Broken")
+            bk.set_book_field("name", "Broken")
             raise RuntimeError("boom")
 
-        _HANDLERS[Sabotage] = handler
+        HANDLERS[Sabotage] = handler
         try:
             before = book.revision
             with pytest.raises(RuntimeError):
@@ -752,7 +752,7 @@ class TestBookSettings:
             assert book.settings.revision == 1
             assert book.revision == before
         finally:
-            del _HANDLERS[Sabotage]
+            del HANDLERS[Sabotage]
 
 
 class TestAccountCommodity:
