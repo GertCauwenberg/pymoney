@@ -503,7 +503,14 @@ class Book:
         self._current_command = command
         snapshot = (self._name, self._base_currency_id, self._settings_revision)
         try:
-            entity = handler(self, command)
+            if self._bulk:
+                # Inside a batch, one command failing must undo only itself. The
+                # batch as a whole is still all-or-nothing: an exception that
+                # escapes bulk() rolls back everything.
+                with self._store.savepoint():
+                    entity = handler(self, command)
+            else:
+                entity = handler(self, command)
             changes = tuple(self._pending)
             if changes:
                 self._store.append_changes(changes)

@@ -24,7 +24,8 @@ table) there keeps the cache-maintenance code out of the happy path entirely.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -164,6 +165,22 @@ class SqlStore(Store):
         # is O(small tables) and obviously correct, which beats maintaining an
         # undo log that has to agree with the database's idea of the truth.
         self.reload()
+
+    @contextmanager
+    def savepoint(self) -> Iterator[None]:
+        """A real SQL savepoint, supported by both dialects."""
+        nested = self._conn.begin_nested()
+        try:
+            yield
+        except Exception:
+            nested.rollback()
+            # The caches may hold writes the savepoint just discarded. Reloading
+            # inside the open transaction sees everything the batch has written
+            # so far and nothing it has rolled back.
+            self.reload()
+            raise
+        else:
+            nested.commit()
 
     def close(self) -> None:
         if self._connection is not None:
@@ -515,6 +532,18 @@ class SqlStore(Store):
                 schema.transactions.c.book_id == self._book_id,
                 schema.transactions.c.imported_id == imported_id,
             )
+        ).scalar_one_or_none()
+
+    def find_imported_prefix(self, prefix: str) -> str | None:
+        # A range scan on the (book_id, imported_id) unique index.
+        return self._conn.execute(
+            select(schema.transactions.c.imported_id)
+            .where(
+                schema.transactions.c.book_id == self._book_id,
+                schema.transactions.c.imported_id.like(f"{prefix}%"),
+            )
+            .order_by(schema.transactions.c.imported_id)
+            .limit(1)
         ).scalar_one_or_none()
 
     def transactions_for_payee(self, payee_id: UUID) -> tuple[Transaction, ...]:

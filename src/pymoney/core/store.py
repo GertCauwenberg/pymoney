@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -88,6 +89,15 @@ class Store(ABC):
     @abstractmethod
     def rollback(self) -> None:
         """Discard everything written since :meth:`begin`."""
+
+    @abstractmethod
+    def savepoint(self) -> AbstractContextManager[None]:
+        """A nested, individually revertible scope inside a unit of work.
+
+        This is what lets one command fail without taking its batch with it. An
+        importer crossing ten years of records should not lose the lot because
+        of one malformed row, but it must not keep that row either.
+        """
 
     def close(self) -> None:  # noqa: B027 - optional hook, memory needs nothing
         """Release resources. Stores that hold none need not override this."""
@@ -178,6 +188,15 @@ class Store(ABC):
 
     @abstractmethod
     def find_imported(self, imported_id: str) -> UUID | None: ...
+
+    @abstractmethod
+    def find_imported_prefix(self, prefix: str) -> str | None:
+        """Any existing ``imported_id`` starting with ``prefix``, or None.
+
+        Lets an importer tell "this book has already had a KMyMoney file loaded
+        into it" *before* it starts creating accounts, instead of discovering it
+        one duplicate transaction at a time.
+        """
 
     @abstractmethod
     def transactions_for_payee(self, payee_id: UUID) -> tuple[Transaction, ...]:
@@ -290,6 +309,18 @@ class MemoryStore(Store):
         for undo in reversed(self._undo or ()):
             undo()
         self._undo = None
+
+    @contextmanager
+    def savepoint(self) -> Iterator[None]:
+        assert self._undo is not None, "a savepoint needs a unit of work"
+        mark = len(self._undo)
+        try:
+            yield
+        except Exception:
+            # Unwind only as far as the mark, leaving earlier work in place.
+            while len(self._undo) > mark:
+                self._undo.pop()()
+            raise
 
     def _record_undo(self, action: Callable[[], None]) -> None:
         assert self._undo is not None, "mutations must happen inside a unit of work"
@@ -452,6 +483,12 @@ class MemoryStore(Store):
         for transaction in self._entities[EntityKind.TRANSACTION].values():
             if transaction.imported_id == imported_id:
                 return transaction.id
+        return None
+
+    def find_imported_prefix(self, prefix: str) -> str | None:
+        for transaction in self._entities[EntityKind.TRANSACTION].values():
+            if transaction.imported_id and transaction.imported_id.startswith(prefix):
+                return transaction.imported_id
         return None
 
     def transactions_for_payee(self, payee_id: UUID) -> tuple[Transaction, ...]:

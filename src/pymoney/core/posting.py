@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from fractions import Fraction
 from typing import Any
 from uuid import UUID
@@ -82,6 +83,7 @@ class LegSpec:
     action: str = ""
     number: str = ""
     reconcile_state: ReconcileState = ReconcileState.NOT_RECONCILED
+    reconcile_date: date | None = None
     id: UUID = field(default_factory=new_id)
 
     def __post_init__(self) -> None:
@@ -238,6 +240,7 @@ def book_legs(
                 action=leg.action,
                 number=leg.number,
                 reconcile_state=leg.reconcile_state,
+                reconcile_date=leg.reconcile_date,
                 price=r.price,
             )
         )

@@ -17,6 +17,8 @@ from pymoney.core import (
     ConflictError,
     LegSpec,
     UnbalancedTransactionError,
+)
+from pymoney.core import (
     commands as c,
 )
 from tests.conftest import Chart
@@ -200,3 +202,95 @@ class TestBulkFailing:
                 )
         assert book.revision == before
         assert book.transactions() == ()
+
+
+class TestBulkIsolation:
+    """A failure the caller *catches* must undo only its own command.
+
+    This is what an importer needs: one malformed row out of ten years should be
+    reported and skipped, not cost the other ten years. It is also where SQLite
+    needed help -- pysqlite does not emit BEGIN before a SAVEPOINT, so without
+    the engine taking transaction control the savepoint silently does nothing and
+    a rolled-back command stays written.
+    """
+
+    def test_a_caught_failure_leaves_the_rest_of_the_batch(self, chart: Chart):
+        book = chart.book
+        before = book.revision
+        with book.bulk():
+            for i in range(3):
+                book.post(
+                    date(2026, 1, 1) + timedelta(days=i),
+                    [
+                        LegSpec.of(chart.checking.id, f"-{i + 1}.00"),
+                        LegSpec.of(chart.groceries.id),
+                    ],
+                )
+            with pytest.raises(UnbalancedTransactionError):
+                book.post(
+                    date(2026, 2, 1),
+                    [
+                        LegSpec.of(chart.checking.id, "-10.00"),
+                        LegSpec.of(chart.groceries.id, "9.00"),
+                    ],
+                )
+            book.post(
+                date(2026, 3, 1),
+                [LegSpec.of(chart.checking.id, "-4.00"), LegSpec.of(chart.fuel.id)],
+            )
+        assert len(book.transactions()) == 4
+        assert book.balance(chart.groceries.id).minor == 600
+        assert book.balance(chart.fuel.id).minor == 400
+        assert book.revision == before + 4
+        assert book.check_integrity() == ()
+
+    def test_the_failed_command_left_nothing(self, chart: Chart):
+        book = chart.book
+        with book.bulk():
+            with pytest.raises(UnbalancedTransactionError):
+                book.post(
+                    date(2026, 2, 1),
+                    [
+                        LegSpec.of(chart.checking.id, "-10.00"),
+                        LegSpec.of(chart.groceries.id, "9.00"),
+                    ],
+                )
+            book.post(
+                date(2026, 3, 1),
+                [LegSpec.of(chart.checking.id, "-4.00"), LegSpec.of(chart.fuel.id)],
+            )
+        assert [t.date for t in book.transactions()] == [date(2026, 3, 1)]
+        assert book.balance(chart.groceries.id).is_zero
+
+    def test_a_failed_command_does_not_consume_a_revision(self, chart: Chart):
+        book = chart.book
+        before = book.revision
+        with book.bulk():
+            with pytest.raises(ConflictError):
+                book.add_account("Groceries", AccountType.EXPENSE, parent=chart.expenses)
+            book.post(
+                date(2026, 3, 1),
+                [LegSpec.of(chart.checking.id, "-4.00"), LegSpec.of(chart.fuel.id)],
+            )
+        assert book.revision == before + 1
+        assert len(book.pull(before)) == 1
+
+    def test_partial_writes_of_a_failed_command_are_undone(self, chart: Chart):
+        """A merge touches many rows before it fails; none may survive."""
+        book = chart.book
+        from pymoney.core import commands as c
+
+        book.add_account("Diesel", AccountType.EXPENSE, parent=chart.fuel)
+        book.add_account("Diesel", AccountType.EXPENSE, parent=chart.groceries)
+        paths = {book.path(a) for a in book.accounts()}
+        with book.bulk():
+            with pytest.raises(ConflictError):
+                book.execute(
+                    c.MergeAccounts(source_id=chart.fuel.id, target_id=chart.groceries.id)
+                )
+            book.post(
+                date(2026, 3, 1),
+                [LegSpec.of(chart.checking.id, "-4.00"), LegSpec.of(chart.fuel.id)],
+            )
+        assert {book.path(a) for a in book.accounts()} == paths
+        assert book.check_integrity() == ()

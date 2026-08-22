@@ -86,6 +86,16 @@ def create_engine(
 def _configure_sqlite(engine: Engine, *, synchronous: str, is_memory: bool) -> None:
     @event.listens_for(engine, "connect")
     def _on_connect(dbapi_connection: Any, _record: Any) -> None:
+        # Take transaction control away from the driver. pysqlite decides on its
+        # own when to emit BEGIN, and it does not do so for a SAVEPOINT -- so a
+        # savepoint ends up outside any transaction and rolling back to it does
+        # nothing at all. Silently. We rely on savepoints for per-command
+        # isolation inside book.bulk(), so this is not optional.
+        #
+        # The recipe is SQLAlchemy's own: disable the implicit BEGIN here, emit
+        # it ourselves below. It also restores transactional DDL.
+        dbapi_connection.isolation_level = None
+
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA busy_timeout=5000")
@@ -93,6 +103,10 @@ def _configure_sqlite(engine: Engine, *, synchronous: str, is_memory: bool) -> N
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.execute(f"PRAGMA synchronous={synchronous}")
         cursor.close()
+
+    @event.listens_for(engine, "begin")
+    def _on_begin(connection: Any) -> None:
+        connection.exec_driver_sql("BEGIN")
 
 
 def create_schema(engine: Engine) -> None:

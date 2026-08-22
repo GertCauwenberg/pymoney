@@ -28,24 +28,39 @@ from pymoney.store import create_engine, create_schema, open_book
 HOT_INDEX = "ix_splits_book_id_account_id_post_date"
 
 
+# Transaction control is not a query. We emit BEGIN ourselves on SQLite (pysqlite
+# will not do it before a SAVEPOINT), so it turns up here and would otherwise
+# pollute every budget.
+_CONTROL = ("BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE")
+
+
 class StatementCounter:
-    """Counts SQL statements and commits issued against an engine."""
+    """Counts the SQL an operation issues, separating queries from plumbing."""
 
     def __init__(self, engine) -> None:
         self.statements: list[str] = []
+        self.control: list[str] = []
         self.commits = 0
         event.listen(engine, "before_cursor_execute", self._on_execute)
         event.listen(engine, "commit", self._on_commit)
         self._engine = engine
 
     def _on_execute(self, conn, cursor, statement, params, context, many) -> None:
-        self.statements.append(statement)
+        if statement.lstrip().upper().startswith(_CONTROL):
+            self.control.append(statement)
+        else:
+            self.statements.append(statement)
 
     def _on_commit(self, conn) -> None:
         self.commits += 1
 
+    @property
+    def savepoints(self) -> int:
+        return sum(s.lstrip().upper().startswith("SAVEPOINT") for s in self.control)
+
     def reset(self) -> None:
         self.statements.clear()
+        self.control.clear()
         self.commits = 0
 
     def __len__(self) -> int:
@@ -109,6 +124,32 @@ class TestStatementBudgets:
         )
         # id check, insert transaction, insert splits, insert changes, update book
         assert len(counter) <= 5, f"too many statements:\n{counter.describe()}"
+        assert counter.commits == 1
+
+    def test_a_plain_command_needs_no_savepoint(self, ledger):
+        """Outside a batch the transaction itself is the unit of isolation."""
+        book, banks, categories, counter = ledger
+        counter.reset()
+        book.post(
+            date(2026, 6, 2),
+            [LegSpec.of(banks[0].id, "-1.00"), LegSpec.of(categories[0].id)],
+        )
+        assert counter.savepoints == 0
+
+    def test_bulk_mode_isolates_each_command_with_a_savepoint(self, ledger):
+        """The price of letting one bad row be skipped instead of fatal."""
+        book, banks, categories, counter = ledger
+        counter.reset()
+        with book.bulk():
+            for i in range(5):
+                book.post(
+                    date(2026, 8, 1) + timedelta(days=i),
+                    [
+                        LegSpec.of(banks[0].id, f"-{i + 1}.00"),
+                        LegSpec.of(categories[0].id),
+                    ],
+                )
+        assert counter.savepoints == 5
         assert counter.commits == 1
 
     def test_bulk_mode_commits_once(self, ledger):

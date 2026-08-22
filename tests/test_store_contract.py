@@ -8,9 +8,11 @@ shares, would quietly have run on SQL only.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
-from pymoney.core import AccountType, EntityKind, new_id
+from pymoney.core import AccountType, EntityKind, LegSpec, new_id
 from pymoney.core import commands as c
 from tests.conftest import Chart
 
@@ -84,6 +86,22 @@ class TestStoreContract:
         assert len(full) > 1
         capped = book.store.changes_since(merge_revision - 1, max_revisions=1)
         assert len(capped) == len(full)
+
+    def test_find_imported_prefix(self, funded: Chart):
+        """Lets an importer detect "this book has already had a file loaded"
+        before it starts creating accounts."""
+        book = funded.book
+        assert book.store.find_imported_prefix("kmm:") is None
+        book.post(
+            date(2026, 3, 1),
+            [
+                LegSpec.of(funded.checking.id, "-1.00"),
+                LegSpec.of(funded.fuel.id),
+            ],
+            imported_id="kmm:T0001",
+        )
+        assert book.store.find_imported_prefix("kmm:") == "kmm:T0001"
+        assert book.store.find_imported_prefix("ofx:") is None
 
     def test_transaction_ids_and_count_agree(self, funded: Chart):
         book = funded.book
