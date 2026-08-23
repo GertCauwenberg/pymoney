@@ -32,6 +32,12 @@ htmlcov/
 *.swp
 .DS_Store
 
+# Real ledgers, including anonymised ones handed over for testing: someone
+# else's financial data does not belong in this repository.
+*.kmy
+*.anon.xml
+!tests/fixtures/*.kmy.xml
+
 # Local data
 *.sqlite
 *.sqlite3

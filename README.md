@@ -47,11 +47,12 @@ src/pymoney/importers/kmymoney/   migration from KMyMoney
 
 | | |
 |---|---|
-| Tests | 506 passing |
-| Coverage | 100% statements, 100% branches |
-| Type checking | `mypy` clean |
+| Tests | 2,600+ — the behavioural suite runs against every storage backend |
+| Backends | memory, SQLite (memory and file), PostgreSQL — all run the full suite |
+| Coverage | 99% statements and branches |
+| Type checking | `mypy` clean, no `type: ignore` in the domain |
 | Lint | `ruff` clean |
-| Dependencies | none (stdlib only) |
+| Dependencies | none for `pymoney.core`; SQLAlchemy + Alembic for `pymoney.store` |
 
 ## Development
 

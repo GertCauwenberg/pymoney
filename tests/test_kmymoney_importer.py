@@ -1270,3 +1270,130 @@ class TestAwkwardFiles:
         book = store_backend.open(clock=clock)
         import_kmymoney(path, book)
         assert book.commodity_by_code("EUR").precision == 2
+
+
+class TestFieldTestRegressions:
+    """Bugs that a real KMyMoney file surfaced; these keep them fixed."""
+
+    def test_last_modified_with_a_full_iso_timestamp(self, tmp_path):
+        """Newer KMyMoney writes the timestamp, not just the date."""
+        from pymoney.importers.kmymoney import KmyFile
+
+        path = tmp_path / "dated.xml"
+        path.write_text(
+            '<?xml version="1.0"?><KMYMONEY-FILE>'
+            '<FILEINFO><LAST_MODIFIED_DATE date="2026-08-22T08:23:17+02:00"/>'
+            "</FILEINFO></KMYMONEY-FILE>"
+        )
+        assert KmyFile.read(path).info.last_modified == date(2026, 8, 22)
+
+    def test_anonymiser_wrote_the_id_as_the_root_name(
+        self, store_backend, clock, tmp_path
+    ):
+        """The anonymiser emitted ``<ACCOUNT id="AStd::Asset" name="AStd::Asset">``,
+        and colon-stripping faithfully produced ``AStd--Asset`` as the root.
+
+        A file with that shape must still come out with the normal names, so
+        the imported book's paths read as KMyMoney's own UI would show them.
+        """
+        path = tmp_path / "anon.xml"
+        path.write_text(
+            '<?xml version="1.0"?><KMYMONEY-FILE>'
+            '<CURRENCIES count="1"><CURRENCY id="EUR" saf="100" name="Euro"/>'
+            "</CURRENCIES>"
+            '<ACCOUNTS count="2">'
+            '<ACCOUNT id="AStd::Asset" name="AStd::Asset" type="9" currency="EUR"'
+            ' parentaccount=""/>'
+            '<ACCOUNT id="A1" name="Cash" type="3" currency="EUR"'
+            ' parentaccount="AStd::Asset"/>'
+            '</ACCOUNTS><TRANSACTIONS count="0"/></KMYMONEY-FILE>'
+        )
+        book = store_backend.open(clock=clock)
+        report = import_kmymoney(path, book)
+        assert account(book, "Assets")
+        assert account(book, "Assets:Cash")
+        assert book.find_account("AStd--Asset") is None
+        assert report.ok
+
+    def test_a_split_price_at_odds_with_value_over_shares(
+        self, store_backend, clock, tmp_path
+    ):
+        """Real files have prices that disagree with value/shares beyond the
+        minor-unit tolerance.
+
+        KMyMoney stores unbounded rationals for shares, not minor units, so the
+        absolute tolerance `book_legs` uses for hand-entered data is too tight
+        for an importer. The fix is to drop the price rather than reject the
+        transaction: the booked columns are what balance.
+        """
+        path = tmp_path / "fx.xml"
+        path.write_text(
+            '<?xml version="1.0"?><KMYMONEY-FILE>'
+            '<CURRENCIES count="2">'
+            '<CURRENCY id="EUR" saf="100" name="Euro"/>'
+            '<CURRENCY id="HUF" saf="100" name="Forint"/>'
+            "</CURRENCIES>"
+            '<ACCOUNTS count="2">'
+            '<ACCOUNT id="A1" name="Forint Account" type="3" currency="HUF"'
+            ' parentaccount="AStd::Asset"/>'
+            '<ACCOUNT id="A2" name="Euro Account" type="3" currency="EUR"'
+            ' parentaccount="AStd::Asset"/>'
+            "</ACCOUNTS>"
+            '<TRANSACTIONS count="1"><TRANSACTION id="T1" postdate="2026-01-01"'
+            ' commodity="HUF"><SPLITS>'
+            # ~810,568 HUF vs ~2171.836 EUR, with a stated price of 1/1 that is
+            # plainly wrong. KMyMoney itself would show this balance happily.
+            '<SPLIT account="A1" shares="-4052842/5" value="-4052842/5" price="1/1"/>'
+            '<SPLIT account="A2" shares="542959/250" value="4052842/5" price="1/1"/>'
+            "</SPLITS></TRANSACTION></TRANSACTIONS></KMYMONEY-FILE>"
+        )
+        book = store_backend.open(clock=clock)
+        report = import_kmymoney(path, book)
+        assert report.ok
+        # Only the EUR leg's stated price is nonsense (1 where the implied
+        # rate is ~373 HUF/EUR); the HUF-to-HUF leg is genuinely at a rate of 1.
+        assert report.skipped.get("split price disagreeing with value/shares") == 1
+        forint = account(book, "Assets:Forint Account")
+        # Booked on the value column, with the nonsensical price quietly dropped.
+        assert book.balance(forint.id).minor == -81056840
+        # ...and the EUR split lost its nonsensical stored price. Its implied
+        # rate stays recoverable from the booked numbers.
+        transaction = book.transactions()[0]
+        euro_split = next(s for s in transaction.splits if s.account_id != forint.id)
+        assert euro_split.price is None
+        assert float(euro_split.implied_price) > 300  # ~373 HUF per EUR
+
+    def test_prices_that_do_agree_are_still_kept(self, store_backend, clock, tmp_path):
+        """Regression guard: the fix must not throw away a legitimate price.
+
+        A share purchase where KMyMoney has rounded the value to cents keeps
+        its stated price, because the disagreement is within tolerance.
+        """
+        path = tmp_path / "buy.xml"
+        path.write_text(
+            '<?xml version="1.0"?><KMYMONEY-FILE>'
+            '<CURRENCIES count="1">'
+            '<CURRENCY id="USD" saf="100" name="Dollar"/></CURRENCIES>'
+            '<SECURITIES count="1">'
+            '<SECURITY id="E1" name="Thing" symbol="THG" saf="10000" type="0"/>'
+            "</SECURITIES>"
+            '<ACCOUNTS count="2">'
+            '<ACCOUNT id="A1" name="Cash" type="3" currency="USD"'
+            ' parentaccount="AStd::Asset"/>'
+            '<ACCOUNT id="A2" name="Shares" type="15" currency="E1"'
+            ' parentaccount="AStd::Asset"/>'
+            "</ACCOUNTS>"
+            '<TRANSACTIONS count="1"><TRANSACTION id="T1" postdate="2026-01-01"'
+            ' commodity="USD"><SPLITS>'
+            # 12 x 183.2433 = 2198.9196, stored as 2198.92 (off by 0.0004).
+            '<SPLIT account="A2" shares="120000/10000" value="219892/100"'
+            ' price="1832433/10000" action="Buy"/>'
+            '<SPLIT account="A1" shares="-219892/100" value="-219892/100"'
+            ' price="1/1"/>'
+            "</SPLITS></TRANSACTION></TRANSACTIONS></KMYMONEY-FILE>"
+        )
+        book = store_backend.open(clock=clock)
+        import_kmymoney(path, book)
+        transaction = book.transactions()[0]
+        shares = transaction.split_for(account(book, "Assets:Shares").id)
+        assert shares.price == Fraction(1832433, 10000)

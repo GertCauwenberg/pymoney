@@ -121,11 +121,14 @@ def _optional_int(element: Element, name: str) -> int | None:
 
 
 def _date(element: Element, name: str) -> date | None:
+    """Parse KMyMoney's date attribute. Usually ``YYYY-MM-DD``; some versions
+    emit a full ISO timestamp (``2026-08-22T08:23:17+02:00``) and we take the
+    date portion."""
     raw = element.get(name)
     if not raw:
         return None
     try:
-        return date.fromisoformat(raw)
+        return date.fromisoformat(raw[:10])
     except ValueError:
         return None
 

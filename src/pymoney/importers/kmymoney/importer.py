@@ -340,9 +340,12 @@ class KmyImporter:
         """
         for kmy_id, (default_name, type_) in STANDARD_ACCOUNTS.items():
             declared = self.source.accounts.get(kmy_id)
-            name = self._clean_name(
-                (declared.name.strip() if declared else "") or default_name, kmy_id
-            )
+            declared_name = declared.name.strip() if declared else ""
+            # KMyMoney sometimes writes the id as the name (notably files that
+            # have been anonymised). Use the default, not "AStd--Asset".
+            if declared_name.startswith("AStd::") or ACCOUNT_SEPARATOR in declared_name:
+                declared_name = ""
+            name = self._clean_name(declared_name or default_name, kmy_id)
             # Importing a second file, or re-running after a failure, should add
             # to the existing trees rather than create "Assets (2)".
             existing = next(
@@ -586,9 +589,7 @@ class KmyImporter:
                 )
                 quantity = None
 
-            price = split.price
-            if price is not None and (price <= 0 or split.shares == 0):
-                price = None
+            price = self._usable_price(split, currency, account)
             if split.bank_id:
                 self._unmapped["split bank id (import reference)"] += 1
             if split.tag_ids:
@@ -638,6 +639,38 @@ class KmyImporter:
             tally.splits += 1
         if self._last_post_date is None or kmy.post_date > self._last_post_date:
             self._last_post_date = kmy.post_date
+
+    def _usable_price(self, split, currency, account) -> Fraction | None:
+        """KMyMoney's ``price`` attribute is advisory, not a commitment.
+
+        It is meant to equal ``value/shares``, and usually does within the file's
+        own rounding. But real files contain split prices that disagree by much
+        more than that: anonymisers set it to ``1/1``, legacy imports attach a
+        market quote to a split that does not use it, a manual edit leaves it
+        behind. The over-specification check in :func:`book_legs` catches that
+        in hand-entered data, and it would be wrong to second-guess *there*; but
+        the value and quantity columns are the booked numbers, and we are the
+        importer, so trusting them here and dropping a price we cannot reconcile
+        is the only option that gets the ledger imported.
+        """
+        price = split.price
+        if price is None or price <= 0 or split.shares == 0:
+            return None
+        # Match book_legs' own tolerance: if we pass a price it would reject as
+        # inconsistent, the whole transaction fails. That check assumes both
+        # numbers were pre-rounded to the minor unit, which KMyMoney does not
+        # do -- it stores unbounded rationals. So for a large foreign-currency
+        # value, a perfectly reasonable price can still exceed the tolerance by
+        # orders of magnitude. Dropping it there is the honest response: the
+        # booked columns are what balance, the price is decorative metadata, and
+        # it can be recovered as `split.implied_price` from the stored numbers.
+        tolerance = Fraction(1, currency.minor_unit_factor) + price * Fraction(
+            1, account.commodity.minor_unit_factor
+        )
+        if abs(split.value - split.shares * price) > tolerance:
+            self._unmapped["split price disagreeing with value/shares"] += 1
+            return None
+        return price
 
     def _balance(
         self, legs: list[LegSpec], kmy: KmyTransaction, currency: Commodity

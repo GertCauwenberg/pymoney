@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Core double-entry accounting domain model for PyMoney"
 readme = "README.md"
 requires-python = ">=3.12"
-license-files = ["LICENSE"]
+license = "GPL-3.0-only"
 authors = [{ name = "Gert Cauwenberg" }]
 keywords = ["accounting", "double-entry", "finance", "ledger", "multi-currency"]
 classifiers = [
@@ -38,7 +38,7 @@ dev = [
     "mypy>=1.13",
     # Starts a throwaway PostgreSQL server, so the PostgreSQL suite runs
     # without Docker. CI uses a real service container instead.
-    "pgserver>=0.1.4; sys_platform != 'win32'",
+    "pgserver",
 ] 
 
 [tool.setuptools.packages.find]

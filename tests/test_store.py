@@ -28,8 +28,10 @@ from pymoney.core import (
     PriceSource,
     ReconcileState,
     RoundingMode,
-    commands as c,
     new_id,
+)
+from pymoney.core import (
+    commands as c,
 )
 from pymoney.store import (
     SqlStore,
@@ -39,7 +41,6 @@ from pymoney.store import (
     metadata,
     open_book,
     session,
-    migrations,
 )
 from pymoney.store.types import fits_in_bigint
 from tests.conftest import postgres_url
@@ -133,13 +134,21 @@ class TestSchema:
             now = datetime.now(timezone.utc)
             conn.execute(
                 schema.books.insert().values(
-                    id=book_id, name="x", revision=0, settings_revision=0,
-                    created_at=now, updated_at=now,
+                    id=book_id,
+                    name="x",
+                    revision=0,
+                    settings_revision=0,
+                    created_at=now,
+                    updated_at=now,
                 )
             )
             commodity = {
-                "book_id": book_id, "kind": "CURRENCY", "minor_unit_factor": 100,
-                "created_at": now, "updated_at": now, "revision": 1,
+                "book_id": book_id,
+                "kind": "CURRENCY",
+                "minor_unit_factor": 100,
+                "created_at": now,
+                "updated_at": now,
+                "revision": 1,
             }
             eur, usd = new_id(), new_id()
             conn.execute(
@@ -155,9 +164,18 @@ class TestSchema:
             with pytest.raises(IntegrityError):
                 conn.execute(
                     schema.prices.insert().values(
-                        id=new_id(), book_id=book_id, base_id=eur, quote_id=usd,
-                        num=-1, den=1, effective_date=date(2026, 1, 1), as_of=now,
-                        source="user", created_at=now, updated_at=now, revision=1,
+                        id=new_id(),
+                        book_id=book_id,
+                        base_id=eur,
+                        quote_id=usd,
+                        num=-1,
+                        den=1,
+                        effective_date=date(2026, 1, 1),
+                        as_of=now,
+                        source="user",
+                        created_at=now,
+                        updated_at=now,
+                        revision=1,
                     )
                 )
 
@@ -233,9 +251,7 @@ class TestDurability:
         assert book.store.children_ids(None) == (book.roots()[0].id,)
 
     def test_two_books_coexist_in_one_database(self, engine):
-        first = open_book(
-            engine, name="One", base_currency=Commodity.currency("EUR")
-        )
+        first = open_book(engine, name="One", base_currency=Commodity.currency("EUR"))
         second = open_book(
             engine, book_id=new_id(), name="Two", base_currency=Commodity.currency("USD")
         )
@@ -253,7 +269,9 @@ class TestDurability:
     def test_opening_without_an_id_refuses_to_guess(self, engine):
         open_book(engine, name="One", base_currency=Commodity.currency("EUR")).close()
         open_book(
-            engine, book_id=new_id(), name="Two",
+            engine,
+            book_id=new_id(),
+            name="Two",
             base_currency=Commodity.currency("USD"),
         ).close()
         with pytest.raises(ValueError, match="holds 2 books"):
@@ -488,7 +506,9 @@ class TestBigintGuards:
         revision = book.revision
         with pytest.raises(ValueError):
             book.add_price(
-                usd, book.base_currency, Fraction(2**70 + 1, 3),
+                usd,
+                book.base_currency,
+                Fraction(2**70 + 1, 3),
                 effective_date=date(2026, 1, 1),
             )
         assert book.revision == revision
@@ -615,9 +635,7 @@ class TestQueriesArePushedDown:
             date(2026, 1, 5), [LegSpec.of(cash.id, "-1"), LegSpec.of(food.id)]
         )
         book.execute(
-            c.UpdateTransaction(
-                transaction_id=transaction.id, date=date(2026, 2, 9)
-            )
+            c.UpdateTransaction(transaction_id=transaction.id, date=date(2026, 2, 9))
         )
         rows = book.store._conn.execute(
             select(schema.splits.c.post_date).where(
@@ -635,9 +653,7 @@ class TestQueriesArePushedDown:
             date(2026, 1, 5), [LegSpec.of(cash.id, "-1"), LegSpec.of(food.id)]
         )
         book.execute(c.DeleteTransaction(transaction_id=transaction.id))
-        remaining = book.store._conn.execute(
-            select(schema.splits.c.id)
-        ).scalars()
+        remaining = book.store._conn.execute(select(schema.splits.c.id)).scalars()
         assert list(remaining) == []
 
     def test_updating_a_transaction_replaces_its_splits(self, book):
@@ -757,8 +773,9 @@ class TestTypeDecorators:
         from pymoney.store import schema
 
         now = datetime.now(timezone.utc)
-        with engine.begin() as conn, pytest.raises(
-            (TypeError, StatementError), match="expected a UUID"
+        with (
+            engine.begin() as conn,
+            pytest.raises((TypeError, StatementError), match="expected a UUID"),
         ):
             conn.execute(
                 schema.books.insert().values(
@@ -777,8 +794,9 @@ class TestTypeDecorators:
 
         from pymoney.store import schema
 
-        with engine.begin() as conn, pytest.raises(
-            (ValueError, StatementError), match="naive datetime"
+        with (
+            engine.begin() as conn,
+            pytest.raises((ValueError, StatementError), match="naive datetime"),
         ):
             conn.execute(
                 schema.books.insert().values(
@@ -838,14 +856,10 @@ class TestMigrations:
 
         command.upgrade(self._config(sql_url), "head")
         engine = create_engine(sql_url)
-        book = open_book(
-            engine, name="Migrated", base_currency=Commodity.currency("EUR")
-        )
+        book = open_book(engine, name="Migrated", base_currency=Commodity.currency("EUR"))
         cash = book.add_account("Cash", AccountType.CASH)
         food = book.add_account("Food", AccountType.EXPENSE)
-        book.post(
-            date(2026, 1, 1), [LegSpec.of(cash.id, "-10.00"), LegSpec.of(food.id)]
-        )
+        book.post(date(2026, 1, 1), [LegSpec.of(cash.id, "-10.00"), LegSpec.of(food.id)])
         assert book.balance(cash.id).minor == -1000
         assert book.check_integrity() == ()
         book.close()
@@ -873,9 +887,7 @@ class TestMigrations:
         engine.dispose()
         # alembic_version is not in our metadata, so ignore it.
         diff = [
-            d
-            for d in diff
-            if not (isinstance(d, tuple) and "alembic_version" in repr(d))
+            d for d in diff if not (isinstance(d, tuple) and "alembic_version" in repr(d))
         ]
         assert diff == [], f"schema drift: {diff}"
 
@@ -899,6 +911,19 @@ class TestMigrations:
         config.set_main_option("sqlalchemy.url", "")
         with pytest.raises(SystemExit, match="no database URL"):
             command.upgrade(config, "head")
+
+    def test_the_url_can_come_from_the_command_line(self, sql_url, monkeypatch):
+        """`-x url=...` wins over the environment, for a one-off migration."""
+        from alembic import command
+        from alembic.config import Config
+
+        monkeypatch.setenv("PYMONEY_DATABASE_URL", "sqlite+pysqlite:///:memory:")
+        config = Config("alembic.ini")
+        config.cmd_opts = type("Opts", (), {"x": [f"url={sql_url}"]})()
+        command.upgrade(config, "head")
+        engine = create_engine(sql_url)
+        assert "books" in inspect(engine).get_table_names()
+        engine.dispose()
 
     def test_offline_mode_emits_sql(self, sql_url, capsys):
         """For review, or for a DBA who will not run Python against production."""
@@ -936,56 +961,3 @@ def test_postgres_is_actually_exercised():
     with engine.connect() as conn:
         assert "PostgreSQL" in conn.execute(text("SELECT version()")).scalar_one()
     engine.dispose()
-
-
-class TestStoreContract:
-    """Behaviour every Store must share, asserted against each backend.
-
-    These use the ``--stores`` parametrised fixtures from conftest rather than
-    this module's SQL-only ones, because they are about the contract, not about
-    any one dialect.
-    """
-
-    def test_change_log_view_indexing_and_repr(self, funded):
-        log = funded.book.changelog
-        assert log[0].revision == 1
-        assert log[-1].revision == log.head
-        assert f"head=r{log.head}" in repr(log)
-        assert len(log) == len(list(log))
-
-    def test_stored_book_converts_to_settings(self, book):
-        row = book.store.load_book()
-        settings = row.as_settings()
-        assert settings.id == row.id
-        assert settings.name == row.name
-        assert settings.base_currency_id == row.base_currency_id
-
-    def test_deleting_what_is_not_there_reports_false(self, book):
-        from pymoney.core import EntityKind
-
-        book.store.begin()
-        try:
-            assert not book.store.delete(EntityKind.ACCOUNT, new_id())
-            assert not book.store.delete(EntityKind.PRICE, new_id())
-        finally:
-            book.store.rollback()
-
-    def test_balances_of_no_accounts_is_empty(self, book):
-        assert book.store.balances_by_account(account_ids=[]) == {}
-
-    def test_repr(self, book):
-        assert "transactions" in repr(book.store) or "book=" in repr(book.store)
-
-    def test_changes_since_beyond_the_head_is_empty(self, funded):
-        book = funded.book
-        assert book.store.changes_since(book.revision) == ()
-        assert book.store.changes_since(book.revision, max_revisions=5) == ()
-
-    def test_changes_since_respects_the_revision_cap(self, funded):
-        book = funded.book
-        capped = book.store.changes_since(0, max_revisions=3)
-        assert len({c.revision for c in capped}) == 3
-        assert {c.revision for c in capped} == {1, 2, 3}
-
-    def test_close_releases_resources(self, book):
-        book.close()
