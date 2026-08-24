@@ -90,9 +90,12 @@ class Book:
         base_currency: Commodity | None = None,
         clock: Clock | None = None,
         store: Store | None = None,
+        actor: str = "",
     ) -> None:
         """Open a book.
 
+        :param actor: who to credit in the change log, including for the
+            ``InitialiseBook`` command this constructor runs.
         :param store: where to keep it; defaults to a fresh
             :class:`~pymoney.core.store.MemoryStore`. A store that already holds
             a book is reopened rather than initialised, so ``name`` and
@@ -114,6 +117,15 @@ class Book:
         self._current_command: cmd.Command | None = None
         self._in_unit_of_work = False
         self._bulk = False
+
+        self.actor = actor
+        """Who commands are being run on behalf of, for the change log.
+
+        Set by whatever owns the book -- the API sets it per request, inside the
+        per-book lock, so it cannot be observed half-changed. A command may still
+        name its own actor, which wins. Empty means "not recorded", which is the
+        honest answer for a script.
+        """
 
         if self._revision == 0:
             # Bootstrapping is itself a command, so a replica pulling from r0 is
@@ -310,17 +322,33 @@ class Book:
         start: date | None = None,
         end: date | None = None,
         include_children: bool = False,
+        after: tuple[date, UUID, UUID] | None = None,
+        limit: int | None = None,
     ) -> tuple[SplitRef, ...]:
         """Every split touching an account, in post-date order.
 
         This is the account register a UI shows, and the input to every balance
         computation.
+
+        :param after: a keyset position ``(date, transaction_id, split_id)``;
+            only rows strictly after it are returned. Keyset rather than an
+            offset, so a row inserted while a client is paging cannot make it
+            skip or repeat one.
+        :param limit: stop after this many rows. With ``after`` this is one page,
+            and the cursor's date is pushed down to the store, so paging does not
+            re-read the history on every request.
         """
         account_ids = (
             {a.id for a in self.subtree(account_id)}
             if include_children
             else {self.account(account_id).id}
         )
+        # The cursor's date is a lower bound the index can use; the rest of the
+        # cursor only disambiguates rows that share that date.
+        effective_start = start
+        if after is not None and (start is None or after[0] > start):
+            effective_start = after[0]
+
         out = [
             SplitRef(
                 transaction=transaction,
@@ -329,12 +357,21 @@ class Book:
                 value=self._live_amount(split.value),
             )
             for transaction in self._store.transactions(
-                account_ids=account_ids, start=start, end=end
+                account_ids=account_ids, start=effective_start, end=end
             )
             for split in transaction.splits
             if split.account_id in account_ids
         ]
         out.sort(key=lambda r: (r.transaction.date, r.transaction.id.int, r.split.id.int))
+        if after is not None:
+            mark = (after[0], after[1].int, after[2].int)
+            out = [
+                r
+                for r in out
+                if (r.transaction.date, r.transaction.id.int, r.split.id.int) > mark
+            ]
+        if limit is not None:
+            out = out[:limit]
         return tuple(out)
 
     # ====================================================================
@@ -683,7 +720,7 @@ class Book:
                 op=op,
                 command=command.command_name,
                 command_id=command.command_id,
-                actor=command.actor,
+                actor=command.actor or self.actor,
                 note=note,
             )
         )

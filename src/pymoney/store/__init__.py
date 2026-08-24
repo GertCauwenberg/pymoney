@@ -17,6 +17,9 @@ same test suite -- runs over memory or over a database.
 
 from __future__ import annotations
 
+# Imported for its side effect: the identity tables must be attached to the same
+# MetaData before Alembic autogenerates anything, or a migration would drop them.
+from . import identity as identity
 from .engine import (
     DEFAULT_URL_ENV,
     create_engine,
@@ -41,6 +44,7 @@ __all__ = [
     "create_engine",
     "create_schema",
     "drop_schema",
+    "identity",
     "metadata",
     "open_book",
     "session",

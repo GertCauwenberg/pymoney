@@ -33,8 +33,14 @@ target_metadata = metadata
 def _url() -> str:
     """Where to migrate.
 
-    ``-x url=...`` wins, then ``$PYMONEY_DATABASE_URL``, then alembic.ini. No
-    default: silently migrating the wrong database is worse than an error.
+    ``-x url=...`` wins, then an explicitly configured ``sqlalchemy.url``, then
+    ``$PYMONEY_DATABASE_URL``. No default: silently migrating the wrong database
+    is worse than an error.
+
+    The ini comes before the environment on purpose. ``alembic.ini`` ships with
+    no URL at all, so a value there can only have been put in by the caller --
+    and a caller that passed one explicitly should not be overridden by a
+    variable that happens to be exported in their shell.
 
     Prefer the environment variable over putting the URL in alembic.ini. The ini
     file goes through configparser, so a ``%`` in a password or a query parameter
@@ -43,12 +49,12 @@ def _url() -> str:
     cli = context.get_x_argument(as_dictionary=True).get("url")
     if cli:
         return cli
-    env = os.environ.get("PYMONEY_DATABASE_URL")
-    if env:
-        return env
     configured = config.get_main_option("sqlalchemy.url", None)
     if configured:
         return configured
+    env = os.environ.get("PYMONEY_DATABASE_URL")
+    if env:
+        return env
     raise SystemExit("no database URL: set PYMONEY_DATABASE_URL or pass -x url=<dsn>")
 
 
