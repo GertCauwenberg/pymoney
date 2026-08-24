@@ -18,12 +18,14 @@ def test_lists_components_with_their_status(capsys):
     main([])
     out = capsys.readouterr().out
     assert "[ok     ] pymoney.core" in out
-    assert "[missing] pymoney.api" in out
+    assert "[ok     ] pymoney.api" in out
 
 
-def test_is_honest_about_there_being_no_server(capsys):
+def test_says_how_to_run_what_exists(capsys):
     main([])
-    assert "No server component yet" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "uvicorn pymoney.api:app" in out
+    assert "pymoney.importers.kmymoney" in out
 
 
 @pytest.mark.parametrize("flag", ["-V", "--version"])
@@ -49,11 +51,12 @@ class TestAvailable:
         assert _available("pymoney.core")
 
     def test_detects_a_missing_module(self):
-        assert not _available("pymoney.api")
+        assert not _available("pymoney.desktop")
 
     def test_a_missing_parent_package_is_not_an_error(self):
         assert not _available("pymoney.nope.deeper")
 
-    def test_the_store_counts_as_present_only_if_it_imports(self):
-        """It ships in the wheel but needs the `store` extra to work."""
+    def test_a_component_counts_as_present_only_if_it_imports(self):
+        """They ship in the wheel but need their extras to work."""
         assert _available("pymoney.store") == _available("sqlalchemy")
+        assert _available("pymoney.api") == _available("fastapi")

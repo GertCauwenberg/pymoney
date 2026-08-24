@@ -8,7 +8,8 @@ COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := help
 .PHONY: help install fmt lint types test test-ci test-all test-postgres \
-        test-thorough cov check bench bench-scaling bench-import migrate \
+        test-thorough cov check bench bench-scaling bench-import openapi \
+        serve migrate \
         migration clean \
         up down logs db-shell image image-test compose-config
 
@@ -64,6 +65,14 @@ bench-scaling:  ## Does the ledger stay fast as it grows?
 
 bench-import:  ## How long does a KMyMoney migration take?
 	$(BIN)/python benchmarks/bench_kmymoney.py --transactions 50000
+
+openapi:  ## Regenerate docs/openapi.json (the shipped contract)
+	$(BIN)/python scripts/openapi.py
+
+serve:  ## Run the API locally (http://127.0.0.1:8000/docs)
+	PYMONEY_DATABASE_URL=$${PYMONEY_DATABASE_URL:-sqlite+pysqlite:///pymoney.sqlite} \
+	PYMONEY_CREATE_SCHEMA=1 PYMONEY_COOKIE_SECURE=0 \
+	$(BIN)/uvicorn pymoney.api:app --reload --port 8000
 
 migrate:  ## Apply migrations ($$PYMONEY_DATABASE_URL)
 	$(BIN)/alembic upgrade head

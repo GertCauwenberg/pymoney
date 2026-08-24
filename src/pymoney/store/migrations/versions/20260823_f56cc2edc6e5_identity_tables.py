@@ -1,7 +1,7 @@
 """identity tables
 
 Revision ID: f56cc2edc6e5
-Revises: a86d9f30e9bb
+Revises: cba9f1cbc8b8
 Created: 2026-08-23 13:22:13.836045
 """
 
@@ -16,7 +16,7 @@ from alembic import op
 import pymoney.store.types
 
 revision: str = "f56cc2edc6e5"
-down_revision: str | None = "a86d9f30e9bb"
+down_revision: str | None = "cba9f1cbc8b8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

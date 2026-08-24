@@ -1,7 +1,9 @@
 # PyMoney local stack.
 #
 #   cp .env.example .env          # then edit the password
-#   docker compose up -d          # PostgreSQL only: nothing else exists yet
+#   docker compose up -d                        # PostgreSQL
+#   docker compose run --rm api alembic upgrade head
+#   docker compose --profile api up -d          # the HTTP API on :8000
 #   docker compose --profile test run --rm tests
 #
 # Profiles keep the default `up` to the one service that is genuinely useful
@@ -63,12 +65,9 @@ services:
       - --cov=src/pymoney
       - --cov-report=term-missing
 
-  # NOT IMPLEMENTED YET (Phase 4). The service exists so the wiring --
-  # environment, dependency ordering, port binding -- is settled before the
-  # code lands. Its command is the component inventory, which will honestly
-  # report `pymoney.api` as missing; replace it with:
-  #     command: [uvicorn, pymoney.api:app, --host, 0.0.0.0, --port, "8000"]
-  # and uncomment the healthcheck at the same time.
+  # The HTTP API. Migrations are not run automatically: applying schema changes
+  # on container start is how two replicas race each other.
+  #     docker compose run --rm api alembic upgrade head
   api:
     build:
       context: .
@@ -81,21 +80,33 @@ services:
       PYMONEY_DATABASE_URL: >-
         postgresql+psycopg://${POSTGRES_USER:-pymoney}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pymoney}
       PYMONEY_LOG_LEVEL: ${PYMONEY_LOG_LEVEL:-info}
+      # Behind a TLS-terminating proxy, keep this on: it marks the session
+      # cookie Secure. Turn it off only for plain-HTTP local work.
+      PYMONEY_COOKIE_SECURE: ${PYMONEY_COOKIE_SECURE:-true}
+      PYMONEY_ALLOW_REGISTRATION: ${PYMONEY_ALLOW_REGISTRATION:-false}
+      PYMONEY_CORS_ORIGINS: ${PYMONEY_CORS_ORIGINS:-[]}
     ports:
       - "127.0.0.1:${PYMONEY_API_PORT:-8000}:8000"
-    # healthcheck:
-    #   test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-    #   interval: 10s
-    #   timeout: 3s
-    #   retries: 5
-    #   start_period: 15s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          with urllib.request.urlopen("http://localhost:8000/health") as r:
+              sys.exit(0 if r.status == 200 else 1)
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
     read_only: true
     tmpfs:
       - /tmp
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
-    command: [python, -m, pymoney]
+    command: [uvicorn, "pymoney.api:app", --host, 0.0.0.0, --port, "8000"]
 
 volumes:
   pgdata:

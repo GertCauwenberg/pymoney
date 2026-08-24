@@ -405,3 +405,14 @@ def lax_store(store_backend: StoreFactory) -> None:
 @pytest.fixture
 def today() -> date:
     return date(2026, 1, 31)
+
+
+# The HTTP fixtures live in their own module so the ledger fixtures above stay
+# readable; importing them here makes them available without a plugin entry.
+from tests.conftest_api import (  # noqa: E402,F401
+    Client,
+    Ledger,
+    api,
+    ledger,
+    user,
+)

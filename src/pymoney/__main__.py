@@ -54,7 +54,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         mark = "ok     " if _available(module) else "missing"
         print(f"  [{mark}] {module:<26} {description}")
     print()
-    print("No server component yet; this build is the domain library.")
+    print("Run the API with: uvicorn pymoney.api:app")
+    print("Import from KMyMoney with: python -m pymoney.importers.kmymoney FILE")
     return 0
 
 

@@ -1,8 +1,8 @@
 # PyMoney
 
 Double-entry accounting that runs everywhere. So far: the domain model,
-persistence over SQLite and PostgreSQL, and a KMyMoney importer. No network, no
-UI yet.
+persistence over SQLite and PostgreSQL, a KMyMoney importer, and the HTTP API.
+No UI yet.
 
 ```
 src/pymoney/core/               the domain. pure stdlib, no dependencies
@@ -41,13 +41,22 @@ src/pymoney/importers/kmymoney/   migration from KMyMoney
     importer.py     model -> book, including the rounding reconciliation
     report.py       what was done, approximated, and skipped
     __main__.py     the command line
+
+src/pymoney/api/                  the HTTP API
+    schemas.py      wire models, deliberately not the domain objects
+    security.py     password hashing, session tokens, idempotency keys
+    registry.py     one open Book per book id, one lock per book
+    deps.py         who is calling, what they may do, which book
+    errors.py       domain errors -> status codes, in one place
+    routers/        one module per resource
+    app.py          the application factory
 ```
 
 ## Status
 
 | | |
 |---|---|
-| Tests | 2,600+ — the behavioural suite runs against every storage backend |
+| Tests | 3,000+ — the behavioural suite runs against every storage backend |
 | Backends | memory, SQLite (memory and file), PostgreSQL — all run the full suite |
 | Coverage | 99% statements and branches |
 | Type checking | `mypy` clean, no `type: ignore` in the domain |
@@ -281,6 +290,72 @@ what `book.bulk()`'s per-command savepoints are for. A second import of the same
 file is refused up front, before anything is created, on the strength of the
 `imported_id` prefix.
 
+## The HTTP API
+
+```bash
+make serve              # http://127.0.0.1:8000/docs
+make openapi            # regenerate docs/openapi.json
+```
+
+`docs/openapi.json` is committed and CI fails if it drifts from the code, so a
+client generated from it is never wrong about the server.
+
+**Amounts and rates are never JSON floats.** `0.1` is not one tenth, so an amount
+crosses the wire as a string (`"12.34"`, `"10/3"`) or an integer and a JSON float
+is *rejected*, not rounded. Amounts come back as exact minor units plus a
+formatted string; rates as an exact `num`/`den` pair plus a decimal approximation
+marked as such. That is the Phase 1 rule about `to_fraction`, carried to the edge.
+
+**Writes are commands.** `POST /transactions` takes legs as exact rationals and
+the server decides how they book — which leg absorbs a rounding remainder is not
+something a client can work out without reimplementing the allocator. Structural
+operations each get their own endpoint (`/accounts/{id}/rename`, `/move`,
+`/merge`, `/closed`, `/commodity`) because each has its own rules and its own way
+of failing; one generic PATCH would be five unrelated failure modes behind a body
+where every field is optional.
+
+**Every write accepts `Idempotency-Key`.** Any string, hashed deterministically
+into a command id. A replay returns the original result with
+`Idempotency-Replayed: true` and does not burn a revision.
+
+**Every response carries `X-PyMoney-Revision`**, so a client learns it is stale
+from whatever call it happened to make. `GET /books/{id}/changes?since=N` returns
+whole revision batches — `limit_rows` is a *soft* cap that never splits a
+command, because half a merge is a state the server was never in.
+
+### Auth
+
+Session cookies, plus a bearer token for clients that cannot hold cookies
+(desktop, mobile). Cookie-authenticated *writes* also require `X-CSRF-Token`,
+because a cookie travels automatically and so proves nothing about who started
+the request; a bearer client needs no CSRF token because it has no ambient
+credentials. Passwords are scrypt with per-user salts and the parameters stored
+alongside each hash; session tokens are stored only as a SHA-256 digest, so a
+leaked database yields no live sessions.
+
+Per-book grants are `viewer` / `editor` / `owner`, keyed on a *subject string*
+rather than a user id — which is what lets OIDC slot in later and map a token's
+`sub` claim onto the same grants. A book you hold no grant on is a 404, not a
+403: whether it exists is itself information.
+
+### One writer per book
+
+The API keeps **one `Book` object per book id** for the life of the process, with
+**one lock per book held across every request** touching it. That is not a
+workaround — it is decision #14. The store caches the small tables and holds a
+single connection, and the idempotency cache lives on the Book, so reopening per
+request would lose both.
+
+The cost is explicit: requests against the *same* book are serialised; different
+books run concurrently. For a personal finance server that is the right trade
+(commands take single-digit milliseconds), and the place to revisit it is a read
+replica, not a weaker lock.
+
+One consequence worth knowing: **an in-memory SQLite database cannot back the
+API**, because it is a single connection and the API needs two at once.
+`create_app` refuses it with that explanation rather than failing later with a
+baffling "cannot start a transaction within a transaction".
+
 ## Performance
 
 `benchmarks/bench_store.py` measures it; `tests/test_performance.py` keeps it
@@ -381,7 +456,7 @@ earned a second covering index yet.
 And from the importer: **per-point rounding corrections** (see above), and
 reading KMyMoney's SQL storage backend rather than only `.kmy` files.
 
-## What Phase 3 has to honour
+## What the web and desktop clients have to honour
 
 - The store is the **only writer** (decision #14). Its caches assume it. A second
   process writing the same book needs either a different design or `reload()` on

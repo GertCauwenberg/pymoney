@@ -45,16 +45,19 @@ RUN groupadd --system --gid 1001 pymoney \
     && useradd --system --uid 1001 --gid pymoney --create-home pymoney
 
 COPY --from=builder /dist/*.whl /tmp/
-# The `store` and `postgres` extras: the domain core needs nothing, but an image
-# that cannot reach a database is not worth deploying.
-RUN pip install --no-cache-dir "$(echo /tmp/*.whl)[store,postgres]" \
+# The `api`, `store` and `postgres` extras: the domain core needs nothing, but an
+# image that cannot serve or reach a database is not worth deploying.
+RUN pip install --no-cache-dir "$(echo /tmp/*.whl)[api,postgres]" \
     && rm -f /tmp/*.whl
 
 USER pymoney
 WORKDIR /home/pymoney
 
-# No server yet, so the default command is the component inventory. It is also
-# the image's smoke test: if the wheel or an extra is broken, this reports it.
+EXPOSE 8000
+
+# The component inventory, not the server: it exits, so it doubles as the
+# image's smoke test (a broken wheel or a missing extra shows up here). Compose
+# overrides it with uvicorn for the api service.
 CMD ["python", "-m", "pymoney"]
 
 # --------------------------------------------------------------------------
@@ -64,10 +67,16 @@ FROM runtime AS test
 
 USER root
 # Installed from the source tree rather than the wheel so that tests/ and the
-# tool configuration in pyproject.toml are both present.
-COPY pyproject.toml README.md ./
+# tool configuration in pyproject.toml are both present.  alembic.ini is needed
+# too: the migration tests build their Config from it relative to the working
+# directory, and alembic silently treats a missing ini as an empty config
+# ("No 'script_location' key found in configuration").
+COPY pyproject.toml README.md alembic.ini ./
 COPY src ./src
 COPY tests ./tests
+# The shipped API contract; tests/test_api_sync.py checks the code still
+# matches it (resolved as <repo>/docs/openapi.json relative to tests/).
+COPY docs/openapi.json ./docs/openapi.json
 RUN pip install --no-cache-dir -e '.[dev]' && chown -R pymoney:pymoney /home/pymoney
 
 USER pymoney
