@@ -1,0 +1,35 @@
+{
+  "name": "pymoney-frontend",
+  "private": true,
+  "description": "PyMoney clients: a platform-agnostic core and the web app built on it.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "generate": "npm run generate --workspace @pymoney/core",
+    "dev": "npm run dev --workspace @pymoney/web",
+    "build": "npm run build --workspace @pymoney/web",
+    "preview": "npm run preview --workspace @pymoney/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "check": "npm run generate && git diff --exit-code -- packages/core/src/generated && npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "jsdom": "^26.1.0",
+    "openapi-typescript": "^7.8.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

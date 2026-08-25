@@ -441,7 +441,8 @@ report hands back the `Conversion` objects it used.
 
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · importers (OFX,
-CSV, KMyMoney XML) · attachments · tags · the HTTP API · any UI.
+CSV, KMyMoney XML) · attachments · tags · any UI beyond the reports (see
+[The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
 
@@ -455,6 +456,26 @@ earned a second covering index yet.
 
 And from the importer: **per-point rounding corrections** (see above), and
 reading KMyMoney's SQL storage backend rather than only `.kmy` files.
+
+## The web frontend
+
+```bash
+make serve          # the API
+make seed-demo      # optional demo book
+make web-install && make web-dev    # http://localhost:5173
+```
+
+`frontend/` is an npm workspace with two packages. `@pymoney/core` is the
+platform-agnostic client -- types generated from `docs/openapi.json`, the HTTP
+client with cookie+CSRF and bearer-token modes, exact (BigInt) money formatting,
+period presets and React Query hooks -- with no DOM dependency, so the mobile
+and desktop apps to come reuse it whole. `@pymoney/web` is the React web app
+built on it, currently the three reports: balance sheet, income statement and
+holdings, each with currency translation, a traceable list of the rates used,
+CSV export and print styles. `make web-check` is what CI runs; it fails if the
+generated types no longer match the committed OpenAPI document.
+
+See [frontend/README.md](frontend/README.md).
 
 ## What the web and desktop clients have to honour
 

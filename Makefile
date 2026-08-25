@@ -11,7 +11,8 @@ COMPOSE ?= docker compose
         test-thorough cov check bench bench-scaling bench-import openapi \
         serve migrate \
         migration clean \
-        up down logs db-shell image image-test compose-config
+        up down logs db-shell image image-test compose-config \
+        web-install web-dev web-build web-test web-check seed-demo
 
 help:  ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -110,3 +111,27 @@ image-test:  ## Build the test image and run the suite inside it
 
 compose-config:  ## Validate compose.yaml the way CI does
 	$(COMPOSE) --env-file .env.example config --quiet && echo "compose.yaml ok"
+
+# --- web frontend ---------------------------------------------------------
+# Lives in frontend/ as an npm workspace: packages/core (platform-agnostic
+# client, shared with future mobile/desktop apps) and apps/web (React + Vite).
+
+NPM ?= npm --prefix frontend
+
+web-install:  ## Install frontend dependencies
+	$(NPM) ci
+
+web-dev:  ## Run the web app with hot reload (proxies /api to :8000; run `make serve` too)
+	$(NPM) run dev
+
+web-build:  ## Production build into frontend/apps/web/dist
+	$(NPM) run build
+
+web-test:  ## Frontend unit and component tests
+	$(NPM) test
+
+web-check:  ## Everything frontend CI checks: generated types are current, typecheck, tests, build
+	$(NPM) run check
+
+seed-demo:  ## Create a small fully-priced demo book through a running API (see scripts/seed_demo.py)
+	$(BIN)/python scripts/seed_demo.py

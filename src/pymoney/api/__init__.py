@@ -19,6 +19,12 @@ from .settings import Settings
 
 __all__ = ["BookRegistry", "Settings", "create_app"]
 
+# Importing the submodule above also bound it as the package attribute ``app``,
+# which would shadow the lazy application below and hand uvicorn a module
+# ("TypeError: 'module' object is not callable"). Unbind it; the submodule stays
+# importable through sys.modules.
+del app  # type: ignore[name-defined]  # noqa: F821
+
 
 def __getattr__(name: str):
     """Lazily build the default app, so `uvicorn pymoney.api:app` works.

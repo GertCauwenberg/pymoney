@@ -11,6 +11,13 @@ architecture, and the API has to honour it:
   database connection, which is not safe to share between threads, and FastAPI
   runs synchronous endpoints in a thread pool. The lock covers reads as well as
   writes for that reason.
+* **The lock is a plain ``Lock``, not an ``RLock``.** A dependency with ``yield``
+  holds it across the request, and FastAPI may run the dependency's setup and
+  its teardown on *different* threadpool threads. An ``RLock`` can only be
+  released by the thread that acquired it, so the teardown would raise
+  ``cannot release un-acquired lock`` and the book would stay locked for the
+  life of the process. A ``Lock`` may be released by any thread. The price is
+  that ``open()`` is not re-entrant: nothing nests it, and nothing should.
 
 The cost is explicit: requests against the *same* book are serialised. Different
 books run concurrently. For a personal finance server that is the right trade --
@@ -45,7 +52,7 @@ class BookRegistry:
         self._engine = engine
         self._clock = clock or SystemClock()
         self._books: dict[UUID, Book] = {}
-        self._locks: dict[UUID, threading.RLock] = {}
+        self._locks: dict[UUID, threading.Lock] = {}
         self._guard = threading.Lock()
 
     # -- lifecycle ---------------------------------------------------------
@@ -56,11 +63,11 @@ class BookRegistry:
             self._books.clear()
             self._locks.clear()
 
-    def _lock_for(self, book_id: UUID) -> threading.RLock:
+    def _lock_for(self, book_id: UUID) -> threading.Lock:
         with self._guard:
             lock = self._locks.get(book_id)
             if lock is None:
-                lock = self._locks[book_id] = threading.RLock()
+                lock = self._locks[book_id] = threading.Lock()
             return lock
 
     # -- access ------------------------------------------------------------
@@ -78,7 +85,11 @@ class BookRegistry:
 
     @contextmanager
     def open(self, book_id: UUID) -> Iterator[Book]:
-        """Borrow a book, exclusively, for the duration of the block."""
+        """Borrow a book, exclusively, for the duration of the block.
+
+        Not re-entrant: opening a book that the same thread already has open
+        deadlocks. See the module docstring for why that is the right trade.
+        """
         if not self.exists(book_id):
             raise NotFoundError(f"no book {book_id}")
         lock = self._lock_for(book_id)

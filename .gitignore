@@ -11,6 +11,9 @@ dist/
 venv/
 env/
 
+# Frontend (see frontend/.gitignore for the rest)
+node_modules/
+
 # Tooling caches
 .pytest_cache/
 .ruff_cache/

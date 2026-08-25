@@ -1,0 +1,151 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { ApiError } from "../client";
+import type {
+  AccountsQuery,
+  BalanceSheetQuery,
+  CommoditiesQuery,
+  HoldingsQuery,
+  IncomeStatementQuery,
+  LoginIn,
+  RegisterIn,
+  User,
+} from "../types";
+import { useApi } from "./provider";
+
+/** Query keys in one place, so invalidation cannot drift from fetching. */
+export const keys = {
+  session: ["session"] as const,
+  books: ["books"] as const,
+  book: (bookId: string) => ["books", bookId] as const,
+  accounts: (bookId: string, q: AccountsQuery) => ["books", bookId, "accounts", q] as const,
+  commodities: (bookId: string, q: CommoditiesQuery) =>
+    ["books", bookId, "commodities", q] as const,
+  balanceSheet: (bookId: string, q: BalanceSheetQuery) =>
+    ["books", bookId, "reports", "balance-sheet", q] as const,
+  incomeStatement: (bookId: string, q: IncomeStatementQuery) =>
+    ["books", bookId, "reports", "income-statement", q] as const,
+  holdings: (bookId: string, q: HoldingsQuery) =>
+    ["books", bookId, "reports", "holdings", q] as const,
+};
+
+/**
+ * The current user, or `null` when not logged in. A 401 is the expected
+ * answer here, not an error, so it is folded into the data.
+ */
+export function useSession() {
+  const api = useApi();
+  return useQuery<User | null, ApiError>({
+    queryKey: keys.session,
+    queryFn: async () => {
+      try {
+        return await api.me();
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) return null;
+        throw e;
+      }
+    },
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+export function useLogin() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (credentials: LoginIn) => api.login(credentials),
+    onSuccess: (session) => {
+      qc.setQueryData(keys.session, session.user);
+    },
+  });
+}
+
+export function useRegister() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (details: RegisterIn) => api.register(details),
+    onSuccess: (session) => {
+      qc.setQueryData(keys.session, session.user);
+    },
+  });
+}
+
+export function useLogout() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.logout(),
+    onSettled: () => {
+      // Session first: that is what routes the UI to the login screen and
+      // unmounts everything that was looking at book data. Then drop that
+      // data; it belongs to the user who just left. (Not `clear()`: it would
+      // detach mounted observers, which would then never see the null.)
+      qc.setQueryData(keys.session, null);
+      qc.removeQueries({ queryKey: ["books"] });
+    },
+  });
+}
+
+export function useBooks() {
+  const api = useApi();
+  return useQuery({ queryKey: keys.books, queryFn: () => api.books() });
+}
+
+export function useBook(bookId: string) {
+  const api = useApi();
+  return useQuery({ queryKey: keys.book(bookId), queryFn: () => api.book(bookId) });
+}
+
+export function useAccounts(bookId: string, query: AccountsQuery = {}) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.accounts(bookId, query),
+    queryFn: () => api.accounts(bookId, query),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useCommodities(bookId: string, query: CommoditiesQuery = {}) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.commodities(bookId, query),
+    queryFn: () => api.commodities(bookId, query),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useBalanceSheet(bookId: string, query: BalanceSheetQuery, enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.balanceSheet(bookId, query),
+    queryFn: () => api.balanceSheet(bookId, query),
+    enabled,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useIncomeStatement(
+  bookId: string,
+  query: IncomeStatementQuery,
+  enabled = true,
+) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.incomeStatement(bookId, query),
+    queryFn: () => api.incomeStatement(bookId, query),
+    enabled,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useHoldings(bookId: string, query: HoldingsQuery, enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.holdings(bookId, query),
+    queryFn: () => api.holdings(bookId, query),
+    enabled,
+    placeholderData: (previous) => previous,
+  });
+}

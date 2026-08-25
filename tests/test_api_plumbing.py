@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import threading
+import types
+
 import pytest
 
 from pymoney.api import Settings, create_app
 from pymoney.api.registry import BookRegistry
 from pymoney.core import ConflictError, NotFoundError, new_id
+from pymoney.core.book import Book
 from pymoney.core.clock import ManualClock
 from pymoney.core.commodity import Commodity
 from pymoney.store import create_engine, create_schema
@@ -28,14 +32,53 @@ class TestRegistry:
         """Reopening per request would reload the caches and, worse, lose the
         idempotency cache that makes Idempotency-Key work."""
         book = registry.create(name="B", base_currency=Commodity.currency("EUR"))
-        with registry.open(book.id) as first, registry.open(book.id) as second:
-            assert first is second is book
+        with registry.open(book.id) as first:
+            pass
+        with registry.open(book.id) as second:
+            pass
+        assert first is second is book
 
-    def test_the_lock_is_re_entrant(self, registry):
-        """A dependency holding it must not deadlock a nested open."""
+    def test_the_lock_may_be_released_from_another_thread(self, registry):
+        """FastAPI runs a yield-dependency's setup and teardown on threadpool
+        threads that need not be the same one. An RLock would raise here and
+        leave the book locked for good; every later request would hang."""
         book = registry.create(name="B", base_currency=Commodity.currency("EUR"))
-        with registry.open(book.id), registry.open(book.id) as inner:
-            assert inner is book
+        borrowed = registry.open(book.id)
+        assert borrowed.__enter__() is book
+
+        failures: list[BaseException] = []
+
+        def release() -> None:
+            try:
+                borrowed.__exit__(None, None, None)
+            except BaseException as exc:
+                failures.append(exc)
+
+        thread = threading.Thread(target=release)
+        thread.start()
+        thread.join(timeout=5)
+        assert not failures, failures
+
+        # And the book is usable again, from this thread, without blocking.
+        reopened: list[Book] = []
+        opener = threading.Thread(
+            target=lambda: reopened.append(registry.open(book.id).__enter__())
+        )
+        opener.start()
+        opener.join(timeout=5)
+        assert reopened == [book]
+
+    def test_the_lock_serialises_access_to_one_book(self, registry):
+        """Decision #14: one writer per book. The lock is the whole mechanism."""
+        book = registry.create(name="B", base_currency=Commodity.currency("EUR"))
+        entered = threading.Event()
+        with registry.open(book.id):
+            waiter = threading.Thread(
+                target=lambda: (registry.open(book.id).__enter__(), entered.set())
+            )
+            waiter.start()
+            assert not entered.wait(timeout=0.2)
+        assert entered.wait(timeout=5)
 
     def test_an_unknown_book(self, registry):
         with pytest.raises(NotFoundError), registry.open(new_id()):
@@ -147,6 +190,9 @@ class TestAppFactory:
         monkeypatch.setenv(
             "PYMONEY_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'lazy.sqlite'}"
         )
+        # Not pre-deleted: a fresh import must not leave the `pymoney.api.app`
+        # submodule shadowing the lazy application.
+        assert not isinstance(vars(package).get("app"), types.ModuleType)
         monkeypatch.delitem(vars(package), "app", raising=False)
         application = package.app
         assert application.title == "PyMoney"
