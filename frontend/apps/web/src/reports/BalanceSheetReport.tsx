@@ -86,6 +86,11 @@ export function BalanceSheetReport() {
         <>
           <ReportTable
             sections={sections}
+            emptyMessage={
+              accounts.data?.length === 0
+                ? "This book has no accounts yet. Creating accounts and posting transactions from here is coming; for now the API (or a KMyMoney import) fills a book."
+                : undefined
+            }
             linkFor={(row) => `../accounts/${row.account_id}?end=${asOf}`}
             totals={[
               { label: "Total assets", amount: report.data.assets },

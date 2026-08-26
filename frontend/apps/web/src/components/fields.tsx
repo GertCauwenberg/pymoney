@@ -1,14 +1,33 @@
 import { isIsoDate } from "@pymoney/core";
 import type { Commodity } from "@pymoney/core";
-import { useEffect, useState, type ReactNode } from "react";
+import { cloneElement, isValidElement, useEffect, useId, useState, type ReactElement, type ReactNode } from "react";
 
+/**
+ * Label + control + optional hint. The hint is wired up with
+ * `aria-describedby` rather than nested in the label, so the control's
+ * accessible name is just the label ("Code", not "Code ISO 4217, e.g. INR").
+ */
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string | undefined }) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+  const control = isValidElement(children)
+    ? cloneElement(children as ReactElement<Record<string, unknown>>, {
+        id,
+        ...(hint ? { "aria-describedby": hintId } : {}),
+      })
+    : children;
   return (
-    <label className="field">
-      <span className="field__label">{label}</span>
-      {children}
-      {hint && <span className="field__hint">{hint}</span>}
-    </label>
+    <div className="field">
+      <label className="field__label" htmlFor={id}>
+        {label}
+      </label>
+      {control}
+      {hint && (
+        <span className="field__hint" id={hintId}>
+          {hint}
+        </span>
+      )}
+    </div>
   );
 }
 

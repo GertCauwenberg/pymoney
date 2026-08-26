@@ -67,6 +67,20 @@ friendlier names.
   the `X-PyMoney-Revision` header. The UI shows the server's explanation rather
   than inventing its own.
 
+## Books and sharing
+
+A new user lands on a "create your first book" form (name and base currency;
+the common currencies are a dropdown, anything else can be typed). The books
+page also creates further books; with a single book it redirects straight into
+it unless reached on purpose through the PyMoney brand link.
+
+Owners get a **Sharing** tab: who has access, add someone by the email they
+log in with, change roles (viewer / editor / owner), revoke. The server's rule
+that a book must keep at least one owner is reflected in the UI (the last
+owner's controls are disabled) and its 409 is shown if it fires anyway. Grants
+are keyed on the email string and the server does not check that an account
+exists, so the page says so: a typo grants access to nobody.
+
 ## The reports
 
 Three pages, one per report endpoint. All settings live in the URL, so a

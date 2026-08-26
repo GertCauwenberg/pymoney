@@ -17,7 +17,10 @@ import type {
   BalanceSheet,
   BalanceSheetQuery,
   Book,
+  BookIn,
   Commodity,
+  Grant,
+  GrantIn,
   CommoditiesQuery,
   Health,
   Holdings,
@@ -205,6 +208,14 @@ export class ApiClient {
     return this.request<T>("POST", path, body);
   }
 
+  put<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>("PUT", path, body);
+  }
+
+  delete<T = void>(path: string): Promise<T> {
+    return this.request<T>("DELETE", path);
+  }
+
   // -- auth --------------------------------------------------------------
 
   /**
@@ -256,6 +267,26 @@ export class ApiClient {
 
   book(bookId: string): Promise<Book> {
     return this.get<Book>(`/books/${bookId}`);
+  }
+
+  /** Create a book; the caller becomes its owner. */
+  createBook(body: BookIn): Promise<Book> {
+    return this.post<Book>("/books", body);
+  }
+
+  // -- access control (owners only) ---------------------------------------
+
+  grants(bookId: string): Promise<Grant[]> {
+    return this.get<Grant[]>(`/books/${bookId}/grants`);
+  }
+
+  /** Grant access, or change an existing grant's role. */
+  putGrant(bookId: string, grant: GrantIn): Promise<Grant> {
+    return this.put<Grant>(`/books/${bookId}/grants`, grant);
+  }
+
+  deleteGrant(bookId: string, subject: string): Promise<void> {
+    return this.delete(`/books/${bookId}/grants/${encodeURIComponent(subject)}`);
   }
 
   accounts(bookId: string, query: AccountsQuery = {}): Promise<Account[]> {

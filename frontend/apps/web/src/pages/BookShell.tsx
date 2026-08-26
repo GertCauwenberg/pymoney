@@ -7,6 +7,8 @@ import { Loading } from "../components/Loading";
 export interface BookContext {
   bookId: string;
   baseCurrencyId: string | null;
+  /** The caller's role on this book: viewer, editor or owner. */
+  role: string | null;
 }
 
 /** Everything under /books/:bookId: header, report navigation, the report. */
@@ -28,13 +30,17 @@ export function BookShell() {
     );
   }
 
-  const context: BookContext = { bookId, baseCurrencyId: book.data.base_currency_id ?? null };
+  const context: BookContext = {
+    bookId,
+    baseCurrencyId: book.data.base_currency_id ?? null,
+    role: book.data.role ?? null,
+  };
 
   return (
     <div className="shell">
       <header className="topbar">
         <div className="topbar__left">
-          <NavLink to="/books" className="brand">
+          <NavLink to="/books" state={{ pick: true }} className="brand" title="Your books">
             PyMoney
           </NavLink>
           <span className="topbar__book" title={`revision ${book.data.revision}`}>
@@ -45,6 +51,11 @@ export function BookShell() {
           <NavLink to="reports/balance-sheet">Balance sheet</NavLink>
           <NavLink to="reports/income-statement">Income statement</NavLink>
           <NavLink to="reports/holdings">Holdings</NavLink>
+          {book.data.role === "owner" && (
+            <NavLink to="sharing" className="tabs__aside">
+              Sharing
+            </NavLink>
+          )}
         </nav>
         <div className="topbar__user">
           <span className="muted">{session.data?.display_name || session.data?.email}</span>

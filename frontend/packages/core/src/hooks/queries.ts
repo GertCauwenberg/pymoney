@@ -4,7 +4,9 @@ import { ApiError } from "../client";
 import type {
   AccountsQuery,
   BalanceSheetQuery,
+  BookIn,
   CommoditiesQuery,
+  GrantIn,
   HoldingsQuery,
   IncomeStatementQuery,
   LoginIn,
@@ -20,6 +22,7 @@ export const keys = {
   session: ["session"] as const,
   books: ["books"] as const,
   book: (bookId: string) => ["books", bookId] as const,
+  grants: (bookId: string) => ["books", bookId, "grants"] as const,
   accounts: (bookId: string, q: AccountsQuery) => ["books", bookId, "accounts", q] as const,
   commodities: (bookId: string, q: CommoditiesQuery) =>
     ["books", bookId, "commodities", q] as const,
@@ -203,5 +206,44 @@ export function useTransaction(bookId: string, transactionId: string) {
   return useQuery({
     queryKey: keys.transaction(bookId, transactionId),
     queryFn: () => api.transaction(bookId, transactionId),
+  });
+}
+
+export function useCreateBook() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BookIn) => api.createBook(body),
+    onSuccess: (book) => {
+      qc.setQueryData(keys.book(book.id), book);
+      void qc.invalidateQueries({ queryKey: keys.books });
+    },
+  });
+}
+
+export function useGrants(bookId: string, enabled = true) {
+  const api = useApi();
+  return useQuery({ queryKey: keys.grants(bookId), queryFn: () => api.grants(bookId), enabled });
+}
+
+export function usePutGrant(bookId: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (grant: GrantIn) => api.putGrant(bookId, grant),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.grants(bookId) }),
+  });
+}
+
+export function useDeleteGrant(bookId: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (subject: string) => api.deleteGrant(bookId, subject),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.grants(bookId) });
+      // Revoking your own grant changes what /books returns.
+      void qc.invalidateQueries({ queryKey: keys.books });
+    },
   });
 }

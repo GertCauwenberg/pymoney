@@ -624,3 +624,54 @@ button:focus-visible {
 .facts dd {
   margin: 0;
 }
+
+/* ---- books & sharing ------------------------------------------------- */
+
+.page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+.page-heading h2 {
+  margin: 0;
+}
+.page--narrow .card + .cards,
+.page--narrow .card + .card {
+  margin-top: 1rem;
+}
+.field-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.field-row .field {
+  flex: 1 1 160px;
+}
+.tabs__aside {
+  margin-left: 0.75rem;
+  color: var(--muted) !important;
+}
+.tabs__aside.active {
+  color: var(--accent-text) !important;
+}
+.sharing__form {
+  margin-top: 1.5rem;
+  max-width: 640px;
+}
+.grants select {
+  padding: 0.2rem 0.4rem;
+}
+.actions--inline {
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+.btn--danger {
+  border-color: var(--negative);
+  color: var(--negative);
+}
+.btn--danger:hover:not(:disabled) {
+  background: var(--negative);
+  color: #fff;
+}

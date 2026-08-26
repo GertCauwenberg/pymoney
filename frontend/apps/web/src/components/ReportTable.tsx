@@ -15,6 +15,7 @@ export function ReportTable({
   totals,
   valueHeader = "Balance",
   linkFor,
+  emptyMessage,
 }: {
   sections: Section[];
   /** Rows appended at the bottom, e.g. net worth. */
@@ -22,6 +23,7 @@ export function ReportTable({
   valueHeader?: string;
   /** Where a row's name leads: typically the account's register for the same window. */
   linkFor?: (row: ReportRow) => string;
+  emptyMessage?: string | undefined;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 
@@ -34,7 +36,7 @@ export function ReportTable({
     });
 
   if (sections.length === 0) {
-    return <p className="empty">Nothing to show for these settings.</p>;
+    return <p className="empty">{emptyMessage ?? "Nothing to show for these settings."}</p>;
   }
 
   return (

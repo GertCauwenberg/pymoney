@@ -1,13 +1,17 @@
 import { useBooks, useLogout, useSession } from "@pymoney/core/hooks";
-import { Link, Navigate } from "react-router-dom";
+import { useState } from "react";
+import { Link, Navigate, useLocation } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Loading } from "../components/Loading";
+import { NewBookForm } from "./NewBookForm";
 
 export function BooksPage() {
   const books = useBooks();
   const session = useSession();
   const logout = useLogout();
+  const location = useLocation();
+  const [creating, setCreating] = useState(false);
 
   if (books.isPending) return <Loading label="Loading your books…" />;
   if (books.isError) {
@@ -17,8 +21,16 @@ export function BooksPage() {
       </main>
     );
   }
-  // One book is the common case for a household; do not make them click.
-  if (books.data.length === 1) return <Navigate to={`/books/${books.data[0]!.id}`} replace />;
+
+  // One book is the common case for a household; do not make them click --
+  // unless they came here on purpose (the brand link passes `pick`), because
+  // this is also where a second book is created.
+  const pick = (location.state as { pick?: boolean } | null)?.pick === true;
+  if (books.data.length === 1 && !pick && !creating) {
+    return <Navigate to={`/books/${books.data[0]!.id}`} replace />;
+  }
+
+  const none = books.data.length === 0;
 
   return (
     <main className="page page--narrow">
@@ -31,24 +43,41 @@ export function BooksPage() {
           </button>
         </div>
       </header>
-      <h2>Your books</h2>
-      {books.data.length === 0 ? (
-        <p className="empty">
-          You have no books yet. Create one through the API (<code>POST /books</code>) or ask an owner to grant you access.
-        </p>
+
+      {none ? (
+        <>
+          <h2>Welcome</h2>
+          <p>
+            You are logged in as <strong>{session.data?.email}</strong> but have no books yet. Create one
+            below — or, if someone else already keeps the books, ask them to share with this email address
+            under <em>Sharing</em> in their book; it will then appear here.
+          </p>
+          <NewBookForm first />
+        </>
       ) : (
-        <ul className="cards">
-          {books.data.map((b) => (
-            <li key={b.id} className="card card--link">
-              <Link to={`/books/${b.id}`}>
-                <strong>{b.name}</strong>
-                <span className="muted">
-                  {b.role ?? "viewer"} · revision {b.revision}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <>
+          <div className="page-heading">
+            <h2>Your books</h2>
+            {!creating && (
+              <button type="button" className="btn" onClick={() => setCreating(true)}>
+                New book
+              </button>
+            )}
+          </div>
+          {creating && <NewBookForm onDone={() => setCreating(false)} />}
+          <ul className="cards">
+            {books.data.map((b) => (
+              <li key={b.id} className="card card--link">
+                <Link to={`/books/${b.id}`}>
+                  <strong>{b.name}</strong>
+                  <span className="muted">
+                    {b.role ?? "viewer"} · revision {b.revision}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </main>
   );

@@ -41,7 +41,7 @@ function server(handlers: Record<string, (url: URL) => { status?: number; body: 
 
 function mount(ui: React.ReactNode, fetch: typeof globalThis.fetch, path: string) {
   const client = new ApiClient({ baseUrl: "/api", fetch });
-  const context: BookContext = { bookId: "b1", baseCurrencyId: "eur" };
+  const context: BookContext = { bookId: "b1", baseCurrencyId: "eur", role: "owner" };
   return render(
     <ApiProvider client={client} queryClient={createQueryClient()}>
       <MemoryRouter initialEntries={[path]}>
