@@ -1,6 +1,7 @@
 import { displayOwnValue, hasChildren, leafName, visibleRows } from "@pymoney/core";
 import type { AccountClass, Amount, ReportRow, Section } from "@pymoney/core";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { Money } from "./Money";
 
@@ -13,11 +14,14 @@ export function ReportTable({
   sections,
   totals,
   valueHeader = "Balance",
+  linkFor,
 }: {
   sections: Section[];
   /** Rows appended at the bottom, e.g. net worth. */
   totals?: { label: string; amount: Amount | null | undefined; emphasis?: boolean }[];
   valueHeader?: string;
+  /** Where a row's name leads: typically the account's register for the same window. */
+  linkFor?: (row: ReportRow) => string;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 
@@ -66,6 +70,7 @@ export function ReportTable({
               accountClass={section.accountClass}
               collapsed={collapsed.has(row.account_id)}
               onToggle={toggle}
+              href={linkFor?.(row)}
             />
           ))}
         </tbody>
@@ -93,11 +98,13 @@ function Row({
   accountClass,
   collapsed,
   onToggle,
+  href,
 }: {
   row: ReportRow;
   accountClass: AccountClass;
   collapsed: boolean;
   onToggle: (id: string) => void;
+  href?: string | undefined;
 }) {
   const parent = hasChildren(row);
   return (
@@ -117,7 +124,13 @@ function Row({
           ) : (
             <span className="disclosure disclosure--leaf" aria-hidden="true" />
           )}
-          <span title={row.path}>{leafName(row.path)}</span>
+          {href ? (
+            <Link to={href} title={`${row.path} — open the register`} className="account-link">
+              {leafName(row.path)}
+            </Link>
+          ) : (
+            <span title={row.path}>{leafName(row.path)}</span>
+          )}
         </span>
       </td>
       <td className="num muted">

@@ -23,12 +23,15 @@ export function DateField({
   onChange,
   max,
   min,
+  allowEmpty = false,
 }: {
   label: string;
   value: string;
   onChange: (iso: string) => void;
   max?: string | undefined;
   min?: string | undefined;
+  /** Report an empty string when the field is cleared ("no bound"). */
+  allowEmpty?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
@@ -41,7 +44,7 @@ export function DateField({
         max={max}
         onChange={(e) => {
           setDraft(e.target.value);
-          if (isIsoDate(e.target.value)) onChange(e.target.value);
+          if (isIsoDate(e.target.value) || (allowEmpty && e.target.value === "")) onChange(e.target.value);
         }}
       />
     </Field>

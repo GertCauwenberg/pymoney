@@ -2,6 +2,7 @@ import { formatAmount, formatRate, today } from "@pymoney/core";
 import type { Holding, HoldingsQuery } from "@pymoney/core";
 import { useCommodities, useHoldings } from "@pymoney/core/hooks";
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Loading } from "../components/Loading";
@@ -121,7 +122,11 @@ export function HoldingsReport() {
             <tbody>
               {report.data.positions.map((p) => (
                 <tr key={p.account_id}>
-                  <td title={p.path}>{p.path}</td>
+                  <td>
+                    <Link to={`../accounts/${p.account_id}?end=${asOf}`} className="account-link" title="Open the register">
+                      {p.path}
+                    </Link>
+                  </td>
                   <td>{p.commodity}</td>
                   <td className="num">
                     <Money amount={p.quantity} />

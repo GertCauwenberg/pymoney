@@ -78,8 +78,18 @@ export function displayOwnValue(row: ReportRow, accountClass: AccountClass): Amo
   const flipped =
     row.value.minor !== 0 ? row.display_value.minor === -row.value.minor : CREDIT_NORMAL.has(accountClass);
   if (!flipped) return row.own_value;
-  const minor = -row.own_value.minor;
-  return { ...row.own_value, minor, text: row.own_value.text.startsWith("-") ? row.own_value.text.slice(1) : `-${row.own_value.text}` };
+  return naturalSign(row.own_value, "LIABILITY");
+}
+
+/**
+ * An amount with the sign a human expects for the account it sits in: what
+ * the server does for `display_value`, applied to register rows and balances.
+ * Income, liabilities and equity are stored negative and read positive.
+ */
+export function naturalSign(amount: Amount, accountClass: AccountClass): Amount {
+  if (!CREDIT_NORMAL.has(accountClass) || amount.minor === 0) return amount;
+  const text = amount.text.startsWith("-") ? amount.text.slice(1) : `-${amount.text}`;
+  return { ...amount, minor: -amount.minor, text };
 }
 
 /** The last segment of "Assets:Bank:Checking". */

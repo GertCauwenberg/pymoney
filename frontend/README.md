@@ -80,6 +80,23 @@ report can be bookmarked or sent to the other account holder.
   ratio.
 - **Holdings** — quantity, price, cost, market value, unrealised gain.
 
+Every account name in a report is a link to that account's **register** for
+the same window (the income statement's period, or everything up to the
+balance sheet's as-of date), and every register row links to its
+**transaction** with all its splits, each of which links back to its account's
+register. Read-only for now.
+
+- **Register** (`/books/:id/accounts/:accountId`) — one row per leg, oldest
+  first, with reconciliation mark, running balance, opening and closing
+  balances from the server's `totals`, cursor-based "load more", optional
+  date window and sub-accounts. Amounts carry the reports' natural sign
+  (income positive, a credit card's charges positive), so the closing balance
+  is the figure that was clicked on. A Value column appears only when a leg
+  was booked in another commodity than the account's.
+- **Transaction** (`/books/:id/transactions/:transactionId`) — the facts and
+  every split, values shown *as stored* and summed, because a detail view is
+  the place where double entry should be visible.
+
 Every report shows **how the numbers came to be**: the exchange rates the
 server used (with their sources and, for chained rates, the path) and, in
 lenient mode, what it could not value and left out. The "fail if anything

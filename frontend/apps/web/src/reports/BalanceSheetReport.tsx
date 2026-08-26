@@ -86,6 +86,7 @@ export function BalanceSheetReport() {
         <>
           <ReportTable
             sections={sections}
+            linkFor={(row) => `../accounts/${row.account_id}?end=${asOf}`}
             totals={[
               { label: "Total assets", amount: report.data.assets },
               { label: "Total liabilities", amount: report.data.liabilities_owed },

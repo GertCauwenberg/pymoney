@@ -24,6 +24,13 @@ export type AccountClass = Schemas["AccountClass"];
 export type AccountType = Schemas["AccountType"];
 export type Commodity = Schemas["CommodityOut"];
 export type CommodityKind = Schemas["CommodityKind"];
+export type RegisterPage = Schemas["RegisterPage"];
+export type RegisterRow = Schemas["RegisterRowOut"];
+export type RegisterTotals = Schemas["RegisterTotals"];
+export type Transaction = Schemas["TransactionOut"];
+export type Split = Schemas["SplitOut"];
+export type Payee = Schemas["PayeeOut"];
+export type ReconcileState = Schemas["ReconcileStateName"];
 export type User = Schemas["UserOut"];
 export type Session = Schemas["SessionOut"];
 export type LoginIn = Schemas["LoginIn"];
@@ -40,6 +47,8 @@ export type IncomeStatementQuery = Query<"get_income_statement_books__book_id__r
 export type HoldingsQuery = Query<"get_holdings_books__book_id__reports_holdings_get">;
 export type AccountsQuery = Query<"list_accounts_books__book_id__accounts_get">;
 export type CommoditiesQuery = Query<"list_commodities_books__book_id__commodities_get">;
+export type RegisterQuery = Query<"register_books__book_id__accounts__account_id__register_get">;
+export type PayeesQuery = Query<"list_payees_books__book_id__payees_get">;
 
 /** The body of every non-2xx response the server produces itself. */
 export interface Problem {

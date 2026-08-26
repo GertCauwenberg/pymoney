@@ -472,7 +472,8 @@ period presets and React Query hooks -- with no DOM dependency, so the mobile
 and desktop apps to come reuse it whole. `@pymoney/web` is the React web app
 built on it, currently the three reports: balance sheet, income statement and
 holdings, each with currency translation, a traceable list of the rates used,
-CSV export and print styles. `make web-check` is what CI runs; it fails if the
+CSV export and print styles -- plus read-only drill-down from any report row to
+the account's register and from any register row to the transaction. `make web-check` is what CI runs; it fails if the
 generated types no longer match the committed OpenAPI document.
 
 See [frontend/README.md](frontend/README.md).

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "../client";
 import type {
@@ -8,7 +8,9 @@ import type {
   HoldingsQuery,
   IncomeStatementQuery,
   LoginIn,
+  PayeesQuery,
   RegisterIn,
+  RegisterQuery,
   User,
 } from "../types";
 import { useApi } from "./provider";
@@ -27,6 +29,12 @@ export const keys = {
     ["books", bookId, "reports", "income-statement", q] as const,
   holdings: (bookId: string, q: HoldingsQuery) =>
     ["books", bookId, "reports", "holdings", q] as const,
+  account: (bookId: string, accountId: string) => ["books", bookId, "accounts", accountId] as const,
+  payees: (bookId: string, q: PayeesQuery) => ["books", bookId, "payees", q] as const,
+  ledger: (bookId: string, accountId: string, q: Omit<RegisterQuery, "cursor">) =>
+    ["books", bookId, "accounts", accountId, "register", q] as const,
+  transaction: (bookId: string, transactionId: string) =>
+    ["books", bookId, "transactions", transactionId] as const,
 };
 
 /**
@@ -147,5 +155,53 @@ export function useHoldings(bookId: string, query: HoldingsQuery, enabled = true
     queryFn: () => api.holdings(bookId, query),
     enabled,
     placeholderData: (previous) => previous,
+  });
+}
+
+export function useAccount(bookId: string, accountId: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.account(bookId, accountId),
+    queryFn: () => api.account(bookId, accountId),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function usePayees(bookId: string, query: PayeesQuery = {}) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.payees(bookId, query),
+    queryFn: () => api.payees(bookId, query),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * An account's register, page by page. The server's cursor is opaque and
+ * keyset-based, so a page never shifts under a concurrent insert; we just
+ * hand `next_cursor` back until `has_more` is false.
+ */
+export function useLedger(
+  bookId: string,
+  accountId: string,
+  query: Omit<RegisterQuery, "cursor"> = {},
+  enabled = true,
+) {
+  const api = useApi();
+  return useInfiniteQuery({
+    queryKey: keys.ledger(bookId, accountId, query),
+    queryFn: ({ pageParam }) =>
+      api.ledger(bookId, accountId, pageParam ? { ...query, cursor: pageParam } : query),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => (last.has_more ? (last.next_cursor ?? null) : null),
+    enabled,
+  });
+}
+
+export function useTransaction(bookId: string, transactionId: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.transaction(bookId, transactionId),
+    queryFn: () => api.transaction(bookId, transactionId),
   });
 }

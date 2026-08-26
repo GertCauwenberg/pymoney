@@ -25,9 +25,14 @@ import type {
   IncomeStatement,
   IncomeStatementQuery,
   LoginIn,
+  Payee,
+  PayeesQuery,
   Problem,
   RegisterIn,
+  RegisterPage,
+  RegisterQuery,
   Session,
+  Transaction,
   User,
 } from "./types";
 
@@ -257,8 +262,32 @@ export class ApiClient {
     return this.get<Account[]>(`/books/${bookId}/accounts${queryString(query)}`);
   }
 
+  account(bookId: string, accountId: string): Promise<Account> {
+    return this.get<Account>(`/books/${bookId}/accounts/${accountId}`);
+  }
+
   commodities(bookId: string, query: CommoditiesQuery = {}): Promise<Commodity[]> {
     return this.get<Commodity[]>(`/books/${bookId}/commodities${queryString(query)}`);
+  }
+
+  payees(bookId: string, query: PayeesQuery = {}): Promise<Payee[]> {
+    return this.get<Payee[]>(`/books/${bookId}/payees${queryString(query)}`);
+  }
+
+  // -- ledger ------------------------------------------------------------
+
+  /**
+   * One page of an account's register. Pass `next_cursor` back as `cursor`.
+   * Named for the ledger, because `register()` above is the sign-up call.
+   */
+  ledger(bookId: string, accountId: string, query: RegisterQuery = {}): Promise<RegisterPage> {
+    return this.get<RegisterPage>(
+      `/books/${bookId}/accounts/${accountId}/register${queryString(query)}`,
+    );
+  }
+
+  transaction(bookId: string, transactionId: string): Promise<Transaction> {
+    return this.get<Transaction>(`/books/${bookId}/transactions/${transactionId}`);
   }
 
   // -- reports -----------------------------------------------------------

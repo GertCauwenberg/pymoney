@@ -8,6 +8,8 @@ import { NotFound } from "./pages/NotFound";
 import { BalanceSheetReport } from "./reports/BalanceSheetReport";
 import { HoldingsReport } from "./reports/HoldingsReport";
 import { IncomeStatementReport } from "./reports/IncomeStatementReport";
+import { AccountRegisterPage } from "./ledger/AccountRegisterPage";
+import { TransactionPage } from "./ledger/TransactionPage";
 
 export function App() {
   return (
@@ -22,6 +24,8 @@ export function App() {
           <Route path="reports/balance-sheet" element={<BalanceSheetReport />} />
           <Route path="reports/income-statement" element={<IncomeStatementReport />} />
           <Route path="reports/holdings" element={<HoldingsReport />} />
+          <Route path="accounts/:accountId" element={<AccountRegisterPage />} />
+          <Route path="transactions/:transactionId" element={<TransactionPage />} />
         </Route>
       </Route>
       <Route path="*" element={<NotFound />} />

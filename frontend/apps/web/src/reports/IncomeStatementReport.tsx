@@ -109,6 +109,7 @@ export function IncomeStatementReport() {
         <>
           <ReportTable
             sections={sections}
+            linkFor={(row) => `../accounts/${row.account_id}?start=${period.start}&end=${period.end}`}
             valueHeader="Amount"
             totals={[
               { label: "Income", amount: report.data.income_earned },
