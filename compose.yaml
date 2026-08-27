@@ -1,13 +1,13 @@
 # PyMoney local stack.
 #
 #   cp .env.example .env          # then edit the password
-#   docker compose up -d                        # PostgreSQL
-#   docker compose run --rm api alembic upgrade head
-#   docker compose --profile api up -d          # the HTTP API on :8000
+#   docker compose up -d                                      # PostgreSQL
+#   docker compose --profile api run --rm api python -m pymoney.store.migrate
+#   docker compose --profile api up -d                        # the HTTP API on :8000
 #   docker compose --profile test run --rm tests
 #
-# Profiles keep the default `up` to the one service that is genuinely useful
-# today. The api service is wired but not implemented; see its comment.
+# Profiles keep the default `up` to the database alone: the API is opt-in, and
+# so is the test run.
 name: pymoney
 
 x-postgres-env: &postgres-env
@@ -17,8 +17,8 @@ x-postgres-env: &postgres-env
   POSTGRES_TEST_DB: ${POSTGRES_TEST_DB:-pymoney_test}
 
 services:
-  # Needed from Phase 2 onwards: the store layer has to pass the same test
-  # suite against PostgreSQL as against SQLite, and that needs a real server.
+  # The store layer has to pass the same test suite against PostgreSQL as
+  # against SQLite, and the API runs on it in production.
   db:
     image: postgres:17-alpine
     environment: *postgres-env
@@ -66,8 +66,16 @@ services:
       - --cov-report=term-missing
 
   # The HTTP API. Migrations are not run automatically: applying schema changes
-  # on container start is how two replicas race each other.
-  #     docker compose run --rm api alembic upgrade head
+  # on container start is how two replicas race each other. Run them as a step
+  # of the deployment, from the same image, against the same database:
+  #     docker compose --profile api run --rm api python -m pymoney.store.migrate
+  # (`alembic upgrade head` needs the repository's alembic.ini and does not work
+  # inside the image.)
+  #
+  # Registration is closed by default. Create the first user with it open, or
+  # import a book and grant access from the command line:
+  #     docker compose --profile api run --rm api \
+  #         python -m pymoney.store.grants BOOK_ID you@example.org owner
   api:
     build:
       context: .
@@ -79,7 +87,6 @@ services:
     environment:
       PYMONEY_DATABASE_URL: >-
         postgresql+psycopg://${POSTGRES_USER:-pymoney}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pymoney}
-      PYMONEY_LOG_LEVEL: ${PYMONEY_LOG_LEVEL:-info}
       # Behind a TLS-terminating proxy, keep this on: it marks the session
       # cookie Secure. Turn it off only for plain-HTTP local work.
       PYMONEY_COOKIE_SECURE: ${PYMONEY_COOKIE_SECURE:-true}
@@ -106,7 +113,21 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
-    command: [uvicorn, "pymoney.api:app", --host, 0.0.0.0, --port, "8000"]
+    # One worker, on purpose: a book's caches and its per-book lock live in the
+    # process (decision #14), so a second worker would write behind the first's
+    # back. PYMONEY_LOG_LEVEL is uvicorn's, substituted here rather than read by
+    # the application, which has no setting of that name.
+    command:
+      - uvicorn
+      - "pymoney.api:app"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+      - --log-level
+      - "${PYMONEY_LOG_LEVEL:-info}"
 
 volumes:
   pgdata:

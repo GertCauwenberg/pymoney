@@ -17,7 +17,8 @@ Partial updates use the :data:`UNSET` sentinel rather than ``None``, because
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+from dataclasses import dataclass, fields, is_dataclass
 from datetime import date, datetime
 from enum import Enum
 from fractions import Fraction
@@ -56,6 +57,7 @@ __all__ = [
     "UpdateCommodity",
     "UpdatePayee",
     "UpdateTransaction",
+    "fingerprint",
 ]
 
 
@@ -95,6 +97,46 @@ class Command:
         *field* (``CreateAccount``, ``CreatePayee``), which would shadow it.
         """
         return type(self).__name__
+
+
+def fingerprint(command: Command) -> str:
+    """A stable digest of *what* a command asks for.
+
+    Two requests carrying the same ``command_id`` must be the same request. A
+    client that reuses a key for a different payload has a bug, and silently
+    handing it the first request's result would hide it -- so the book compares
+    this digest and refuses a mismatch.
+
+    Identity and audit fields are left out: ``command_id`` is what is being
+    scoped, ``actor`` is who sent it, and a :class:`~pymoney.core.posting.LegSpec`
+    gets a fresh ``id`` on every construction, so none of them says anything
+    about the intent.
+    """
+
+    def canonical(value: Any, *, top: bool = False) -> Any:
+        if is_dataclass(value) and not isinstance(value, type):
+            skipped = {"command_id", "actor"} if top else {"id"}
+            return [
+                type(value).__name__,
+                {
+                    f.name: canonical(getattr(value, f.name))
+                    for f in fields(value)
+                    if f.name not in skipped
+                },
+            ]
+        if isinstance(value, tuple | list):
+            return [canonical(v) for v in value]
+        if isinstance(value, dict):
+            return {str(k): canonical(v) for k, v in sorted(value.items())}
+        if isinstance(value, Enum):
+            return [type(value).__name__, value.name]
+        if isinstance(value, UUID | Fraction | date | datetime):
+            return str(value)
+        if value is None or isinstance(value, str | int | bool):
+            return value
+        return repr(value)
+
+    return hashlib.sha256(repr(canonical(command, top=True)).encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

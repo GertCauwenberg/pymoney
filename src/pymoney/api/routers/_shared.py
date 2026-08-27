@@ -11,8 +11,10 @@ from uuid import UUID
 from fastapi import HTTPException, Response, status
 
 from ...core.book import Book
+from ...core.commands import CommandResult
 
 __all__ = [
+    "REPLAYED_HEADER",
     "REVISION_HEADER",
     "decode_cursor",
     "encode_cursor",
@@ -21,17 +23,24 @@ __all__ = [
 ]
 
 REVISION_HEADER = "X-PyMoney-Revision"
+REPLAYED_HEADER = "Idempotency-Replayed"
 # Starlette renamed this status constant; 422 is the number either way.
 UNPROCESSABLE = 422
 
 
-def set_revision(response: Response, book: Book) -> None:
+def set_revision(
+    response: Response, book: Book, result: CommandResult | None = None
+) -> None:
     """Stamp every response with the book's revision.
 
     A client gets its sync watermark from any call it happens to make, instead of
-    having to poll ``/changes`` to find out whether it is stale.
+    having to poll ``/changes`` to find out whether it is stale. Given a command
+    result, also say whether it came from the idempotency record, so a retrying
+    client can tell "already done" from "done now".
     """
     response.headers[REVISION_HEADER] = str(book.revision)
+    if result is not None and result.replayed:
+        response.headers[REPLAYED_HEADER] = "true"
 
 
 def page_size(requested: int | None, default: int, maximum: int) -> int:

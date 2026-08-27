@@ -89,6 +89,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--name", default="", help="name for the imported book")
     parser.add_argument(
+        "--owner",
+        metavar="EMAIL",
+        help=(
+            "grant this user owner access to the book in the API; without it an "
+            "imported book is invisible to everyone (python -m pymoney.store.grants "
+            "does the same later)"
+        ),
+    )
+    parser.add_argument(
         "--no-create-schema",
         dest="create_schema",
         action="store_false",
@@ -131,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.inspect:
             return _inspect(args.file)
 
+        if args.owner and not args.database:
+            raise SystemExit("--owner needs --database: a dry run has no book to grant")
         book, engine = _open_book(args)
         try:
             report: ImportReport = import_kmymoney(
@@ -142,6 +153,11 @@ def main(argv: list[str] | None = None) -> int:
                     dry_run=args.dry_run and engine is None,
                 ),
             )
+            if args.owner and engine is not None:
+                from ...store.grants import grant
+
+                with engine.begin() as conn:
+                    grant(conn, book.id, args.owner, "owner")
         finally:
             book.close()
             if engine is not None:

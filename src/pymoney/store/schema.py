@@ -277,6 +277,27 @@ changes = Table(
     Index("ix_changes_book_id_entity_id", "book_id", "entity_id"),
 )
 
+# One row per applied command that carried a command_id: the durable half of
+# Idempotency-Key. Written in the command's own transaction, so a retry after a
+# crash or a restart finds it exactly when the command's effects are there.
+command_results = Table(
+    "command_results",
+    metadata,
+    Column("book_id", Uuid, ForeignKey("books.id", ondelete="CASCADE"), nullable=False),
+    Column("command_id", Uuid, nullable=False),
+    # SHA-256 of the command's intent, so a key reused for a different payload
+    # is refused rather than answered with the first payload's result.
+    Column("fingerprint", String(64), nullable=False),
+    Column("revision", Integer, nullable=False),
+    Column("command", String(64), nullable=False),
+    Column("entity_kind", String(16), nullable=True),
+    Column("entity_id", Uuid, nullable=True),
+    Column("at", UTC, nullable=False),
+    UniqueConstraint(
+        "book_id", "command_id", name="uq_command_results_book_id_command_id"
+    ),
+)
+
 ALL_TABLES = (
     books,
     commodities,
@@ -286,4 +307,5 @@ ALL_TABLES = (
     splits,
     prices,
     changes,
+    command_results,
 )

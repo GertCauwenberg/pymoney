@@ -54,7 +54,7 @@ def create_payee(
             command_id=key,
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return PayeeOut.of(result.entity)
 
 
@@ -84,7 +84,7 @@ def update_payee(
             command_id=key,
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return PayeeOut.of(result.entity)
 
 
@@ -108,7 +108,7 @@ def merge_payees(
             command_id=key,
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return PayeeOut.of(result.entity)
 
 

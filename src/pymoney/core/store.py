@@ -42,7 +42,7 @@ from .price import PriceDB
 from .settings import BookSettings
 from .transaction import Transaction
 
-__all__ = ["ChangeLogView", "MemoryStore", "Store", "StoredBook"]
+__all__ = ["ChangeLogView", "CommandRecord", "MemoryStore", "Store", "StoredBook"]
 
 _ENTITY_KINDS = (
     EntityKind.COMMODITY,
@@ -72,6 +72,23 @@ class StoredBook:
             base_currency_id=self.base_currency_id,
             revision=self.settings_revision,
         )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CommandRecord:
+    """What a book remembers about a command it has applied, by ``command_id``.
+
+    Enough to answer a replay after a restart -- the revision it produced and
+    which entity it was about -- and to refuse a replay that carries a different
+    payload under the same key.
+    """
+
+    command_id: UUID
+    fingerprint: str
+    revision: int
+    command: str
+    entity_kind: EntityKind | None = None
+    entity_id: UUID | None = None
 
 
 class Store(ABC):
@@ -163,8 +180,21 @@ class Store(ABC):
         account_ids: Iterable[UUID] | None = None,
         start: date | None = None,
         end: date | None = None,
+        from_key: tuple[date, UUID] | None = None,
+        limit: int | None = None,
     ) -> tuple[Transaction, ...]:
-        """Matching transactions, ordered by ``(date, id)``."""
+        """Matching transactions, ordered by ``(date, id)``.
+
+        ``from_key`` is a keyset position: only transactions whose ``(date, id)``
+        is at or after it are returned (inclusive, so a caller paging through
+        *splits* can pick up the remaining legs of the cursor's transaction).
+        ``limit`` caps the number of transactions. Both are pushed down so that
+        one page of a register costs one page, not the whole history.
+        """
+
+    @abstractmethod
+    def transactions_by_ids(self, ids: Iterable[UUID]) -> tuple[Transaction, ...]:
+        """The named transactions, in one round trip; unknown ids are skipped."""
 
     @abstractmethod
     def posting_count(self, account_id: UUID) -> int:
@@ -214,16 +244,36 @@ class Store(ABC):
 
     @abstractmethod
     def changes_since(
-        self, revision: int, *, max_revisions: int | None = None
+        self,
+        revision: int,
+        *,
+        max_revisions: int | None = None,
+        max_rows: int | None = None,
     ) -> tuple[Change, ...]:
         """Changes above ``revision``, optionally only the next few revisions.
 
-        ``max_revisions`` lets a paged sync pull avoid dragging the whole log
-        back just to use the first page of it.
+        ``max_revisions`` and ``max_rows`` let a paged sync pull avoid dragging
+        the whole log back just to use the first page of it. ``max_rows`` is
+        soft: a revision is never returned half, so the last one is completed
+        even if that overshoots.
         """
 
     @abstractmethod
     def changes_at(self, revision: int) -> tuple[Change, ...]: ...
+
+    # -- applied commands --------------------------------------------------
+    @abstractmethod
+    def record_command(self, record: CommandRecord) -> None:
+        """Remember an applied command, inside its own unit of work.
+
+        Idempotency used to live in a dict on the Book, which meant a restart
+        forgot every key and a retried request posted twice. The record goes
+        through the same transaction as the command, so it exists exactly when
+        the command's effects do.
+        """
+
+    @abstractmethod
+    def find_command(self, command_id: UUID) -> CommandRecord | None: ...
 
     @abstractmethod
     def changes_for_entity(self, entity_id: UUID) -> tuple[Change, ...]: ...
@@ -249,9 +299,15 @@ class ChangeLogView:
         self._store = store
 
     def since(
-        self, revision: int, *, max_revisions: int | None = None
+        self,
+        revision: int,
+        *,
+        max_revisions: int | None = None,
+        max_rows: int | None = None,
     ) -> tuple[Change, ...]:
-        return self._store.changes_since(revision, max_revisions=max_revisions)
+        return self._store.changes_since(
+            revision, max_revisions=max_revisions, max_rows=max_rows
+        )
 
     def at(self, revision: int) -> tuple[Change, ...]:
         return self._store.changes_at(revision)
@@ -296,6 +352,7 @@ class MemoryStore(Store):
         self._txns_by_account: dict[UUID, set[UUID]] = {}
         self._prices = PriceDB()
         self._log = ChangeLog()
+        self._commands: dict[UUID, CommandRecord] = {}
         self._undo: list[Callable[[], None]] | None = None
 
     # -- lifecycle ---------------------------------------------------------
@@ -441,6 +498,8 @@ class MemoryStore(Store):
         account_ids: Iterable[UUID] | None = None,
         start: date | None = None,
         end: date | None = None,
+        from_key: tuple[date, UUID] | None = None,
+        limit: int | None = None,
     ) -> tuple[Transaction, ...]:
         table = self._entities[EntityKind.TRANSACTION]
         if account_ids is None:
@@ -450,13 +509,22 @@ class MemoryStore(Store):
             for account_id in account_ids:
                 wanted |= self._txns_by_account.get(account_id, set())
             candidates = (table[i] for i in wanted)
+        mark = None if from_key is None else (from_key[0], from_key[1].int)
         out = [
             t
             for t in candidates
-            if (start is None or t.date >= start) and (end is None or t.date <= end)
+            if (start is None or t.date >= start)
+            and (end is None or t.date <= end)
+            and (mark is None or (t.date, t.id.int) >= mark)
         ]
         out.sort(key=lambda t: (t.date, t.id.int))
+        if limit is not None:
+            out = out[:limit]
         return tuple(out)
+
+    def transactions_by_ids(self, ids: Iterable[UUID]) -> tuple[Transaction, ...]:
+        table = self._entities[EntityKind.TRANSACTION]
+        return tuple(table[i] for i in ids if i in table)
 
     def posting_count(self, account_id: UUID) -> int:
         return len(self._txns_by_account.get(account_id, ()))
@@ -512,17 +580,36 @@ class MemoryStore(Store):
         self._record_undo(lambda: self._log.discard_after(before))
 
     def changes_since(
-        self, revision: int, *, max_revisions: int | None = None
+        self,
+        revision: int,
+        *,
+        max_revisions: int | None = None,
+        max_rows: int | None = None,
     ) -> tuple[Change, ...]:
         found = self._log.since(revision)
-        if max_revisions is None:
-            return found
-        cutoff = sorted({c.revision for c in found})[:max_revisions]
-        allowed = set(cutoff)
-        return tuple(c for c in found if c.revision in allowed)
+        if max_revisions is not None:
+            cutoff = sorted({c.revision for c in found})[:max_revisions]
+            allowed = set(cutoff)
+            found = tuple(c for c in found if c.revision in allowed)
+        if max_rows is not None and len(found) > max_rows:
+            # Complete the revision the cap landed in rather than split it.
+            last = found[max_rows - 1].revision
+            found = tuple(c for c in found if c.revision <= last)
+        return found
 
     def changes_at(self, revision: int) -> tuple[Change, ...]:
         return self._log.at(revision)
+
+    def record_command(self, record: CommandRecord) -> None:
+        self._commands[record.command_id] = record
+
+        def undo() -> None:
+            self._commands.pop(record.command_id, None)
+
+        self._record_undo(undo)
+
+    def find_command(self, command_id: UUID) -> CommandRecord | None:
+        return self._commands.get(command_id)
 
     def changes_for_entity(self, entity_id: UUID) -> tuple[Change, ...]:
         return self._log.for_entity(entity_id)

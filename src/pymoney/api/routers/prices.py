@@ -99,7 +99,7 @@ def create_price(
             command_id=key,
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return PriceOut.of(result.entity)
 
 

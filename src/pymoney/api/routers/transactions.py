@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from ...core import commands as cmd
 from ...core.amount import Amount
@@ -73,14 +73,24 @@ def list_transactions(
 ) -> Page:
     set_revision(response, book)
     size = page_size(limit, 100, 500)
-    found = book.transactions(
-        account_id=account_id, payee_id=payee_id, start=start, end=end
-    )
     position = decode_cursor(cursor)
+    after = None
     if position is not None:
-        mark = (date.fromisoformat(position["d"]), UUID(position["t"]).int)
-        found = tuple(t for t in found if (t.date, t.id.int) > mark)
-    window = found[: size + 1]
+        try:
+            after = (date.fromisoformat(position["d"]), UUID(position["t"]))
+        except (KeyError, ValueError, TypeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="malformed cursor"
+            ) from exc
+    # One more than the page, to know whether there is a next one.
+    window = book.transactions(
+        account_id=account_id,
+        payee_id=payee_id,
+        start=start,
+        end=end,
+        after=after,
+        limit=size + 1,
+    )
     has_more = len(window) > size
     window = window[:size]
     next_cursor = (
@@ -121,10 +131,7 @@ def post_transaction(
             command_id=key,
         )
     )
-    set_revision(response, book)
-    if result.replayed:
-        # So a retrying client can tell "already done" from "done now".
-        response.headers["Idempotency-Replayed"] = "true"
+    set_revision(response, book, result)
     return TransactionOut.of(result.entity)
 
 
@@ -167,7 +174,7 @@ def update_transaction(
             command_id=key,
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return TransactionOut.of(result.entity)
 
 
@@ -204,7 +211,7 @@ def set_split_state(
             command_id=key,
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return TransactionOut.of(result.entity)
 
 
@@ -271,13 +278,16 @@ def register(
     # pushed-down aggregate, not by walking the ledger.
     account = book.account(account_id)
     opening: Amount | None = None
+    running: Amount | None = None
     if not include_children:
         if start is None:
             opening = Amount.zero(book.live(account.commodity))
         else:
             opening = book.balance(account_id, as_of=start - timedelta(days=1))
-
-    running = opening
+        # The running balance continues from wherever the previous page
+        # stopped, which is the balance *at the cursor*, not at the start of
+        # the window -- or every page would start counting from zero again.
+        running = opening if after is None else book.balance_at(account_id, after)
     items: list[RegisterRowOut] = []
     single_commodity = len({r.quantity.commodity.id for r in rows}) <= 1
     for row in rows:

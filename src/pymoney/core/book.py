@@ -15,6 +15,7 @@ so the same rules and the same tests run over memory or over SQL.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -30,18 +31,31 @@ from .changelog import Change, ChangeOp, EntityKind
 from .clock import Clock, SystemClock
 from .commodity import Commodity, CommodityKind
 from .entity import Entity
-from .errors import CommandError, NotFoundError, ValidationError
+from .errors import CommandError, ConflictError, NotFoundError, ValidationError
 from .handlers import handler_for
 from .ids import new_id
 from .payee import Payee
 from .posting import LegSpec
 from .price import Price, PriceDB, ValuationPolicy
 from .settings import BookSettings
-from .store import ChangeLogView, MemoryStore, Store
+from .store import ChangeLogView, CommandRecord, MemoryStore, Store
 from .sync import RevisionBatch, SyncPage
 from .transaction import ReconcileState, Split, Transaction
 
 __all__ = ["Book", "SplitRef"]
+
+_APPLIED_CACHE_SIZE = 256
+"""Recently applied commands kept in memory. The store is the durable record;
+this only saves the lookup for the common immediate retry."""
+
+_ENTITY_KINDS: dict[type, EntityKind] = {
+    Commodity: EntityKind.COMMODITY,
+    Account: EntityKind.ACCOUNT,
+    Payee: EntityKind.PAYEE,
+    Transaction: EntityKind.TRANSACTION,
+    Price: EntityKind.PRICE,
+    BookSettings: EntityKind.BOOK,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +125,7 @@ class Book:
         self._revision = row.revision
         self._settings_revision = row.settings_revision
 
-        self._applied: dict[UUID, cmd.CommandResult] = {}
+        self._applied: OrderedDict[UUID, tuple[str, cmd.CommandResult]] = OrderedDict()
         self._pending: list[Change] = []
         self._current_revision = 0
         self._current_command: cmd.Command | None = None
@@ -296,24 +310,46 @@ class Book:
         start: date | None = None,
         end: date | None = None,
         payee_id: UUID | None = None,
+        after: tuple[date, UUID] | None = None,
+        limit: int | None = None,
     ) -> tuple[Transaction, ...]:
-        """Transactions matching the filters, ordered by date then id."""
+        """Transactions matching the filters, ordered by date then id.
+
+        :param after: a keyset position ``(date, transaction_id)``; only
+            transactions strictly after it are returned.
+        :param limit: stop after this many. Pushed down to the store, so a page
+            costs a page rather than the whole history.
+        """
+        mark = None if after is None else (after[0], after[1].int)
+
+        def beyond(items: Iterable[Transaction]) -> tuple[Transaction, ...]:
+            out = [t for t in items if mark is None or (t.date, t.id.int) > mark]
+            return tuple(out if limit is None else out[:limit])
+
         if payee_id is not None:
             self.payee(payee_id)
-            out = self._store.transactions_for_payee(payee_id)
-            return tuple(
+            return beyond(
                 t
-                for t in out
+                for t in self._store.transactions_for_payee(payee_id)
                 if (start is None or t.date >= start)
                 and (end is None or t.date <= end)
                 and (account_id is None or account_id in t.account_ids)
             )
+        account_ids = None
         if account_id is not None:
             self.account(account_id)  # existence check
-            return self._store.transactions(
-                account_ids=[account_id], start=start, end=end
+            account_ids = [account_id]
+        # The cursor's own row may still exist and come back (from_key is
+        # inclusive), so ask for one more than the page.
+        return beyond(
+            self._store.transactions(
+                account_ids=account_ids,
+                start=start,
+                end=end,
+                from_key=after,
+                limit=None if limit is None else limit + 1,
             )
-        return self._store.transactions(start=start, end=end)
+        )
 
     def register(
         self,
@@ -334,21 +370,23 @@ class Book:
             only rows strictly after it are returned. Keyset rather than an
             offset, so a row inserted while a client is paging cannot make it
             skip or repeat one.
-        :param limit: stop after this many rows. With ``after`` this is one page,
-            and the cursor's date is pushed down to the store, so paging does not
-            re-read the history on every request.
+        :param limit: stop after this many rows. Both the cursor and the limit
+            are pushed down to the store: a transaction contributes at least one
+            row, so fetching ``limit`` transactions (plus the cursor's own, whose
+            remaining legs may be wanted) is enough for one page.
         """
         account_ids = (
             {a.id for a in self.subtree(account_id)}
             if include_children
             else {self.account(account_id).id}
         )
-        # The cursor's date is a lower bound the index can use; the rest of the
-        # cursor only disambiguates rows that share that date.
-        effective_start = start
-        if after is not None and (start is None or after[0] > start):
-            effective_start = after[0]
-
+        transactions = self._store.transactions(
+            account_ids=account_ids,
+            start=start,
+            end=end,
+            from_key=None if after is None else (after[0], after[1]),
+            limit=None if limit is None else limit + 1,
+        )
         out = [
             SplitRef(
                 transaction=transaction,
@@ -356,9 +394,7 @@ class Book:
                 quantity=self._live_amount(split.quantity),
                 value=self._live_amount(split.value),
             )
-            for transaction in self._store.transactions(
-                account_ids=account_ids, start=effective_start, end=end
-            )
+            for transaction in transactions
             for split in transaction.splits
             if split.account_id in account_ids
         ]
@@ -450,6 +486,20 @@ class Book:
         totals = self._store.balances_by_account(account_ids=[account_id], end=as_of)
         return Amount(self.live(account.commodity), totals.get(account_id, 0))
 
+    def balance_at(self, account_id: UUID, position: tuple[date, UUID, UUID]) -> Amount:
+        """Balance of an account up to and including one register row.
+
+        ``position`` is a register cursor ``(date, transaction_id, split_id)``.
+        This is what a paged register needs to continue its running balance:
+        everything up to the cursor's date, less the rows on that date that
+        sort after the cursor. One aggregate plus one day's worth of rows.
+        """
+        on = position[0]
+        total = self.balance(account_id, as_of=on)
+        for ref in self.register(account_id, start=on, end=on, after=position):
+            total = total - ref.quantity
+        return total
+
     def balances_by_account(
         self, *, start: date | None = None, end: date | None = None
     ) -> dict[UUID, Amount]:
@@ -524,9 +574,9 @@ class Book:
         sync step.
         """
         if command.command_id is not None:
-            cached = self._applied.get(command.command_id)
-            if cached is not None:
-                return replace(cached, replayed=True)
+            replay = self._replay(command)
+            if replay is not None:
+                return replay
 
         handler = handler_for(command)
         if handler is None:
@@ -551,6 +601,17 @@ class Book:
             changes = tuple(self._pending)
             if changes:
                 self._store.append_changes(changes)
+                if command.command_id is not None:
+                    self._store.record_command(
+                        CommandRecord(
+                            command_id=command.command_id,
+                            fingerprint=cmd.fingerprint(command),
+                            revision=self._current_revision,
+                            command=command.command_name,
+                            entity_kind=_ENTITY_KINDS.get(type(entity)),
+                            entity_id=getattr(entity, "id", None),
+                        )
+                    )
                 # In bulk mode the book row is written once at the end: it is the
                 # same row on every command, so updating it per command is pure
                 # overhead.
@@ -587,8 +648,52 @@ class Book:
             entity=entity,
         )
         if command.command_id is not None:
-            self._applied[command.command_id] = result
+            self._remember(command.command_id, cmd.fingerprint(command), result)
         return result
+
+    # -- idempotency -------------------------------------------------------
+    def _remember(self, command_id: UUID, digest: str, result: cmd.CommandResult) -> None:
+        self._applied[command_id] = (digest, result)
+        self._applied.move_to_end(command_id)
+        while len(self._applied) > _APPLIED_CACHE_SIZE:
+            self._applied.popitem(last=False)
+
+    def _replay(self, command: cmd.Command) -> cmd.CommandResult | None:
+        """The result of an earlier run of this ``command_id``, if there was one.
+
+        Memory first, then the store, so a retry survives a restart. A key reused
+        for a *different* command is refused: answering it with the first
+        command's result would hide a client bug behind a 2xx.
+        """
+        assert command.command_id is not None
+        digest = cmd.fingerprint(command)
+        cached = self._applied.get(command.command_id)
+        if cached is not None:
+            stored_digest, result = cached
+        else:
+            record = self._store.find_command(command.command_id)
+            if record is None:
+                return None
+            stored_digest = record.fingerprint
+            entity = None
+            if record.entity_kind is EntityKind.BOOK:
+                entity = self.settings
+            elif record.entity_kind is not None and record.entity_id is not None:
+                entity = self._store.get(record.entity_kind, record.entity_id)
+            result = cmd.CommandResult(
+                revision=record.revision,
+                command=record.command,
+                changes=self._store.changes_at(record.revision),
+                entity=entity,
+            )
+            self._remember(command.command_id, stored_digest, result)
+        if stored_digest != digest:
+            raise ConflictError(
+                f"command id {command.command_id} was already used for a different "
+                f"{result.command} request; an Idempotency-Key identifies one "
+                f"request, not a series of them"
+            )
+        return replace(result, replayed=True)
 
     def execute_all(
         self, commands: Iterable[cmd.Command]
@@ -805,14 +910,20 @@ class Book:
     # sync surface
     # ====================================================================
     def changes_since(
-        self, revision: int, *, max_revisions: int | None = None
+        self,
+        revision: int,
+        *,
+        max_revisions: int | None = None,
+        max_rows: int | None = None,
     ) -> tuple[Change, ...]:
         """Raw row-level changes above ``revision``.
 
         The low-level view. Most clients want :meth:`pull`, which groups these
         into atomically applicable batches.
         """
-        return self._store.changes_since(revision, max_revisions=max_revisions)
+        return self._store.changes_since(
+            revision, max_revisions=max_revisions, max_rows=max_rows
+        )
 
     def revision_batch(self, revision: int) -> RevisionBatch:
         """Everything the command at ``revision`` changed, entities included."""
@@ -845,6 +956,27 @@ class Book:
         if change.kind is EntityKind.BOOK:
             return self.settings
         return self._store.get(change.kind, change.entity_id)
+
+    def entities_for_changes(self, changes: Iterable[Change]) -> dict[UUID, Any]:
+        """Resolve many changes at once: current entity by id, absent if gone.
+
+        Transactions are the one kind that costs a query each, so they are
+        fetched in a single round trip; everything else is cached anyway.
+        """
+        out: dict[UUID, Any] = {}
+        transaction_ids: list[UUID] = []
+        for change in changes:
+            if change.entity_id in out:
+                continue
+            if change.kind is EntityKind.TRANSACTION:
+                transaction_ids.append(change.entity_id)
+                continue
+            entity = self.entity_for_change(change)
+            if entity is not None:
+                out[change.entity_id] = entity
+        for transaction in self._store.transactions_by_ids(transaction_ids):
+            out[transaction.id] = transaction
+        return out
 
     # ====================================================================
     # integrity

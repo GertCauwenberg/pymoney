@@ -208,25 +208,42 @@ def pull(
             f"is talking to the wrong book or it was restored from a backup"
         )
 
-    # Ask the store for only as many revisions as the page can hold. Without
+    # Ask the store for only as much of the log as the page can hold. Without
     # this, a client paging through a long history re-reads the entire change log
     # on every request.
     by_revision: dict[int, list[Change]] = {}
-    for change in book.changes_since(since, max_revisions=max_revisions):
+    for change in book.changes_since(
+        since, max_revisions=max_revisions, max_rows=max_rows
+    ):
         by_revision.setdefault(change.revision, []).append(change)
 
-    batches: list[RevisionBatch] = []
-    watermark = since
+    # Resolve every entity the page will need in one go, rather than one
+    # transaction lookup per change.
+    selected: list[int] = []
     rows = 0
     for revision in sorted(by_revision):
-        if max_revisions is not None and len(batches) >= max_revisions:
+        if max_revisions is not None and len(selected) >= max_revisions:
             break
         if max_rows is not None and rows >= max_rows:
             break
-        batch = build_batch(revision, by_revision[revision], book.entity_for_change)
-        batches.append(batch)
+        selected.append(revision)
+        rows += len({c.entity_id for c in by_revision[revision]})
+    entities = book.entities_for_changes(
+        c
+        for revision in selected
+        for c in by_revision[revision]
+        if c.op is not ChangeOp.DELETE
+    )
+
+    def resolve(change: Change) -> Any:
+        found = entities.get(change.entity_id)
+        return book.entity_for_change(change) if found is None else found
+
+    batches: list[RevisionBatch] = []
+    watermark = since
+    for revision in selected:
+        batches.append(build_batch(revision, by_revision[revision], resolve))
         watermark = revision
-        rows += batch.rows
 
     return SyncPage(
         from_revision=since, to_revision=watermark, head=head, batches=tuple(batches)

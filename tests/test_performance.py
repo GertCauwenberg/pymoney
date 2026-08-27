@@ -108,7 +108,8 @@ def ledger(tmp_path: Path):
 
 
 def plan_for(book, sql: str) -> str:
-    rows = book.store._conn.execute(text(f"EXPLAIN QUERY PLAN {sql}")).all()
+    with book.store.engine.connect() as conn:
+        rows = conn.execute(text(f"EXPLAIN QUERY PLAN {sql}")).all()
     return " | ".join(str(r[-1]) for r in rows)
 
 
@@ -329,3 +330,62 @@ class TestTenantIsolationIsIndexed:
                 if len(index.columns)
             }
             assert "book_id" in leading, f"{table.name} has no book-leading index"
+
+
+class TestPagesCostAPage:
+    """A page of a register or a transaction list must not hydrate the ledger."""
+
+    def test_register_first_page_without_a_window(self, ledger):
+        """The web app's default view: no dates, first page. It used to load
+        every transaction of the account and slice in Python."""
+        book, banks, _categories, counter = ledger
+        counter.reset()
+        rows = book.register(banks[0].id, limit=10)
+        assert len(rows) == 10
+        fetched = [s for s in counter.statements if "FROM transactions" in s]
+        assert all("LIMIT" in s for s in fetched), counter.describe()
+        assert len(counter) <= 2, counter.describe()
+
+    def test_register_page_after_a_cursor(self, ledger):
+        book, banks, _categories, counter = ledger
+        first = book.register(banks[0].id, limit=10)
+        last = first[-1]
+        counter.reset()
+        second = book.register(
+            banks[0].id,
+            after=(last.date, last.transaction.id, last.split.id),
+            limit=10,
+        )
+        assert len(second) == 10
+        assert second[0].transaction.date >= last.date
+        assert len(counter) <= 2, counter.describe()
+        assert all("LIMIT" in s for s in counter.statements if "FROM transactions" in s)
+
+    def test_transaction_list_page(self, ledger):
+        book, _banks, _categories, counter = ledger
+        counter.reset()
+        page = book.transactions(limit=20)
+        assert len(page) == 20
+        assert all("LIMIT" in s for s in counter.statements if "FROM transactions" in s)
+        cursor = (page[-1].date, page[-1].id)
+        counter.reset()
+        following = book.transactions(after=cursor, limit=20)
+        assert len(following) == 20
+        assert following[0].id not in {t.id for t in page}
+        assert all("LIMIT" in s for s in counter.statements if "FROM transactions" in s)
+
+    def test_a_sync_page_reads_only_its_slice_of_the_log(self, ledger):
+        """With only a row cap (the API default), pull() used to read the whole
+        change log on every page and look each transaction up one by one."""
+        book, _banks, _categories, counter = ledger
+        counter.reset()
+        page = book.pull(0, max_rows=50)
+        # The cap is on log rows; a command touching one entity twice collapses.
+        assert 40 <= page.rows < 60
+        log_reads = [s for s in counter.statements if "FROM changes" in s]
+        # The first read is capped; the second only completes its last revision.
+        assert log_reads and "LIMIT" in log_reads[0], counter.describe()
+        assert all("revision = ?" in s for s in log_reads[1:]), counter.describe()
+        # One read of the log (plus completing its last revision), one for the
+        # transactions, one for their splits; not one per change.
+        assert len(counter) <= 5, counter.describe()

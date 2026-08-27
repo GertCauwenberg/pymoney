@@ -24,7 +24,7 @@ from ..core.commodity import Commodity, CommodityKind
 from ..core.payee import Payee
 from ..core.price import Price
 from ..core.rounding import RoundingMode
-from ..core.store import StoredBook
+from ..core.store import CommandRecord, StoredBook
 from ..core.transaction import ReconcileState, Split, Transaction
 from .types import fits_in_bigint
 
@@ -320,6 +320,35 @@ class Rows:
             created_at=row.created_at,
             updated_at=row.updated_at,
             revision=row.revision,
+        )
+
+    # -- applied commands --------------------------------------------------
+    @staticmethod
+    def command_to_row(
+        record: CommandRecord, book_id: UUID, *, at: Any
+    ) -> dict[str, Any]:
+        return {
+            "book_id": book_id,
+            "command_id": record.command_id,
+            "fingerprint": record.fingerprint,
+            "revision": record.revision,
+            "command": record.command,
+            "entity_kind": None
+            if record.entity_kind is None
+            else record.entity_kind.value,
+            "entity_id": record.entity_id,
+            "at": at,
+        }
+
+    @staticmethod
+    def command_from_row(row: Any) -> CommandRecord:
+        return CommandRecord(
+            command_id=row.command_id,
+            fingerprint=row.fingerprint,
+            revision=row.revision,
+            command=row.command,
+            entity_kind=None if row.entity_kind is None else EntityKind(row.entity_kind),
+            entity_id=row.entity_id,
         )
 
     # -- change log --------------------------------------------------------

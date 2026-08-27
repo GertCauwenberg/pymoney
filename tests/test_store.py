@@ -599,14 +599,12 @@ class TestQueriesArePushedDown:
             [LegSpec.of(cash.id, "-2"), LegSpec.of(food.id)],
             imported_id="X-2",
         )
-        conn = book.store._conn
-        with pytest.raises(IntegrityError):
+        with book.store.engine.connect() as conn, pytest.raises(IntegrityError):
             conn.execute(
                 schema.transactions.update()
                 .where(schema.transactions.c.id == other.id)
                 .values(imported_id="X-1")
             )
-        conn.rollback()
 
     def test_transactions_for_payee(self, book):
         cash = book.add_account("Cash", AccountType.CASH)
@@ -637,12 +635,15 @@ class TestQueriesArePushedDown:
         book.execute(
             c.UpdateTransaction(transaction_id=transaction.id, date=date(2026, 2, 9))
         )
-        rows = book.store._conn.execute(
-            select(schema.splits.c.post_date).where(
-                schema.splits.c.transaction_id == transaction.id
+        with book.store.engine.connect() as conn:
+            rows = set(
+                conn.execute(
+                    select(schema.splits.c.post_date).where(
+                        schema.splits.c.transaction_id == transaction.id
+                    )
+                ).scalars()
             )
-        ).scalars()
-        assert set(rows) == {date(2026, 2, 9)}
+        assert rows == {date(2026, 2, 9)}
 
     def test_deleting_a_transaction_deletes_its_splits(self, book):
         from pymoney.store import schema
@@ -653,8 +654,9 @@ class TestQueriesArePushedDown:
             date(2026, 1, 5), [LegSpec.of(cash.id, "-1"), LegSpec.of(food.id)]
         )
         book.execute(c.DeleteTransaction(transaction_id=transaction.id))
-        remaining = book.store._conn.execute(select(schema.splits.c.id)).scalars()
-        assert list(remaining) == []
+        with book.store.engine.connect() as conn:
+            remaining = list(conn.execute(select(schema.splits.c.id)).scalars())
+        assert remaining == []
 
     def test_updating_a_transaction_replaces_its_splits(self, book):
         from pymoney.store import schema
@@ -671,12 +673,15 @@ class TestQueriesArePushedDown:
                 legs=(LegSpec.of(cash.id, "-2"), LegSpec.of(fuel.id)),
             )
         )
-        count = book.store._conn.execute(
-            select(schema.splits.c.id).where(
-                schema.splits.c.transaction_id == transaction.id
+        with book.store.engine.connect() as conn:
+            count = list(
+                conn.execute(
+                    select(schema.splits.c.id).where(
+                        schema.splits.c.transaction_id == transaction.id
+                    )
+                ).scalars()
             )
-        ).scalars()
-        assert len(list(count)) == 2
+        assert len(count) == 2
         assert book.balance(food.id).is_zero
         assert book.balance(fuel.id).minor == 200
 

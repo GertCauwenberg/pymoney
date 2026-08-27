@@ -104,15 +104,22 @@ def hash_token(token: str) -> bytes:
 _IDEMPOTENCY_NAMESPACE = uuid.UUID("6f9619ff-8b86-d011-b42d-00c04fc964ff")
 
 
-def idempotency_key_to_uuid(key: str) -> uuid.UUID:
+def idempotency_key_to_uuid(key: str, *, subject: str | None = None) -> uuid.UUID:
     """Turn a client's ``Idempotency-Key`` header into a command id.
 
-    The domain wants a UUID; mobile clients send whatever they like. A UUID is
-    used as-is so a well-behaved client's key survives intact, and anything else
-    is hashed deterministically -- the same string always yields the same command
-    id, which is the entire point of the header.
+    The domain wants a UUID; mobile clients send whatever they like, so the key
+    is hashed deterministically -- the same string always yields the same
+    command id, which is the entire point of the header.
+
+    With a ``subject`` the key is scoped to that caller. Two users of a shared
+    book who both happen to send ``Idempotency-Key: 1`` are making two
+    requests, not one, and the second must not be handed the first's result.
+    The API always passes the subject; without one, a well-formed UUID is used
+    as-is so a single-user script's key survives intact.
     """
-    try:
-        return uuid.UUID(key)
-    except ValueError:
-        return uuid.uuid5(_IDEMPOTENCY_NAMESPACE, key)
+    if subject is None:
+        try:
+            return uuid.UUID(key)
+        except ValueError:
+            return uuid.uuid5(_IDEMPOTENCY_NAMESPACE, key)
+    return uuid.uuid5(_IDEMPOTENCY_NAMESPACE, f"{subject}\x00{key}")

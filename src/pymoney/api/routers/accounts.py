@@ -82,7 +82,7 @@ def create_account(
             command_id=key,
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return _out(book, result.entity)
 
 
@@ -115,7 +115,7 @@ def update_account(
             command_id=key,
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return _out(book, result.entity)
 
 
@@ -130,7 +130,7 @@ def rename_account(
     result = book.execute(
         cmd.RenameAccount(account_id=account_id, name=body.name, command_id=key)
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return _out(book, result.entity)
 
 
@@ -151,7 +151,7 @@ def move_account(
             account_id=account_id, new_parent_id=body.parent_id, command_id=key
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return _out(book, result.entity)
 
 
@@ -166,7 +166,7 @@ def set_closed(
     result = book.execute(
         cmd.SetAccountClosed(account_id=account_id, closed=body.closed, command_id=key)
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return _out(book, result.entity)
 
 
@@ -187,7 +187,7 @@ def set_commodity(
             account_id=account_id, commodity_id=body.commodity_id, command_id=key
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return _out(book, result.entity)
 
 
@@ -206,7 +206,7 @@ def merge_accounts(
     result = book.execute(
         cmd.MergeAccounts(source_id=body.source_id, target_id=account_id, command_id=key)
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return _out(book, result.entity)
 
 

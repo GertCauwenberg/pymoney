@@ -52,7 +52,7 @@ def create_commodity(
             command_id=key,
         )
     )
-    set_revision(response, book)
+    set_revision(response, book, result)
     return CommodityOut.of(result.entity)
 
 

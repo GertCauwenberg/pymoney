@@ -6,7 +6,6 @@ can read is not a useful outcome of a POST.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -15,6 +14,7 @@ from sqlalchemy import Engine, select
 
 from ...core.commodity import Commodity
 from ...store import identity
+from ...store.grants import grant
 from ..deps import (
     CurrentUser,
     OwnedBook,
@@ -70,14 +70,7 @@ def create_book(
     )
     book = registry.create(name=body.name, base_currency=currency, actor=actor.subject)
     with engine.begin() as conn:
-        conn.execute(
-            identity.book_grants.insert().values(
-                book_id=book.id,
-                subject=actor.subject,
-                role="owner",
-                created_at=datetime.now(timezone.utc),
-            )
-        )
+        grant(conn, book.id, actor.subject, "owner")
     return BookOut.of(book.settings, book.revision, "owner")
 
 
@@ -149,30 +142,7 @@ def put_grant(
             detail="subject must not be empty",
         )
     with engine.begin() as conn:
-        existing = conn.execute(
-            select(identity.book_grants.c.role).where(
-                identity.book_grants.c.book_id == book_id,
-                identity.book_grants.c.subject == subject,
-            )
-        ).scalar_one_or_none()
-        if existing is None:
-            conn.execute(
-                identity.book_grants.insert().values(
-                    book_id=book_id,
-                    subject=subject,
-                    role=body.role,
-                    created_at=datetime.now(timezone.utc),
-                )
-            )
-        else:
-            conn.execute(
-                identity.book_grants.update()
-                .where(
-                    identity.book_grants.c.book_id == book_id,
-                    identity.book_grants.c.subject == subject,
-                )
-                .values(role=body.role)
-            )
+        grant(conn, book_id, subject, body.role)
     return GrantOut(book_id=book_id, subject=subject, role=body.role)
 
 

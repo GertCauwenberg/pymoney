@@ -20,6 +20,17 @@ Atomicity comes from the database: ``begin``/``commit``/``rollback`` map onto a
 real transaction, and a failed command rolls back the caches by reloading them.
 Rollback is rare (a rejected command) and the tables are small, so paying O(small
 table) there keeps the cache-maintenance code out of the happy path entirely.
+
+**A connection is held only for the duration of a unit of work.** Between
+commands the store owns no connection at all: a read borrows one from the pool
+and returns it -- transaction ended -- as soon as the rows are fetched. The
+store used to pin one connection for its whole life, and every read on it
+auto-began a transaction that nothing closed. On SQLite that left a stale read
+snapshot open between requests, so the next write failed with ``database is
+locked`` (``SQLITE_BUSY_SNAPSHOT``, which ``busy_timeout`` does not cover) as
+soon as any other connection -- the session table, another book -- had written
+in the meantime. On PostgreSQL it left the connection idle in transaction
+indefinitely, and either way each open book cost a pool slot for good.
 """
 
 from __future__ import annotations
@@ -30,7 +41,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Engine, Table, bindparam, delete, func, select
+from sqlalchemy import Engine, Table, and_, bindparam, delete, func, or_, select
 from sqlalchemy.engine import Connection
 from sqlalchemy.sql import Executable
 
@@ -41,7 +52,7 @@ from ..core.commodity import Commodity
 from ..core.entity import Entity
 from ..core.payee import Payee
 from ..core.price import PriceDB
-from ..core.store import Store, StoredBook
+from ..core.store import CommandRecord, Store, StoredBook
 from ..core.transaction import Transaction
 from . import schema
 from .mapper import Registry, Rows
@@ -118,20 +129,64 @@ class SqlStore(Store):
     # connection and unit of work
     # ====================================================================
     @property
-    def _conn(self) -> Connection:
+    def engine(self) -> Engine:
+        return self._engine
+
+    @property
+    def in_unit_of_work(self) -> bool:
+        return self._connection is not None
+
+    def _check_open(self) -> None:
         # Using a closed store used to silently open a fresh connection, which
         # leaks one per call and -- on PostgreSQL -- holds locks that make a
         # later DROP block forever. Reuse after close is a bug in the caller.
         if self._closed:
             raise RuntimeError("this store is closed; open the book again to use it")
+
+    @property
+    def _conn(self) -> Connection:
+        """The unit-of-work connection. Only valid between begin and commit."""
+        self._check_open()
         if self._connection is None:
-            self._connection = self._engine.connect()
+            raise RuntimeError("no unit of work is open; reads go through _read()")
         return self._connection
 
+    @contextmanager
+    def _read(self) -> Iterator[Connection]:
+        """A connection to read on.
+
+        Inside a unit of work this is *the* connection, so a command sees its
+        own writes. Outside one it is borrowed from the pool and handed back --
+        which ends the transaction SQLAlchemy began for it -- before the caller
+        continues. Results must therefore be fetched inside the block.
+        """
+        self._check_open()
+        if self._connection is not None:
+            yield self._connection
+            return
+        conn = self._engine.connect()
+        try:
+            yield conn
+        finally:
+            # close() rolls back whatever was auto-begun and returns the
+            # connection to the pool.
+            conn.close()
+
+    def _rows(self, query: Executable) -> list[Any]:
+        with self._read() as conn:
+            return list(conn.execute(query))
+
+    def _scalar(self, query: Executable) -> Any:
+        with self._read() as conn:
+            return conn.execute(query).scalar_one_or_none()
+
     def begin(self) -> None:
+        self._check_open()
         self._ensure_loaded()
-        if not self._conn.in_transaction():
-            self._conn.begin()
+        if self._connection is None:
+            self._connection = self._engine.connect()
+        if not self._connection.in_transaction():
+            self._connection.begin()
         # Everything else has a foreign key to `books`, so the row has to be
         # there before the first command inserts anything -- including the
         # InitialiseBook command that creates the base currency.
@@ -154,13 +209,23 @@ class SqlStore(Store):
             )
         self._book_row_exists = True
 
+    def _release(self) -> None:
+        """Hand the unit-of-work connection back to the pool."""
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+
     def commit(self) -> None:
-        if self._conn.in_transaction():
-            self._conn.commit()
+        if self._connection is not None:
+            if self._connection.in_transaction():
+                self._connection.commit()
+            self._release()
 
     def rollback(self) -> None:
-        if self._conn.in_transaction():
-            self._conn.rollback()
+        if self._connection is not None:
+            if self._connection.in_transaction():
+                self._connection.rollback()
+            self._release()
         # The caches may hold writes the database has just discarded. Reloading
         # is O(small tables) and obviously correct, which beats maintaining an
         # undo log that has to agree with the database's idea of the truth.
@@ -183,9 +248,9 @@ class SqlStore(Store):
             nested.commit()
 
     def close(self) -> None:
-        if self._connection is not None:
-            self._connection.close()
-            self._connection = None
+        if self._connection is not None and self._connection.in_transaction():
+            self._connection.rollback()
+        self._release()
         self._loaded = False
         self._closed = True
 
@@ -198,7 +263,11 @@ class SqlStore(Store):
 
     def reload(self) -> None:
         """Re-read the cached tables from the database."""
-        conn = self._conn
+        with self._read() as conn:
+            self._reload_from(conn)
+        self._loaded = True
+
+    def _reload_from(self, conn: Connection) -> None:
         row = conn.execute(
             select(schema.books).where(schema.books.c.id == self._book_id)
         ).one_or_none()
@@ -235,7 +304,6 @@ class SqlStore(Store):
                 select(schema.payees).where(schema.payees.c.book_id == self._book_id)
             )
         }
-        self._loaded = True
 
     def _registry(self) -> Registry:
         return Registry(commodities=self._commodities, accounts=self._accounts)
@@ -270,13 +338,14 @@ class SqlStore(Store):
     def exists(self, kind: EntityKind, entity_id: UUID) -> bool:
         if kind is not EntityKind.TRANSACTION:
             return self.get(kind, entity_id) is not None
-        return bool(
-            self._conn.execute(
+        return (
+            self._scalar(
                 select(schema.transactions.c.id).where(
                     schema.transactions.c.id == entity_id,
                     schema.transactions.c.book_id == self._book_id,
                 )
-            ).scalar_one_or_none()
+            )
+            is not None
         )
 
     def put(self, kind: EntityKind, entity: Entity, *, created: bool = False) -> None:
@@ -388,39 +457,41 @@ class SqlStore(Store):
             )
 
     def _load_transaction(self, transaction_id: UUID) -> Transaction | None:
-        row = self._conn.execute(
-            select(schema.transactions).where(
-                schema.transactions.c.id == transaction_id,
-                schema.transactions.c.book_id == self._book_id,
-            )
-        ).one_or_none()
-        if row is None:
-            return None
-        split_rows = list(
-            self._conn.execute(
-                select(schema.splits).where(
-                    schema.splits.c.transaction_id == transaction_id
+        with self._read() as conn:
+            row = conn.execute(
+                select(schema.transactions).where(
+                    schema.transactions.c.id == transaction_id,
+                    schema.transactions.c.book_id == self._book_id,
+                )
+            ).one_or_none()
+            if row is None:
+                return None
+            split_rows = list(
+                conn.execute(
+                    select(schema.splits).where(
+                        schema.splits.c.transaction_id == transaction_id
+                    )
                 )
             )
-        )
         return Rows.transaction_from_rows(row, split_rows, self._registry())
 
     def transaction_count(self) -> int:
         return int(
-            self._conn.execute(
+            self._scalar(
                 select(func.count())
                 .select_from(schema.transactions)
                 .where(schema.transactions.c.book_id == self._book_id)
-            ).scalar_one()
+            )
         )
 
     def transaction_ids(self) -> tuple[UUID, ...]:
         return tuple(
-            self._conn.execute(
+            r.id
+            for r in self._rows(
                 select(schema.transactions.c.id).where(
                     schema.transactions.c.book_id == self._book_id
                 )
-            ).scalars()
+            )
         )
 
     def transactions(
@@ -429,15 +500,32 @@ class SqlStore(Store):
         account_ids: Iterable[UUID] | None = None,
         start: date | None = None,
         end: date | None = None,
+        from_key: tuple[date, UUID] | None = None,
+        limit: int | None = None,
     ) -> tuple[Transaction, ...]:
         self._ensure_loaded()
         t, s = schema.transactions, schema.splits
+
+        # The cursor's date is a plain lower bound the indexes can use; the id
+        # only disambiguates rows on that date.
+        if from_key is not None and (start is None or from_key[0] > start):
+            start = from_key[0]
 
         query = select(t).where(t.c.book_id == self._book_id)
         if start is not None:
             query = query.where(t.c.post_date >= start)
         if end is not None:
             query = query.where(t.c.post_date <= end)
+        if from_key is not None:
+            # (post_date, id) >= (d, i), spelled out because row-value
+            # comparison is not portable. UUIDs compare bytewise on both
+            # dialects, which is the same order as the v7 timestamp.
+            query = query.where(
+                or_(
+                    t.c.post_date > from_key[0],
+                    and_(t.c.post_date == from_key[0], t.c.id >= from_key[1]),
+                )
+            )
         if account_ids is not None:
             wanted = list(account_ids)
             if not wanted:
@@ -454,9 +542,28 @@ class SqlStore(Store):
             query = query.where(t.c.id.in_(matching))
 
         query = query.order_by(t.c.post_date, t.c.id)
-        return self._hydrate(list(self._conn.execute(query)), query)
+        if limit is not None:
+            query = query.limit(limit)
+        with self._read() as conn:
+            return self._hydrate(conn, list(conn.execute(query)), query)
 
-    def _hydrate(self, rows: list[Any], source: Any = None) -> tuple[Transaction, ...]:
+    def transactions_by_ids(self, ids: Iterable[UUID]) -> tuple[Transaction, ...]:
+        self._ensure_loaded()
+        wanted = list(ids)
+        if not wanted:
+            return ()
+        t = schema.transactions
+        query = (
+            select(t)
+            .where(t.c.book_id == self._book_id, t.c.id.in_(wanted))
+            .order_by(t.c.post_date, t.c.id)
+        )
+        with self._read() as conn:
+            return self._hydrate(conn, list(conn.execute(query)), query)
+
+    def _hydrate(
+        self, conn: Connection, rows: list[Any], source: Any = None
+    ) -> tuple[Transaction, ...]:
         """Attach splits to a page of transactions with one extra query.
 
         Given the query that produced the rows, the splits are fetched with
@@ -478,7 +585,7 @@ class SqlStore(Store):
                 schema.splits.c.transaction_id.in_([r.id for r in rows])
             )
         by_transaction: dict[UUID, list[Any]] = {r.id: [] for r in rows}
-        for split in self._conn.execute(splits_query):
+        for split in conn.execute(splits_query):
             by_transaction[split.transaction_id].append(split)
         registry = self._registry()
         return tuple(
@@ -488,12 +595,12 @@ class SqlStore(Store):
 
     def posting_count(self, account_id: UUID) -> int:
         return int(
-            self._conn.execute(
+            self._scalar(
                 select(func.count(func.distinct(schema.splits.c.transaction_id))).where(
                     schema.splits.c.book_id == self._book_id,
                     schema.splits.c.account_id == account_id,
                 )
-            ).scalar_one()
+            )
         )
 
     def balances_by_account(
@@ -523,20 +630,20 @@ class SqlStore(Store):
             query = query.where(s.c.post_date >= start)
         if end is not None:
             query = query.where(s.c.post_date <= end)
-        rows = self._conn.execute(query.group_by(s.c.account_id))
+        rows = self._rows(query.group_by(s.c.account_id))
         return {account_id: int(total or 0) for account_id, total in rows}
 
     def find_imported(self, imported_id: str) -> UUID | None:
-        return self._conn.execute(
+        return self._scalar(
             select(schema.transactions.c.id).where(
                 schema.transactions.c.book_id == self._book_id,
                 schema.transactions.c.imported_id == imported_id,
             )
-        ).scalar_one_or_none()
+        )
 
     def find_imported_prefix(self, prefix: str) -> str | None:
         # A range scan on the (book_id, imported_id) unique index.
-        return self._conn.execute(
+        return self._scalar(
             select(schema.transactions.c.imported_id)
             .where(
                 schema.transactions.c.book_id == self._book_id,
@@ -544,7 +651,7 @@ class SqlStore(Store):
             )
             .order_by(schema.transactions.c.imported_id)
             .limit(1)
-        ).scalar_one_or_none()
+        )
 
     def transactions_for_payee(self, payee_id: UUID) -> tuple[Transaction, ...]:
         self._ensure_loaded()
@@ -560,7 +667,8 @@ class SqlStore(Store):
             )
             .order_by(t.c.post_date, t.c.id)
         )
-        return self._hydrate(list(self._conn.execute(query)), query)
+        with self._read() as conn:
+            return self._hydrate(conn, list(conn.execute(query)), query)
 
     # ====================================================================
     # prices
@@ -588,32 +696,79 @@ class SqlStore(Store):
             .where(c.c.book_id == self._book_id, *conditions)
             .order_by(c.c.revision, c.c.seq)
         )
-        return tuple(Rows.change_from_row(r) for r in self._conn.execute(query))
+        return tuple(Rows.change_from_row(r) for r in self._rows(query))
 
     def changes_since(
-        self, revision: int, *, max_revisions: int | None = None
+        self,
+        revision: int,
+        *,
+        max_revisions: int | None = None,
+        max_rows: int | None = None,
     ) -> tuple[Change, ...]:
-        if max_revisions is None:
-            return self._changes(schema.changes.c.revision > revision)
-        # Two steps rather than one, because "the next N *revisions*" is not a
-        # row limit: one revision can be any number of rows and must never be
-        # returned half.
         c = schema.changes
-        wanted = list(
-            self._conn.execute(
-                select(c.c.revision)
-                .where(c.c.book_id == self._book_id, c.c.revision > revision)
-                .distinct()
-                .order_by(c.c.revision)
-                .limit(max_revisions)
-            ).scalars()
+        if max_revisions is not None:
+            # Two steps rather than one, because "the next N *revisions*" is not
+            # a row limit: one revision can be any number of rows and must never
+            # be returned half.
+            wanted = [
+                r.revision
+                for r in self._rows(
+                    select(c.c.revision)
+                    .where(c.c.book_id == self._book_id, c.c.revision > revision)
+                    .distinct()
+                    .order_by(c.c.revision)
+                    .limit(max_revisions)
+                )
+            ]
+            if not wanted:
+                return ()
+            found = self._changes(c.c.revision.in_(wanted))
+            if max_rows is not None and len(found) > max_rows:
+                last = found[max_rows - 1].revision
+                found = tuple(ch for ch in found if ch.revision <= last)
+            return found
+        if max_rows is None:
+            return self._changes(c.c.revision > revision)
+        # A row cap, then finish the revision it landed in: a page may overshoot
+        # the cap, but it never ends in the middle of a command.
+        query = (
+            select(c)
+            .where(c.c.book_id == self._book_id, c.c.revision > revision)
+            .order_by(c.c.revision, c.c.seq)
+            .limit(max_rows)
         )
-        if not wanted:
-            return ()
-        return self._changes(c.c.revision.in_(wanted))
+        with self._read() as conn:
+            rows = list(conn.execute(query))
+            if len(rows) == max_rows:
+                tail = rows[-1]
+                rows.extend(
+                    conn.execute(
+                        select(c)
+                        .where(
+                            c.c.book_id == self._book_id,
+                            c.c.revision == tail.revision,
+                            c.c.seq > tail.seq,
+                        )
+                        .order_by(c.c.seq)
+                    )
+                )
+        return tuple(Rows.change_from_row(r) for r in rows)
 
     def changes_at(self, revision: int) -> tuple[Change, ...]:
         return self._changes(schema.changes.c.revision == revision)
+
+    def record_command(self, record: CommandRecord) -> None:
+        self._conn.execute(
+            schema.command_results.insert(),
+            Rows.command_to_row(record, self._book_id, at=self._clock.now()),
+        )
+
+    def find_command(self, command_id: UUID) -> CommandRecord | None:
+        c = schema.command_results
+        rows = self._rows(
+            select(c).where(c.c.book_id == self._book_id, c.c.command_id == command_id)
+        )
+        return Rows.command_from_row(rows[0]) if rows else None
 
     def changes_for_entity(self, entity_id: UUID) -> tuple[Change, ...]:
         return self._changes(schema.changes.c.entity_id == entity_id)
@@ -623,11 +778,11 @@ class SqlStore(Store):
 
     def change_count(self) -> int:
         return int(
-            self._conn.execute(
+            self._scalar(
                 select(func.count())
                 .select_from(schema.changes)
                 .where(schema.changes.c.book_id == self._book_id)
-            ).scalar_one()
+            )
         )
 
     def __repr__(self) -> str:

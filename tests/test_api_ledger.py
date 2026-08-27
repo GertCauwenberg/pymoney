@@ -639,6 +639,59 @@ class TestRegister:
         assert len(seen) == 18
         assert len(set(seen)) == 18
 
+    def test_the_running_balance_continues_across_pages(self, ledger: Ledger):
+        """Page two used to start counting from the window's opening balance
+        again, so a register that had been loaded page by page showed a Balance
+        column that was wrong from the second page on."""
+        for day in range(1, 8):
+            ledger.client.post_transaction(
+                f"2026-04-{day:02d}",
+                [
+                    {"account_id": ledger.checking, "value": "-10.00"},
+                    {"account_id": ledger.fuel},
+                ],
+            )
+        running: list[int] = []
+        cursor = None
+        while True:
+            params = {"limit": 3, "start": "2026-04-01"}
+            if cursor:
+                params["cursor"] = cursor
+            page = ledger.client.get(
+                f"/books/{ledger.book_id}/accounts/{ledger.checking}/register",
+                params=params,
+            ).json()
+            running.extend(r["running_balance"]["minor"] for r in page["items"])
+            cursor = page["next_cursor"]
+            if not page["has_more"]:
+                break
+        opening = page["totals"]["opening"]["minor"]
+        assert running == [opening - 1000 * n for n in range(1, 8)]
+        assert running[-1] == page["totals"]["closing"]["minor"]
+
+    def test_the_running_balance_continues_within_a_day(self, ledger: Ledger):
+        """Several rows on the cursor's date: the continuation must count only
+        those before the cursor."""
+        for _ in range(5):
+            ledger.client.post_transaction(
+                "2026-04-01",
+                [
+                    {"account_id": ledger.checking, "value": "-10.00"},
+                    {"account_id": ledger.fuel},
+                ],
+            )
+        base = f"/books/{ledger.book_id}/accounts/{ledger.checking}/register"
+        first = ledger.client.get(base, params={"limit": 2, "start": "2026-04-01"}).json()
+        second = ledger.client.get(
+            base,
+            params={"limit": 2, "start": "2026-04-01", "cursor": first["next_cursor"]},
+        ).json()
+        last_of_first = first["items"][-1]["running_balance"]["minor"]
+        assert [r["running_balance"]["minor"] for r in second["items"]] == [
+            last_of_first - 1000,
+            last_of_first - 2000,
+        ]
+
     def test_include_children(self, ledger: Ledger):
         parent = ledger.client.get(
             f"/books/{ledger.book_id}/accounts/{ledger.checking}"

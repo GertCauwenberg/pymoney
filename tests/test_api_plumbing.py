@@ -334,3 +334,60 @@ class TestRemainingEndpoints:
             "sqlite+pysqlite:////nonexistent/path/db.sqlite"
         )
         assert api.http.get("/health").json()["status"] == "degraded"
+
+
+class TestConnectionHygiene:
+    """The store must not sit on a connection -- or a transaction -- between
+    requests.
+
+    It used to pin one connection for its whole life, and every read on it
+    auto-began a transaction nothing closed. With SQLite that left a stale read
+    snapshot open, so the first write after any *other* connection had written
+    (the session table, another book) failed with "database is locked" -- an
+    error busy_timeout does not retry. It also cost one pool slot per open book.
+    """
+
+    def test_a_read_then_a_foreign_write_then_a_write(self, ledger: Ledger):
+        client = ledger.client
+        # A read that really queries (the account tables are cached, the
+        # ledger is not).
+        assert (
+            client.get(f"/books/{ledger.book_id}/transactions?limit=1").status_code == 200
+        )
+        # Another connection writes to the same file: logging in creates a
+        # session row.
+        client.login(client.email)
+        # The book's next write used to be a 500.
+        response = client.post_transaction(
+            "2026-03-01",
+            [
+                {"account_id": ledger.checking, "value": "-1.00"},
+                {"account_id": ledger.fuel},
+            ],
+        )
+        assert response.status_code == 201, response.text
+
+    def test_no_connection_is_held_between_requests(self, ledger: Ledger):
+        client = ledger.client
+        engine = client.http.app.state.engine
+        client.get(f"/books/{ledger.book_id}/transactions?limit=1")
+        client.post_transaction(
+            "2026-03-01",
+            [
+                {"account_id": ledger.checking, "value": "-1.00"},
+                {"account_id": ledger.fuel},
+            ],
+        )
+        assert engine.pool.checkedout() == 0
+
+    def test_many_books_do_not_exhaust_the_pool(self, registry):
+        """Default QueuePool: 5 + 10 overflow. The 16th open book used to block
+        for the pool timeout and then fail."""
+        ids = [
+            registry.create(name=f"B{i}", base_currency=Commodity.currency("EUR")).id
+            for i in range(20)
+        ]
+        for book_id in ids:
+            with registry.open(book_id) as book:
+                assert book.store.transaction_count() == 0
+        assert registry._engine.pool.checkedout() == 0

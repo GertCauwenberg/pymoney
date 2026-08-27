@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -132,6 +133,92 @@ class TestIdempotency:
             for a in ledger.client.get(f"/books/{ledger.book_id}/accounts").json()
         ]
         assert names.count("Holiday") == 1
+
+    def test_a_key_is_scoped_to_the_caller(self, ledger: Ledger):
+        """Two users of a shared book both sending `Idempotency-Key: 1` are
+        making two requests; the second used to be handed the first's result."""
+        owner = ledger.client
+        body = {
+            "date": "2026-02-01",
+            "legs": [
+                {"account_id": ledger.checking, "value": "-1.00"},
+                {"account_id": ledger.fuel},
+            ],
+        }
+        first = owner.post(
+            f"/books/{ledger.book_id}/transactions",
+            json={**body, "memo": "owner's"},
+            headers={"Idempotency-Key": "1"},
+        )
+        owner.put(
+            f"/books/{ledger.book_id}/grants",
+            json={"subject": "editor@example.invalid", "role": "editor"},
+        )
+        owner.register("editor@example.invalid")  # now authenticated as the editor
+        second = owner.post(
+            f"/books/{ledger.book_id}/transactions",
+            json={**body, "memo": "editor's"},
+            headers={"Idempotency-Key": "1"},
+        )
+        assert second.status_code == 201
+        assert "Idempotency-Replayed" not in second.headers
+        assert second.json()["id"] != first.json()["id"]
+        assert second.json()["memo"] == "editor's"
+
+    def test_a_key_reused_with_a_different_payload_is_refused(self, ledger: Ledger):
+        headers = {"Idempotency-Key": "same-key"}
+        leg = {"account_id": ledger.checking, "value": "-1.00"}
+        first = ledger.client.post(
+            f"/books/{ledger.book_id}/transactions",
+            json={"date": "2026-02-01", "legs": [leg, {"account_id": ledger.fuel}]},
+            headers=headers,
+        )
+        assert first.status_code == 201
+        other = ledger.client.post(
+            f"/books/{ledger.book_id}/transactions",
+            json={"date": "2026-02-01", "legs": [leg, {"account_id": ledger.groceries}]},
+            headers=headers,
+        )
+        assert other.status_code == 409
+        assert "different" in other.json()["error"]["message"]
+        # A different *kind* of command used to be answered with the cached
+        # transaction, which the account route then failed to render as a 404.
+        account = ledger.client.post(
+            f"/books/{ledger.book_id}/accounts",
+            json={"name": "X", "type": "CASH"},
+            headers=headers,
+        )
+        assert account.status_code == 409
+        assert ledger.client.balance(ledger.fuel)["minor"] == 100
+
+    def test_every_write_reports_a_replay(self, ledger: Ledger):
+        headers = {"Idempotency-Key": "rename-once"}
+        url = f"/books/{ledger.book_id}/accounts/{ledger.fuel}/rename"
+        ledger.client.post(url, json={"name": "Petrol"}, headers=headers)
+        again = ledger.client.post(url, json={"name": "Petrol"}, headers=headers)
+        assert again.status_code == 200
+        assert again.headers["Idempotency-Replayed"] == "true"
+
+    def test_a_replay_survives_a_restart(self, ledger: Ledger):
+        """The record is in the database, not in the process."""
+        body = {
+            "date": "2026-02-01",
+            "legs": [
+                {"account_id": ledger.checking, "value": "-7.00"},
+                {"account_id": ledger.fuel},
+            ],
+        }
+        headers = {"Idempotency-Key": "before-the-restart"}
+        url = f"/books/{ledger.book_id}/transactions"
+        first = ledger.client.post(url, json=body, headers=headers)
+        # Drop the open Book and its in-memory cache, as a restart would.
+        registry = ledger.client.http.app.state.registry
+        registry.forget(UUID(ledger.book_id))
+        second = ledger.client.post(url, json=body, headers=headers)
+        assert second.status_code == 201
+        assert second.headers["Idempotency-Replayed"] == "true"
+        assert second.json()["id"] == first.json()["id"]
+        assert ledger.client.balance(ledger.fuel)["minor"] == 700
 
 
 class TestChanges:

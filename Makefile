@@ -75,8 +75,8 @@ serve:  ## Run the API locally (http://127.0.0.1:8000/docs)
 	PYMONEY_CREATE_SCHEMA=1 PYMONEY_COOKIE_SECURE=0 \
 	$(BIN)/uvicorn pymoney.api:app --reload --port 8000
 
-migrate:  ## Apply migrations ($$PYMONEY_DATABASE_URL)
-	$(BIN)/alembic upgrade head
+migrate:  ## Apply migrations ($$PYMONEY_DATABASE_URL); the same command works inside the image
+	$(BIN)/python -m pymoney.store.migrate
 
 migration:  ## Autogenerate a migration: make migration M="what changed"
 	$(BIN)/alembic revision --autogenerate -m "$(M)"

@@ -19,6 +19,7 @@ from pymoney.core import (
     ChangeOp,
     Command,
     CommandError,
+    ConflictError,
     EntityKind,
     LegSpec,
     NotFoundError,
@@ -249,6 +250,84 @@ class TestIdempotency:
         book.execute(command)
         assert len(book.transactions()) == 1
         assert book.balance(chart.checking.id).minor == -4250
+
+    def test_a_key_reused_for_a_different_command_is_refused(self, chart: Chart):
+        """Answering it with the first command's result would hide a client bug
+        behind a success."""
+        book = chart.book
+        key = new_id()
+        book.execute(c.CreateAccount(name="A", type=AccountType.ASSET, command_id=key))
+        with pytest.raises(ConflictError, match="different"):
+            book.execute(
+                c.CreateAccount(name="B", type=AccountType.ASSET, command_id=key)
+            )
+        with pytest.raises(ConflictError):
+            book.execute(c.CreatePayee(name="B", command_id=key))
+        assert book.find_account("B") is None
+        assert book.find_payee("B") is None
+
+    def test_the_fingerprint_ignores_fresh_leg_ids(self, chart: Chart):
+        """Two identical requests build two LegSpecs with two random ids; they
+        are still the same command."""
+        key = new_id()
+
+        def command() -> c.PostTransaction:
+            return c.PostTransaction(
+                date=date(2026, 1, 10),
+                legs=(
+                    LegSpec.of(chart.checking.id, "-1.00"),
+                    LegSpec.of(chart.groceries.id),
+                ),
+                command_id=key,
+            )
+
+        assert c.fingerprint(command()) == c.fingerprint(command())
+        first = chart.book.execute(command())
+        second = chart.book.execute(command())
+        assert second.replayed and second.entity.id == first.entity.id
+
+    def test_the_memory_cache_is_bounded(self, chart: Chart):
+        from pymoney.core import book as book_module
+
+        book = chart.book
+        for i in range(book_module._APPLIED_CACHE_SIZE + 10):
+            book.execute(c.CreatePayee(name=f"P{i}", command_id=new_id()))
+        assert len(book._applied) == book_module._APPLIED_CACHE_SIZE
+
+    def test_a_replay_is_answered_after_a_restart(self, store_backend):
+        """The record lives in the store, in the command's own transaction, so
+        a retry that arrives after the server restarted still does not post
+        twice. The in-memory backend has nothing to reopen, so it is skipped."""
+        from pymoney.core import Commodity
+
+        if store_backend.name == "memory":
+            pytest.skip("a memory store cannot be reopened")
+        from pymoney.store import open_book
+
+        book = store_backend.open(name="R", base_currency=Commodity.currency("EUR"))
+        cash = book.add_account("Cash", AccountType.CASH)
+        food = book.add_account("Food", AccountType.EXPENSE)
+        key = new_id()
+        command = c.PostTransaction(
+            date=date(2026, 1, 10),
+            legs=(LegSpec.of(cash.id, "-5.00"), LegSpec.of(food.id)),
+            command_id=key,
+        )
+        first = book.execute(command)
+        book_id = book.id
+        engine = book.store.engine
+        book.close()
+
+        reopened = open_book(engine, book_id=book_id)
+        replay = reopened.execute(command)
+        assert replay.replayed
+        assert replay.revision == first.revision
+        assert replay.entity.id == first.entity.id
+        assert replay.changes == first.changes
+        assert reopened.balance(cash.id).minor == -500
+        with pytest.raises(ConflictError):
+            reopened.execute(replace(command, memo="something else"))
+        reopened.close()
 
     def test_the_replay_returns_the_original_changes(self, chart: Chart):
         book = chart.book

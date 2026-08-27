@@ -57,7 +57,9 @@ EXPOSE 8000
 
 # The component inventory, not the server: it exits, so it doubles as the
 # image's smoke test (a broken wheel or a missing extra shows up here). Compose
-# overrides it with uvicorn for the api service.
+# overrides it with uvicorn for the api service. Migrations run from the same
+# image with `python -m pymoney.store.migrate`; there is no alembic.ini here and
+# none is needed.
 CMD ["python", "-m", "pymoney"]
 
 # --------------------------------------------------------------------------

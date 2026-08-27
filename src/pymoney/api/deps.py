@@ -254,13 +254,16 @@ OwnedBook = Annotated[Book, Depends(require_role("owner"))]
 # idempotency
 # ==========================================================================
 def idempotency_key(
+    actor: CurrentUser,
     idempotency_key: Annotated[str | None, Header()] = None,
 ) -> UUID | None:
     """Turn the ``Idempotency-Key`` header into a command id.
 
     Replaying a key returns the original result instead of applying the command
     twice -- the mobile-client-on-a-train case. Any string is accepted and
-    hashed deterministically, because clients in the wild do not all send UUIDs.
+    hashed deterministically, because clients in the wild do not all send UUIDs,
+    and the hash is scoped to the caller so one user's key can never replay
+    another's request on a shared book.
     """
     if not idempotency_key:
         return None
@@ -269,7 +272,7 @@ def idempotency_key(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Idempotency-Key must be at most 200 characters",
         )
-    return idempotency_key_to_uuid(idempotency_key)
+    return idempotency_key_to_uuid(idempotency_key, subject=actor.subject)
 
 
 IdempotencyKey = Annotated[UUID | None, Depends(idempotency_key)]

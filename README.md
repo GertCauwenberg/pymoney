@@ -1,8 +1,8 @@
 # PyMoney
 
 Double-entry accounting that runs everywhere. So far: the domain model,
-persistence over SQLite and PostgreSQL, a KMyMoney importer, and the HTTP API.
-No UI yet.
+persistence over SQLite and PostgreSQL, a KMyMoney importer, the HTTP API, and a
+read-only web frontend (reports, registers, transactions).
 
 ```
 src/pymoney/core/               the domain. pure stdlib, no dependencies
@@ -33,6 +33,8 @@ src/pymoney/store/              persistence. SQLAlchemy Core, no ORM mapping
     mapper.py       domain objects <-> rows
     sql.py          SqlStore: the Store contract over a database
     engine.py       engine creation, SQLite pragmas, open_book
+    migrate.py      apply the migrations from an installed package (no alembic.ini)
+    grants.py       who may see a book; the command line for books made outside the API
     migrations/     Alembic
 
 src/pymoney/importers/kmymoney/   migration from KMyMoney
@@ -93,23 +95,31 @@ suite is the evidence for.
 
 ### Containers
 
-Nothing to deploy yet — the core is a library — but the infrastructure is in
-place and exercised by CI:
-
 ```bash
-cp .env.example .env            # then change the password
-docker compose up -d            # PostgreSQL only; that is all that exists
-make image-test                 # build the image and run the suite inside it
+cp .env.example .env                                        # then change the password
+docker compose up -d                                        # PostgreSQL
+docker compose --profile api run --rm api python -m pymoney.store.migrate
+docker compose --profile api up -d                          # the API on 127.0.0.1:8000
+make image-test                                             # run the suite inside the image
 ```
 
-`compose.yaml` has three services. `db` is real and needed from Phase 2, where
-the store layer must pass this same suite against PostgreSQL as well as SQLite;
-its init script creates a separate `pymoney_test` database so tests can never
-touch development data. `tests` runs the suite in the shipped image. `api` is
-wired but **not implemented** — it exists so the environment, dependency
-ordering and port binding are settled before the code lands; its command is
-currently the component inventory, which honestly reports `pymoney.api` as
-missing.
+`compose.yaml` has three services. `db` is PostgreSQL; its init script creates
+a separate `pymoney_test` database so tests can never touch development data.
+`tests` runs the suite in the shipped image. `api` runs uvicorn with a single
+worker — the per-book caches and locks live in the process, so a second worker
+would write behind the first's back.
+
+Migrations are a deployment step, never a start-up side effect (two replicas
+starting together would race through the same DDL). `python -m
+pymoney.store.migrate` builds the Alembic configuration from the installed
+package, so it works inside the image where there is no `alembic.ini`; `make
+migrate` runs the same thing from a checkout.
+
+Registration is closed by default in the compose environment. Either open it
+(`PYMONEY_ALLOW_REGISTRATION=true`) while the household signs up, or create a
+book some other way — the KMyMoney importer's `--owner you@example.org`, or
+`python -m pymoney.store.grants BOOK_ID you@example.org owner` afterwards. A
+book nobody holds a grant on is invisible to every user, by design.
 
 ### CI
 
@@ -217,7 +227,7 @@ pytest                                  # memory + sqlite (the default)
 pytest --stores=postgres                # needs PYMONEY_TEST_DATABASE_URL,
                                         # or falls back to a throwaway pgserver
 make up                                 # PostgreSQL via compose
-alembic upgrade head                    # uses $PYMONEY_DATABASE_URL
+make migrate                            # python -m pymoney.store.migrate, $PYMONEY_DATABASE_URL
 ```
 
 A few tests are memory-only, and deliberately so: `check_integrity` looks for
@@ -229,8 +239,12 @@ damage like a split pointing at no account, and a relational store makes that
 ```bash
 python -m pymoney.importers.kmymoney money.kmy --inspect   # what is in there?
 python -m pymoney.importers.kmymoney money.kmy --dry-run   # what would happen?
-python -m pymoney.importers.kmymoney money.kmy --database ledger.sqlite
+python -m pymoney.importers.kmymoney money.kmy --database ledger.sqlite --owner you@example.org
 ```
+
+`--owner` grants that login owner access in the API; without it the imported
+book exists but nobody can see it (`python -m pymoney.store.grants` fixes that
+later).
 
 The guarantee: the same accounts exist, and **every balance matches the figure
 KMyMoney displayed, to the minor unit.** The importer verifies that itself, on
@@ -315,8 +329,14 @@ of failing; one generic PATCH would be five unrelated failure modes behind a bod
 where every field is optional.
 
 **Every write accepts `Idempotency-Key`.** Any string, hashed deterministically
-into a command id. A replay returns the original result with
-`Idempotency-Replayed: true` and does not burn a revision.
+-- together with the caller's identity, so one user's key can never replay
+another's request -- into a command id. A replay returns the original result
+with `Idempotency-Replayed: true` and does not burn a revision. The record is
+written in the command's own database transaction (`command_results`), so a
+retry that arrives after the server restarted is still answered rather than
+applied twice; and a key reused for a *different* payload is refused with a
+409, because answering it with the first request's result would hide a client
+bug behind a success.
 
 **Every response carries `X-PyMoney-Revision`**, so a client learns it is stale
 from whatever call it happened to make. `GET /books/{id}/changes?since=N` returns
@@ -342,9 +362,15 @@ rather than a user id — which is what lets OIDC slot in later and map a token'
 
 The API keeps **one `Book` object per book id** for the life of the process, with
 **one lock per book held across every request** touching it. That is not a
-workaround — it is decision #14. The store caches the small tables and holds a
-single connection, and the idempotency cache lives on the Book, so reopening per
-request would lose both.
+workaround — it is decision #14. The store caches the small tables, so reopening
+per request would reload them every time.
+
+The store does **not** hold a database connection between commands. One is
+borrowed from the pool for the duration of a unit of work, or for a single read,
+and returned at once; the alternative — a connection pinned for the life of the
+book — left a read transaction open between requests, which on SQLite made the
+next write fail with `database is locked` as soon as any other connection had
+written, and cost a pool slot per open book.
 
 The cost is explicit: requests against the *same* book are serialised; different
 books run concurrently. For a personal finance server that is the right trade
@@ -440,9 +466,9 @@ report hands back the `Conversion` objects it used.
 ## Deliberately not here yet
 
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
-is the naive value-column sum) · budgets · loan amortisation · importers (OFX,
-CSV, KMyMoney XML) · attachments · tags · any UI beyond the reports (see
-[The web frontend](#the-web-frontend)).
+is the naive value-column sum) · budgets · loan amortisation · importers other
+than KMyMoney (OFX, CSV) · attachments · tags · any UI beyond the reports and
+the read-only register (see [The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
 
