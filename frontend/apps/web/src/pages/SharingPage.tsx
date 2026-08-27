@@ -10,8 +10,8 @@ import { useBookContext } from "../reports/useReportParams";
 
 const ROLES: { id: Role; label: string; blurb: string }[] = [
   { id: "viewer", label: "Viewer", blurb: "can see everything, change nothing" },
-  { id: "editor", label: "Editor", blurb: "can also post and edit transactions" },
-  { id: "owner", label: "Owner", blurb: "can also rename the book and manage sharing" },
+  { id: "editor", label: "Editor", blurb: "can also post and edit transactions, and add payees" },
+  { id: "owner", label: "Owner", blurb: "can also manage the accounts, rename the book and manage sharing" },
 ];
 
 /**

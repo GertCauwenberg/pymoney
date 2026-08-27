@@ -98,7 +98,50 @@ Every account name in a report is a link to that account's **register** for
 the same window (the income statement's period, or everything up to the
 balance sheet's as-of date), and every register row links to its
 **transaction** with all its splits, each of which links back to its account's
-register. Read-only for now.
+register.
+
+## Writing
+
+What a user may change follows the server's roles, and the UI shows only what
+the server would accept: a **viewer** sees no write controls; an **editor**
+posts, edits and deletes transactions and can add payees; an **owner** also
+manages the chart of accounts (the `Accounts` tab) and sharing.
+
+- **Posting** (`New transaction` on a register) -- the register's account is
+  the first leg; pick the category for the second, type one amount and leave
+  the other blank: the server fills it with whatever balances the entry, and
+  the form shows that figure as you type. More legs can be added. Amounts are
+  typed as decimals and sent as the strings they are (`packages/core/src/ledger.ts`
+  parses them into BigInt minor units for the running sum; nothing is ever a
+  float). Money into an account is positive, out of it negative, as stored --
+  this is the one place the natural sign is *not* applied, because the form
+  edits the ledger's own figures. A leg whose account is held in another
+  commodity than the transaction currency gets a quantity field. A payee can
+  be created from the payee picker ("New payee…") and is created just before
+  the post. Each form instance sends one `Idempotency-Key`, so a retry after a
+  dropped connection cannot post twice.
+- **Editing** (`Edit` on a transaction) -- the stored splits come back as exact
+  decimals; the whole set of legs is sent again (the server never patches half
+  a transaction), carrying each split's reconciliation mark, action and number
+  so that fixing a memo does not un-clear a split. Reconciled transactions
+  cannot be edited or deleted and the buttons say why.
+- **Accounts** -- create (type, parent of the same class, commodity,
+  placeholder), rename, move, edit the descriptive fields, close or reopen,
+  delete. Each kind of change goes to its own endpoint, in order, stopping at
+  the first the server refuses. Type and commodity are fixed once an account
+  exists, as on the server. The register's `Edit account` link opens the
+  editor for that account (`/accounts?edit=<id>`).
+
+- **Commodities** (the `Commodities` tab; editors and owners) -- add a
+  currency or a security (code, name, kind, smallest unit, symbol, ISIN, quote
+  source), edit the display fields, delete. The smallest unit is fixed once a
+  commodity exists, as on the server, and the list says up front why a delete
+  would be refused (the base currency; accounts still using it).
+
+The form-side checks (`validateDraft`) only catch what would be refused
+anyway -- a missing account, an amount with too many decimals, two blank
+legs, a placeholder or closed account -- so the user hears about it before a
+round trip. The server keeps the final say and its message is shown verbatim.
 
 - **Register** (`/books/:id/accounts/:accountId`) — one row per leg, oldest
   first, with reconciliation mark, running balance, opening and closing
@@ -135,8 +178,12 @@ Create `apps/mobile` (or `apps/desktop`) in this workspace and depend on
 2. An `<ApiProvider client={...}>` at the root.
 3. Screens. `useBalanceSheet`, `useIncomeStatement`, `useHoldings`,
    `useAccounts`, `useCommodities`, `useBooks`, `useSession`, `useLogin`,
-   `useLogout` are all in `@pymoney/core/hooks`; `sectionRows`, `visibleRows`,
-   `periodFor`, `formatAmount`, `rowsToCsv` in `@pymoney/core`.
+   `useLogout`, and the mutations `useCreateTransaction`,
+   `useUpdateTransaction`, `useDeleteTransaction`, `useCreatePayee`,
+   `useChangeAccount`, `useChangeCommodity` are all in `@pymoney/core/hooks`; `sectionRows`,
+   `visibleRows`, `periodFor`, `formatAmount`, `rowsToCsv`, and the
+   transaction-draft helpers (`newDraft`, `validateDraft`, `draftBalance`,
+   `draftToTransactionIn`, `draftFromTransaction`) in `@pymoney/core`.
 
 Nothing in `packages/core` imports from `react-dom`, `react-router` or the DOM
 types; `tsconfig.json` there has `lib: ["ES2022"]` only, so a DOM API creeping

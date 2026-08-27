@@ -351,7 +351,12 @@ export interface paths {
         readonly delete: operations["delete_commodity_books__book_id__commodities__commodity_id__delete"];
         readonly options?: never;
         readonly head?: never;
-        readonly patch?: never;
+        /**
+         * Update a commodity's display fields
+         * @description Name, code, symbol, precision and provenance. The minor unit factor is
+         *     fixed for life: every booked amount is a count of it.
+         */
+        readonly patch: operations["update_commodity_books__book_id__commodities__commodity_id__patch"];
         readonly trace?: never;
     };
     readonly "/books/{book_id}/grants": {
@@ -971,6 +976,28 @@ export interface components {
             readonly revision: number;
             /** Symbol */
             readonly symbol: string | null;
+        };
+        /**
+         * CommodityPatch
+         * @description The display fields of a commodity.
+         *
+         *     Not ``minor_unit_factor``: every booked amount is a count of minor units,
+         *     so changing the factor would reinterpret all of them. Create a new commodity
+         *     instead.
+         */
+        readonly CommodityPatch: {
+            /** Code */
+            readonly code?: string | null;
+            /** Display Precision */
+            readonly display_precision?: number | null;
+            /** Isin */
+            readonly isin?: string | null;
+            /** Name */
+            readonly name?: string | null;
+            /** Quote Source */
+            readonly quote_source?: string | null;
+            /** Symbol */
+            readonly symbol?: string | null;
         };
         /** ConversionOut */
         readonly ConversionOut: {
@@ -1748,7 +1775,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -1804,7 +1831,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -1862,7 +1889,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -1921,7 +1948,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -1979,7 +2006,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2041,7 +2068,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2101,7 +2128,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2165,7 +2192,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2229,7 +2256,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2294,7 +2321,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2355,7 +2382,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2415,7 +2442,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2481,7 +2508,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2545,7 +2572,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2611,7 +2638,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2677,7 +2704,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2743,7 +2770,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2809,7 +2836,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2873,7 +2900,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2943,7 +2970,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3009,7 +3036,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3076,7 +3103,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3137,7 +3164,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3199,7 +3226,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3264,7 +3291,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3325,7 +3352,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3385,7 +3412,73 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly update_commodity_books__book_id__commodities__commodity_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+                readonly commodity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CommodityPatch"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CommodityOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3445,7 +3538,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3509,7 +3602,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3568,7 +3661,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3628,7 +3721,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3691,7 +3784,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3756,7 +3849,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3817,7 +3910,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3877,7 +3970,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -3943,7 +4036,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4009,7 +4102,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4079,7 +4172,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4144,7 +4237,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4204,7 +4297,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4273,7 +4366,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4343,7 +4436,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4409,7 +4502,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4479,7 +4572,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4548,7 +4641,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4613,7 +4706,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4674,7 +4767,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4734,7 +4827,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4800,7 +4893,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4867,7 +4960,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -4922,7 +5015,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this. */
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;

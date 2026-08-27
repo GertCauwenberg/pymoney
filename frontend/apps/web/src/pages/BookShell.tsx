@@ -51,6 +51,12 @@ export function BookShell() {
           <NavLink to="reports/balance-sheet">Balance sheet</NavLink>
           <NavLink to="reports/income-statement">Income statement</NavLink>
           <NavLink to="reports/holdings">Holdings</NavLink>
+          <NavLink to="accounts" end className="tabs__aside">
+            Accounts
+          </NavLink>
+          <NavLink to="commodities" className="tabs__aside">
+            Commodities
+          </NavLink>
           {book.data.role === "owner" && (
             <NavLink to="sharing" className="tabs__aside">
               Sharing

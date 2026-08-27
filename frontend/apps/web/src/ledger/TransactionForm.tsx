@@ -1,0 +1,306 @@
+import {
+  balanceAmount,
+  draftBalance,
+  draftFromTransaction,
+  draftToTransactionIn,
+  emptyLeg,
+  needsQuantity,
+  newDraft,
+  postableAccounts,
+  today,
+  validateDraft,
+} from "@pymoney/core";
+import type { Account, Commodity, DraftProblem, Payee, Transaction, TransactionDraft } from "@pymoney/core";
+import { useCreatePayee, useCreateTransaction, useUpdateTransaction } from "@pymoney/core/hooks";
+import { useMemo, useState, type FormEvent } from "react";
+
+import { ErrorBanner } from "../components/ErrorBanner";
+import { Money } from "../components/Money";
+import { Field } from "../components/fields";
+
+const NEW_PAYEE = "__new__";
+
+/**
+ * Post or edit a transaction.
+ *
+ * Amounts are typed as decimals in the transaction currency and sent as the
+ * strings they are; nothing here is ever a float. Money *into* an account is
+ * positive and money out of it negative, as the ledger stores it -- the
+ * register applies the natural sign for display, a form that edits the
+ * stored figures should not. One leg may be left blank: the server fills it
+ * with whatever balances the entry, and the footer shows what that will be.
+ *
+ * A payee can be created on the spot: pick "New payee…", type the name, and
+ * it is created just before the transaction is posted.
+ */
+export function TransactionForm({
+  bookId,
+  accounts,
+  payees,
+  commodities,
+  currency,
+  existing,
+  defaultAccountId,
+  onSaved,
+  onCancel,
+}: {
+  bookId: string;
+  accounts: readonly Account[];
+  payees: readonly Payee[];
+  commodities: readonly Commodity[];
+  /** The transaction currency: the book's, or the existing transaction's. */
+  currency: Commodity;
+  /** Edit this transaction; omit to post a new one. */
+  existing?: Transaction | undefined;
+  /** For a new transaction: the account whose register we came from. */
+  defaultAccountId?: string | undefined;
+  onSaved: (saved: Transaction) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState<TransactionDraft>(() =>
+    existing ? draftFromTransaction(existing, currency.id) : newDraft(defaultAccountId ?? "", today()),
+  );
+  const [payeeChoice, setPayeeChoice] = useState<string>(draft.payee_id ?? "");
+  const [newPayeeName, setNewPayeeName] = useState("");
+  const [touched, setTouched] = useState(false);
+  // One key per form instance: a retry after a dropped connection posts once.
+  const [idempotencyKey] = useState(() => `web-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+  const create = useCreateTransaction(bookId);
+  const update = useUpdateTransaction(bookId);
+  const createPayee = useCreatePayee(bookId);
+
+  const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
+  const commoditiesById = useMemo(() => new Map(commodities.map((c) => [c.id, c])), [commodities]);
+  const postable = useMemo(() => postableAccounts(accounts), [accounts]);
+  const sortedPayees = useMemo(() => [...payees].sort((a, b) => a.name.localeCompare(b.name)), [payees]);
+
+  const problems = validateDraft(draft, accountsById, currency, commoditiesById);
+  const balance = draftBalance(draft, currency);
+  const creatingPayee = payeeChoice === NEW_PAYEE;
+  const payeeProblem = creatingPayee && newPayeeName.trim() === "" ? "Give the new payee a name." : null;
+  const showQuantity = draft.legs.some((leg) => needsQuantity(leg, accountsById, currency.id));
+  const busy = create.isPending || update.isPending || createPayee.isPending;
+  const error = create.error ?? update.error ?? createPayee.error;
+
+  const setLeg = (index: number, patch: Partial<TransactionDraft["legs"][number]>) =>
+    setDraft((d) => ({ ...d, legs: d.legs.map((leg, i) => (i === index ? { ...leg, ...patch } : leg)) }));
+  const removeLeg = (index: number) => setDraft((d) => ({ ...d, legs: d.legs.filter((_, i) => i !== index) }));
+  const addLeg = () => setDraft((d) => ({ ...d, legs: [...d.legs, emptyLeg()] }));
+
+  const problemsFor = (leg: number | null): DraftProblem[] => problems.filter((p) => p.leg === leg);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setTouched(true);
+    if (problems.length > 0 || payeeProblem) return;
+    let payeeId: string | null = payeeChoice === "" || creatingPayee ? null : payeeChoice;
+    try {
+      if (creatingPayee) {
+        const payee = await createPayee.mutateAsync({
+          name: newPayeeName.trim(),
+          notes: "",
+          address: "",
+          match_keys: [],
+          default_account_id: null,
+        });
+        payeeId = payee.id;
+        // Should the post below fail, the payee exists: keep it selected so a
+        // retry does not try to create it twice.
+        setPayeeChoice(payee.id);
+      }
+      const body = draftToTransactionIn({ ...draft, payee_id: payeeId }, accountsById, currency);
+      const saved = existing
+        ? await update.mutateAsync({
+            transactionId: existing.id,
+            body: { date: body.date, legs: body.legs, memo: body.memo, payee_id: body.payee_id ?? null, number: body.number },
+          })
+        : await create.mutateAsync({ body, idempotencyKey });
+      onSaved(saved);
+    } catch {
+      // Shown through the mutation's error below.
+    }
+  };
+
+  return (
+    <form className="card transaction-form" onSubmit={(e) => void submit(e)} aria-label={existing ? "Edit transaction" : "New transaction"}>
+      <h2>{existing ? "Edit transaction" : "New transaction"}</h2>
+      {error && <ErrorBanner error={error} title={existing ? "Could not save" : "Could not post"} />}
+
+      <div className="field-row">
+        <Field label="Date">
+          <input type="date" required value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
+        </Field>
+        <Field label="Payee">
+          <select
+            value={payeeChoice}
+            onChange={(e) => {
+              setPayeeChoice(e.target.value);
+              if (e.target.value !== NEW_PAYEE) setNewPayeeName("");
+            }}
+          >
+            <option value="">—</option>
+            {sortedPayees.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+            <option value={NEW_PAYEE}>New payee…</option>
+          </select>
+        </Field>
+        {creatingPayee && (
+          <Field label="New payee name">
+            <input type="text" required autoFocus value={newPayeeName} onChange={(e) => setNewPayeeName(e.target.value)} />
+          </Field>
+        )}
+        <Field label="Memo">
+          <input type="text" value={draft.memo} onChange={(e) => setDraft({ ...draft, memo: e.target.value })} />
+        </Field>
+        <Field label="Number" hint="Cheque or reference">
+          <input type="text" value={draft.number} onChange={(e) => setDraft({ ...draft, number: e.target.value })} className="input--short" />
+        </Field>
+      </div>
+
+      <table className="report transaction-form__legs">
+        <thead>
+          <tr>
+            <th scope="col">Account</th>
+            <th scope="col">Leg memo</th>
+            {showQuantity && (
+              <th scope="col" className="num">
+                Quantity
+              </th>
+            )}
+            <th scope="col" className="num">
+              Amount ({currency.code})
+            </th>
+            <th scope="col" />
+          </tr>
+        </thead>
+        <tbody>
+          {draft.legs.map((leg, i) => {
+            const account = accountsById.get(leg.account_id);
+            const legProblems = touched ? problemsFor(i) : [];
+            return (
+              <tr key={leg.key} className={legProblems.length ? "transaction-form__leg--invalid" : undefined}>
+                <td>
+                  <select
+                    aria-label={`Account of leg ${i + 1}`}
+                    value={leg.account_id}
+                    onChange={(e) => setLeg(i, { account_id: e.target.value })}
+                  >
+                    <option value="">Choose an account…</option>
+                    {account && (account.placeholder || account.closed) && (
+                      <option value={account.id} disabled>
+                        {account.path}
+                      </option>
+                    )}
+                    {postable.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.path}
+                        {a.commodity_id !== currency.id ? ` (${a.commodity})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {legProblems.map((p) => (
+                    <div key={p.message} className="field__error" role="alert">
+                      {p.message}
+                    </div>
+                  ))}
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    aria-label={`Memo of leg ${i + 1}`}
+                    value={leg.memo}
+                    onChange={(e) => setLeg(i, { memo: e.target.value })}
+                  />
+                </td>
+                {showQuantity && (
+                  <td className="num">
+                    {account && needsQuantity(leg, accountsById, currency.id) ? (
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="input--amount"
+                        aria-label={`Quantity of leg ${i + 1} in ${account.commodity}`}
+                        placeholder={account.commodity}
+                        value={leg.quantity}
+                        onChange={(e) => setLeg(i, { quantity: e.target.value })}
+                      />
+                    ) : null}
+                  </td>
+                )}
+                <td className="num">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className="input--amount"
+                    aria-label={`Amount of leg ${i + 1}`}
+                    placeholder={balance.blank && leg.value === "" ? "balances" : "0.00"}
+                    value={leg.value}
+                    onChange={(e) => setLeg(i, { value: e.target.value })}
+                  />
+                </td>
+                <td className="num">
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    aria-label={`Remove leg ${i + 1}`}
+                    disabled={draft.legs.length <= 2}
+                    onClick={() => removeLeg(i)}
+                  >
+                    ×
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={showQuantity ? 3 : 2}>
+              <button type="button" className="btn btn--small" onClick={addLeg}>
+                Add leg
+              </button>
+            </td>
+            <td className="num muted">
+              {balance.blank ? (
+                <>
+                  blank leg gets <Money amount={balanceAmount(-balance.sum, currency)} />
+                </>
+              ) : balance.sum === 0n ? (
+                "balanced"
+              ) : (
+                <span className="money--negative">
+                  off by <Money amount={balanceAmount(balance.sum, currency)} />
+                </span>
+              )}
+            </td>
+            <td />
+          </tr>
+        </tfoot>
+      </table>
+      <p className="muted transaction-form__hint">
+        Money into an account is positive, money out of it negative. Leave one amount blank and it takes whatever balances
+        the entry.
+      </p>
+
+      {touched &&
+        [...problemsFor(null), ...(payeeProblem ? [{ leg: null, message: payeeProblem }] : [])].map((p) => (
+          <div key={p.message} className="banner banner--warning" role="alert">
+            {p.message}
+          </div>
+        ))}
+
+      <div className="actions">
+        <button type="submit" className="btn btn--primary" disabled={busy}>
+          {busy ? "…" : existing ? "Save" : "Post"}
+        </button>
+        <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}

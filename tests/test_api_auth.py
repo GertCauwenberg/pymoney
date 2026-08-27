@@ -303,6 +303,8 @@ class TestBookAccess:
     def test_a_viewer_can_read_but_not_write(self, api: Client):
         api.register("owner@example.invalid")
         book_id = api.make_book()
+        cash = api.account("Cash", "CASH")
+        food = api.account("Food", "EXPENSE")
         api.put(
             f"/books/{book_id}/grants",
             json={"subject": "guest@example.invalid", "role": "viewer"},
@@ -311,26 +313,70 @@ class TestBookAccess:
         api.register("guest@example.invalid")
         assert api.get(f"/books/{book_id}/accounts").status_code == 200
         response = api.post(
-            f"/books/{book_id}/accounts", json={"name": "X", "type": "CASH"}
+            f"/books/{book_id}/transactions",
+            json={
+                "date": "2026-01-01",
+                "legs": [
+                    {"account_id": cash["id"], "value": "-1.00"},
+                    {"account_id": food["id"]},
+                ],
+            },
         )
         assert response.status_code == 403
         assert "editor" in response.json()["detail"]
+        assert api.post(f"/books/{book_id}/payees", json={"name": "X"}).status_code == 403
 
-    def test_an_editor_can_write_but_not_grant(self, api: Client):
+    def test_an_editor_posts_but_does_not_reshape_the_chart(self, api: Client):
+        """Transactions and payees are an editor's; the account tree, like
+        sharing, reshapes every report the household sees and is the owner's."""
         api.register("owner@example.invalid")
         book_id = api.make_book()
+        cash = api.account("Cash", "CASH")
+        food = api.account("Food", "EXPENSE")
         api.put(
             f"/books/{book_id}/grants",
             json={"subject": "staff@example.invalid", "role": "editor"},
         )
         api.logout()
         api.register("staff@example.invalid")
-        assert (
-            api.post(
-                f"/books/{book_id}/accounts", json={"name": "X", "type": "CASH"}
-            ).status_code
-            == 201
+        posted = api.post(
+            f"/books/{book_id}/transactions",
+            json={
+                "date": "2026-01-01",
+                "legs": [
+                    {"account_id": cash["id"], "value": "-1.00"},
+                    {"account_id": food["id"]},
+                ],
+            },
         )
+        assert posted.status_code == 201
+        assert (
+            api.post(f"/books/{book_id}/payees", json={"name": "Shop"}).status_code == 201
+        )
+        assert (
+            api.patch(
+                f"/books/{book_id}/transactions/{posted.json()['id']}",
+                json={"memo": "edited"},
+            ).status_code
+            == 200
+        )
+
+        refused = api.post(
+            f"/books/{book_id}/accounts", json={"name": "X", "type": "CASH"}
+        )
+        assert refused.status_code == 403
+        assert "owner" in refused.json()["detail"]
+        for method, url, body in (
+            ("patch", f"/books/{book_id}/accounts/{cash['id']}", {"notes": "n"}),
+            ("post", f"/books/{book_id}/accounts/{cash['id']}/rename", {"name": "Y"}),
+            ("post", f"/books/{book_id}/accounts/{cash['id']}/move", {"parent_id": None}),
+            ("post", f"/books/{book_id}/accounts/{cash['id']}/closed", {"closed": True}),
+            ("delete", f"/books/{book_id}/accounts/{cash['id']}", None),
+        ):
+            response = getattr(api, method)(
+                url, **({} if body is None else {"json": body})
+            )
+            assert response.status_code == 403, (method, url, response.text)
         assert (
             api.put(
                 f"/books/{book_id}/grants",

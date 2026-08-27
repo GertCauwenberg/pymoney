@@ -140,6 +140,50 @@ class TestCommodities:
         assert response.status_code == 409
         assert response.json()["error"]["type"] == "ConflictError"
 
+    def test_patch_the_display_fields(self, ledger: Ledger):
+        """Name, symbol, precision and code can change; the minor unit factor
+        cannot, because every booked amount is a count of it."""
+        url = f"/books/{ledger.book_id}/commodities/{ledger.eur}"
+        response = ledger.client.patch(
+            url, json={"name": "Euro", "symbol": "EUR", "display_precision": 3}
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert (body["name"], body["symbol"], body["display_precision"]) == (
+            "Euro",
+            "EUR",
+            3,
+        )
+        assert body["minor_unit_factor"] == 100
+        # Amounts now render with three decimals, from the same minor units.
+        assert ledger.client.balance(ledger.checking)["text"].endswith(".800")
+
+        assert (
+            ledger.client.patch(url, json={"minor_unit_factor": 1000}).status_code == 422
+        )
+        assert ledger.client.patch(url, json={"symbol": None}).json()["symbol"] is None
+
+    def test_a_patched_code_must_stay_unique(self, ledger: Ledger):
+        created = ledger.client.post(
+            f"/books/{ledger.book_id}/commodities", json={"code": "USD"}
+        ).json()
+        response = ledger.client.patch(
+            f"/books/{ledger.book_id}/commodities/{created['id']}", json={"code": "eur"}
+        )
+        assert response.status_code == 409
+        ok = ledger.client.patch(
+            f"/books/{ledger.book_id}/commodities/{created['id']}", json={"code": "USN"}
+        )
+        assert ok.status_code == 200 and ok.json()["code"] == "USN"
+
+    def test_a_patch_that_changes_nothing_burns_no_revision(self, ledger: Ledger):
+        before = ledger.client.get(f"/books/{ledger.book_id}").json()["revision"]
+        response = ledger.client.patch(
+            f"/books/{ledger.book_id}/commodities/{ledger.eur}", json={"name": "EUR"}
+        )
+        assert response.status_code == 200
+        assert int(response.headers["X-PyMoney-Revision"]) == before
+
     def test_the_base_currency_cannot_be_deleted(self, ledger: Ledger):
         response = ledger.client.delete(
             f"/books/{ledger.book_id}/commodities/{ledger.eur}"

@@ -675,3 +675,44 @@ button:focus-visible {
   background: var(--negative);
   color: #fff;
 }
+
+/* ---- editing ---------------------------------------------------------- */
+
+.transaction-form,
+.account-editor {
+  margin: 1rem 0 1.5rem;
+}
+.transaction-form__legs {
+  margin-top: 0.5rem;
+}
+.transaction-form__legs select,
+.transaction-form__legs input {
+  width: 100%;
+  min-width: 6rem;
+}
+.input--amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  max-width: 10rem;
+}
+.input--short {
+  max-width: 10rem;
+}
+.transaction-form__leg--invalid td {
+  background: color-mix(in srgb, var(--negative) 8%, transparent);
+}
+.field__error {
+  font-size: 0.75rem;
+  color: var(--negative);
+  margin-top: 0.2rem;
+}
+.transaction-form__hint {
+  font-size: 0.8rem;
+  margin: 0.5rem 0;
+}
+.accounts__row--closed td {
+  color: var(--muted);
+}
+.accounts .actions--inline .banner {
+  margin: 0;
+}

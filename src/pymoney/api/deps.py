@@ -38,6 +38,7 @@ __all__ = [
     "Actor",
     "CurrentUser",
     "IdempotencyKey",
+    "OwnedBook",
     "ReadableBook",
     "WritableBook",
     "get_engine",

@@ -81,7 +81,13 @@ TAGS = [
         "description": "Ledgers, and who may read or write each one.",
     },
     {"name": "commodities", "description": "Currencies and securities, uniformly."},
-    {"name": "accounts", "description": "The account tree, and balances."},
+    {
+        "name": "accounts",
+        "description": (
+            "The account tree, and balances. Reading needs `viewer`; changing the "
+            "chart of accounts needs `owner`, because it reshapes every report."
+        ),
+    },
     {"name": "payees", "description": "Payees, and merging duplicates."},
     {
         "name": "transactions",
@@ -111,7 +117,12 @@ TAGS = [
 # Documented on every route, so a client can generate error handling.
 COMMON_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"description": "Not authenticated."},
-    403: {"description": "Authenticated, but not allowed to do this."},
+    403: {
+        "description": (
+            "Authenticated, but not allowed to do this: writes need `editor`, "
+            "changes to the account tree and to sharing need `owner`."
+        )
+    },
     404: {"description": "No such book, or no grant on it."},
     409: {
         "description": (

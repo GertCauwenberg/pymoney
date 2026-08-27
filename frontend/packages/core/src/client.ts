@@ -13,12 +13,16 @@
  */
 import type {
   Account,
+  AccountIn,
+  AccountPatch,
   AccountsQuery,
   BalanceSheet,
   BalanceSheetQuery,
   Book,
   BookIn,
   Commodity,
+  CommodityIn,
+  CommodityPatch,
   Grant,
   GrantIn,
   CommoditiesQuery,
@@ -29,6 +33,7 @@ import type {
   IncomeStatementQuery,
   LoginIn,
   Payee,
+  PayeeIn,
   PayeesQuery,
   Problem,
   RegisterIn,
@@ -36,6 +41,8 @@ import type {
   RegisterQuery,
   Session,
   Transaction,
+  TransactionIn,
+  TransactionUpdateIn,
   User,
 } from "./types";
 
@@ -180,12 +187,13 @@ export class ApiClient {
 
   // -- plumbing ----------------------------------------------------------
 
-  async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async request<T>(method: string, path: string, body?: unknown, idempotencyKey?: string): Promise<T> {
     const headers: Record<string, string> = { Accept: "application/json" };
     const { bearer, csrf } = this.auth.get();
     if (bearer) headers["Authorization"] = `Bearer ${bearer}`;
     else if (csrf && UNSAFE.has(method)) headers["X-CSRF-Token"] = csrf;
     if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
 
     const init: RequestInit = { method, headers, credentials: this.credentialsMode };
     if (body !== undefined) init.body = JSON.stringify(body);
@@ -210,6 +218,10 @@ export class ApiClient {
 
   put<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>("PUT", path, body);
+  }
+
+  patch<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>("PATCH", path, body);
   }
 
   delete<T = void>(path: string): Promise<T> {
@@ -297,12 +309,62 @@ export class ApiClient {
     return this.get<Account>(`/books/${bookId}/accounts/${accountId}`);
   }
 
+  // -- the chart of accounts (owners only) ---------------------------------
+  //
+  // Each structural change is its own endpoint because each has its own rules:
+  // a move can make a cycle, a close needs the children closed first, a delete
+  // needs the account empty. PATCH only touches the descriptive fields.
+
+  createAccount(bookId: string, body: AccountIn): Promise<Account> {
+    return this.post<Account>(`/books/${bookId}/accounts`, body);
+  }
+
+  patchAccount(bookId: string, accountId: string, body: AccountPatch): Promise<Account> {
+    return this.patch<Account>(`/books/${bookId}/accounts/${accountId}`, body);
+  }
+
+  renameAccount(bookId: string, accountId: string, name: string): Promise<Account> {
+    return this.post<Account>(`/books/${bookId}/accounts/${accountId}/rename`, { name });
+  }
+
+  moveAccount(bookId: string, accountId: string, parentId: string | null): Promise<Account> {
+    return this.post<Account>(`/books/${bookId}/accounts/${accountId}/move`, { parent_id: parentId });
+  }
+
+  setAccountClosed(bookId: string, accountId: string, closed: boolean): Promise<Account> {
+    return this.post<Account>(`/books/${bookId}/accounts/${accountId}/closed`, { closed });
+  }
+
+  deleteAccount(bookId: string, accountId: string): Promise<void> {
+    return this.delete(`/books/${bookId}/accounts/${accountId}`);
+  }
+
   commodities(bookId: string, query: CommoditiesQuery = {}): Promise<Commodity[]> {
     return this.get<Commodity[]>(`/books/${bookId}/commodities${queryString(query)}`);
   }
 
+  // -- commodities (editors) ----------------------------------------------
+
+  createCommodity(bookId: string, body: CommodityIn): Promise<Commodity> {
+    return this.post<Commodity>(`/books/${bookId}/commodities`, body);
+  }
+
+  /** Display fields only; the minor unit factor is fixed for life. */
+  patchCommodity(bookId: string, commodityId: string, body: CommodityPatch): Promise<Commodity> {
+    return this.patch<Commodity>(`/books/${bookId}/commodities/${commodityId}`, body);
+  }
+
+  /** Refused (409) while any account or price uses it, or for the base currency. */
+  deleteCommodity(bookId: string, commodityId: string): Promise<void> {
+    return this.delete(`/books/${bookId}/commodities/${commodityId}`);
+  }
+
   payees(bookId: string, query: PayeesQuery = {}): Promise<Payee[]> {
     return this.get<Payee[]>(`/books/${bookId}/payees${queryString(query)}`);
+  }
+
+  createPayee(bookId: string, body: PayeeIn): Promise<Payee> {
+    return this.post<Payee>(`/books/${bookId}/payees`, body);
   }
 
   // -- ledger ------------------------------------------------------------
@@ -319,6 +381,25 @@ export class ApiClient {
 
   transaction(bookId: string, transactionId: string): Promise<Transaction> {
     return this.get<Transaction>(`/books/${bookId}/transactions/${transactionId}`);
+  }
+
+  /**
+   * Post a transaction. The legs are exact decimals as strings; the server
+   * books them and decides where any rounding remainder lands. Pass an
+   * `idempotencyKey` when retrying is possible (a flaky connection), and the
+   * same key will never post twice.
+   */
+  createTransaction(bookId: string, body: TransactionIn, idempotencyKey?: string): Promise<Transaction> {
+    return this.request<Transaction>("POST", `/books/${bookId}/transactions`, body, idempotencyKey);
+  }
+
+  /** Legs, when given, replace the whole set: a transaction is never patched half. */
+  updateTransaction(bookId: string, transactionId: string, body: TransactionUpdateIn): Promise<Transaction> {
+    return this.patch<Transaction>(`/books/${bookId}/transactions/${transactionId}`, body);
+  }
+
+  deleteTransaction(bookId: string, transactionId: string): Promise<void> {
+    return this.delete(`/books/${bookId}/transactions/${transactionId}`);
   }
 
   // -- reports -----------------------------------------------------------

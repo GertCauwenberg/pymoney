@@ -7,6 +7,10 @@ cycle, a close needs its children closed first, a commodity change is refused
 outright once money has been posted. Folding them into one PATCH would mean one
 handler with five unrelated failure modes and a body where every field is
 optional.
+
+Changing the chart of accounts is an **owner's** job. An editor posts and edits
+transactions; renaming, moving, closing or deleting the accounts they post to
+reshapes every report the household shares, so that needs the stronger role.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from fastapi import APIRouter, Query, Response, status
 from ...core import commands as cmd
 from ...core.account import AccountClass, AccountType
 from ...core.commands import UNSET
-from ..deps import IdempotencyKey, ReadableBook, WritableBook
+from ..deps import IdempotencyKey, OwnedBook, ReadableBook
 from ..schemas import (
     AccountBalanceOut,
     AccountIn,
@@ -65,7 +69,7 @@ def list_accounts(
     summary="Create an account",
 )
 def create_account(
-    body: AccountIn, book: WritableBook, response: Response, key: IdempotencyKey
+    body: AccountIn, book: OwnedBook, response: Response, key: IdempotencyKey
 ) -> AccountOut:
     result = book.execute(
         cmd.CreateAccount(
@@ -98,7 +102,7 @@ def get_account(account_id: UUID, book: ReadableBook, response: Response) -> Acc
 def update_account(
     account_id: UUID,
     body: AccountPatch,
-    book: WritableBook,
+    book: OwnedBook,
     response: Response,
     key: IdempotencyKey,
 ) -> AccountOut:
@@ -123,7 +127,7 @@ def update_account(
 def rename_account(
     account_id: UUID,
     body: RenameIn,
-    book: WritableBook,
+    book: OwnedBook,
     response: Response,
     key: IdempotencyKey,
 ) -> AccountOut:
@@ -142,7 +146,7 @@ def rename_account(
 def move_account(
     account_id: UUID,
     body: MoveAccountIn,
-    book: WritableBook,
+    book: OwnedBook,
     response: Response,
     key: IdempotencyKey,
 ) -> AccountOut:
@@ -159,7 +163,7 @@ def move_account(
 def set_closed(
     account_id: UUID,
     body: SetClosedIn,
-    book: WritableBook,
+    book: OwnedBook,
     response: Response,
     key: IdempotencyKey,
 ) -> AccountOut:
@@ -178,7 +182,7 @@ def set_closed(
 def set_commodity(
     account_id: UUID,
     body: SetCommodityIn,
-    book: WritableBook,
+    book: OwnedBook,
     response: Response,
     key: IdempotencyKey,
 ) -> AccountOut:
@@ -199,7 +203,7 @@ def set_commodity(
 def merge_accounts(
     account_id: UUID,
     body: MergeAccountsIn,
-    book: WritableBook,
+    book: OwnedBook,
     response: Response,
     key: IdempotencyKey,
 ) -> AccountOut:
@@ -215,7 +219,7 @@ def merge_accounts(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an empty account",
 )
-def delete_account(account_id: UUID, book: WritableBook, key: IdempotencyKey) -> None:
+def delete_account(account_id: UUID, book: OwnedBook, key: IdempotencyKey) -> None:
     book.execute(cmd.DeleteAccount(account_id=account_id, command_id=key))
 
 

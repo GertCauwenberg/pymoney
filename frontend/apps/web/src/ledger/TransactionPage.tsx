@@ -1,7 +1,7 @@
 import { formatRate } from "@pymoney/core";
 import type { Split } from "@pymoney/core";
-import { useAccounts, usePayees, useTransaction } from "@pymoney/core/hooks";
-import { useMemo } from "react";
+import { useAccounts, useCommodities, useDeleteTransaction, usePayees, useTransaction } from "@pymoney/core/hooks";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -9,21 +9,29 @@ import { Loading } from "../components/Loading";
 import { Money } from "../components/Money";
 import { useBookContext } from "../reports/useReportParams";
 import { ReconcileMark } from "./ReconcileMark";
+import { TransactionForm } from "./TransactionForm";
+
+const CAN_WRITE = new Set(["editor", "owner"]);
 
 /**
- * One transaction, every leg. Read-only for now.
+ * One transaction, every leg. Editors and owners can edit or delete it, unless
+ * a split is reconciled -- then the server refuses and the buttons say why.
  *
  * Values are shown as stored: debits positive, credits negative, and they
  * sum to zero in the transaction currency -- that is what double entry means,
  * and a detail view is the one place not to hide it behind natural signs.
  */
 export function TransactionPage() {
-  const { bookId } = useBookContext();
+  const { bookId, role } = useBookContext();
   const { transactionId = "" } = useParams();
   const tx = useTransaction(bookId, transactionId);
   const accounts = useAccounts(bookId, { include_closed: true });
   const payees = usePayees(bookId);
+  const commodities = useCommodities(bookId);
+  const remove = useDeleteTransaction(bookId);
   const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   const accountsById = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.id, a])), [accounts.data]);
   const payeesById = useMemo(() => new Map((payees.data ?? []).map((p) => [p.id, p.name])), [payees.data]);
@@ -40,6 +48,15 @@ export function TransactionPage() {
   const payee = t.payee_id ? payeesById.get(t.payee_id) : undefined;
   const sum = t.splits.reduce((acc, s) => acc + s.value.minor, 0);
   const currency = t.splits[0]?.value;
+  const canWrite = role !== null && CAN_WRITE.has(role);
+  const lockedHint = t.locked ? "A reconciled transaction cannot be changed; unreconcile its splits first." : undefined;
+  const txCurrency = commodities.data?.find((c) => c.id === t.currency_id);
+  const firstAccount = t.splits[0]?.account_id;
+
+  const onDelete = () =>
+    remove.mutate(t.id, {
+      onSuccess: () => void navigate(firstAccount ? `../accounts/${firstAccount}` : "../reports/balance-sheet"),
+    });
 
   return (
     <article className="report-page transaction">
@@ -48,7 +65,7 @@ export function TransactionPage() {
           <p className="breadcrumbs muted">
             <Link to="../reports/balance-sheet">Reports</Link> › Transaction
           </p>
-          <h1>{payee ?? t.memo ?? "Transaction"}</h1>
+          <h1>{payee ?? (t.memo || "Transaction")}</h1>
           <p className="muted">
             {t.date}
             {t.number && ` · no. ${t.number}`}
@@ -61,11 +78,48 @@ export function TransactionPage() {
           <button type="button" className="btn" onClick={() => void navigate(-1)}>
             ← Back
           </button>
+          {canWrite && !editing && (
+            <>
+              <button type="button" className="btn btn--primary" disabled={t.locked} title={lockedHint} onClick={() => setEditing(true)}>
+                Edit
+              </button>
+              {confirming ? (
+                <span className="actions actions--inline">
+                  <span className="muted">Delete this transaction?</span>
+                  <button type="button" className="btn btn--small btn--danger" disabled={remove.isPending} onClick={onDelete}>
+                    Yes, delete
+                  </button>
+                  <button type="button" className="btn btn--small" onClick={() => setConfirming(false)}>
+                    No
+                  </button>
+                </span>
+              ) : (
+                <button type="button" className="btn btn--danger" disabled={t.locked} title={lockedHint} onClick={() => setConfirming(true)}>
+                  Delete
+                </button>
+              )}
+            </>
+          )}
           <button type="button" className="btn" onClick={() => window.print()}>
             Print
           </button>
         </div>
       </header>
+
+      {remove.error && <ErrorBanner error={remove.error} title="Could not delete" />}
+
+      {editing && accounts.data && payees.data && commodities.data && txCurrency && (
+        <TransactionForm
+          bookId={bookId}
+          accounts={accounts.data}
+          payees={payees.data}
+          commodities={commodities.data}
+          currency={txCurrency}
+          existing={t}
+          onSaved={() => setEditing(false)}
+          onCancel={() => setEditing(false)}
+        />
+      )}
 
       <dl className="facts">
         <div>

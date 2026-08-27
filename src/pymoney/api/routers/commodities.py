@@ -7,9 +7,10 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Response, status
 
 from ...core import commands as cmd
+from ...core.commands import UNSET
 from ...core.commodity import CommodityKind
 from ..deps import IdempotencyKey, ReadableBook, WritableBook
-from ..schemas import CommodityIn, CommodityOut
+from ..schemas import CommodityIn, CommodityOut, CommodityPatch
 from ._shared import set_revision
 
 router = APIRouter(prefix="/books/{book_id}/commodities", tags=["commodities"])
@@ -62,6 +63,37 @@ def get_commodity(
 ) -> CommodityOut:
     set_revision(response, book)
     return CommodityOut.of(book.commodity(commodity_id))
+
+
+@router.patch(
+    "/{commodity_id}",
+    response_model=CommodityOut,
+    summary="Update a commodity's display fields",
+)
+def update_commodity(
+    commodity_id: UUID,
+    body: CommodityPatch,
+    book: WritableBook,
+    response: Response,
+    key: IdempotencyKey,
+) -> CommodityOut:
+    """Name, code, symbol, precision and provenance. The minor unit factor is
+    fixed for life: every booked amount is a count of it."""
+    fields = body.model_dump(exclude_unset=True)
+    result = book.execute(
+        cmd.UpdateCommodity(
+            commodity_id=commodity_id,
+            code=fields.get("code", UNSET),
+            name=fields.get("name", UNSET),
+            symbol=fields.get("symbol", UNSET),
+            display_precision=fields.get("display_precision", UNSET),
+            isin=fields.get("isin", UNSET),
+            quote_source=fields.get("quote_source", UNSET),
+            command_id=key,
+        )
+    )
+    set_revision(response, book, result)
+    return CommodityOut.of(result.entity)
 
 
 @router.delete(

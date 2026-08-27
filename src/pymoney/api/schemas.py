@@ -54,6 +54,7 @@ __all__ = [
     "ChangeOut",
     "CommodityIn",
     "CommodityOut",
+    "CommodityPatch",
     "Exact",
     "LegIn",
     "LoginIn",
@@ -297,6 +298,22 @@ class CommodityIn(In):
         if self.minor_unit_factor is not None:
             return self.minor_unit_factor
         return 10 ** (self.scale if self.scale is not None else 2)
+
+
+class CommodityPatch(In):
+    """The display fields of a commodity.
+
+    Not ``minor_unit_factor``: every booked amount is a count of minor units,
+    so changing the factor would reinterpret all of them. Create a new commodity
+    instead.
+    """
+
+    code: str | None = Field(default=None, min_length=1, max_length=32)
+    name: str | None = None
+    symbol: str | None = None
+    display_precision: int | None = Field(default=None, ge=0, le=12)
+    isin: str | None = None
+    quote_source: str | None = None
 
 
 class CommodityOut(Out):

@@ -1,7 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { RequireAuth } from "./components/RequireAuth";
+import { AccountsPage } from "./pages/AccountsPage";
 import { BookShell } from "./pages/BookShell";
+import { CommoditiesPage } from "./pages/CommoditiesPage";
 import { BooksPage } from "./pages/BooksPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFound } from "./pages/NotFound";
@@ -26,6 +28,8 @@ export function App() {
           <Route path="reports/income-statement" element={<IncomeStatementReport />} />
           <Route path="reports/holdings" element={<HoldingsReport />} />
           <Route path="sharing" element={<SharingPage />} />
+          <Route path="accounts" element={<AccountsPage />} />
+          <Route path="commodities" element={<CommoditiesPage />} />
           <Route path="accounts/:accountId" element={<AccountRegisterPage />} />
           <Route path="transactions/:transactionId" element={<TransactionPage />} />
         </Route>

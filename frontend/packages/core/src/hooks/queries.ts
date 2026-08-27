@@ -2,17 +2,24 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 
 import { ApiError } from "../client";
 import type {
+  AccountIn,
+  AccountPatch,
   AccountsQuery,
   BalanceSheetQuery,
   BookIn,
   CommoditiesQuery,
+  CommodityIn,
+  CommodityPatch,
   GrantIn,
   HoldingsQuery,
   IncomeStatementQuery,
   LoginIn,
+  PayeeIn,
   PayeesQuery,
   RegisterIn,
   RegisterQuery,
+  TransactionIn,
+  TransactionUpdateIn,
   User,
 } from "../types";
 import { useApi } from "./provider";
@@ -245,5 +252,120 @@ export function useDeleteGrant(bookId: string) {
       // Revoking your own grant changes what /books returns.
       void qc.invalidateQueries({ queryKey: keys.books });
     },
+  });
+}
+
+// -- writes to the ledger ---------------------------------------------------
+//
+// Invalidation is deliberately broad. A posted transaction moves every balance,
+// every report and the register of each account it touches; an account change
+// alters every path. Refetching a book's queries is cheap next to getting one
+// of them wrong, and the server's revision header would show the staleness.
+
+function useInvalidateBook(bookId: string) {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: ["books", bookId] });
+    void qc.invalidateQueries({ queryKey: keys.books });
+  };
+}
+
+/** Every structural change to an account, behind one hook. */
+export type AccountChange =
+  | { kind: "create"; body: AccountIn }
+  | { kind: "patch"; accountId: string; body: AccountPatch }
+  | { kind: "rename"; accountId: string; name: string }
+  | { kind: "move"; accountId: string; parentId: string | null }
+  | { kind: "closed"; accountId: string; closed: boolean }
+  | { kind: "delete"; accountId: string };
+
+export function useChangeAccount(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: async (change: AccountChange) => {
+      switch (change.kind) {
+        case "create":
+          return api.createAccount(bookId, change.body);
+        case "patch":
+          return api.patchAccount(bookId, change.accountId, change.body);
+        case "rename":
+          return api.renameAccount(bookId, change.accountId, change.name);
+        case "move":
+          return api.moveAccount(bookId, change.accountId, change.parentId);
+        case "closed":
+          return api.setAccountClosed(bookId, change.accountId, change.closed);
+        case "delete":
+          await api.deleteAccount(bookId, change.accountId);
+          return null;
+      }
+    },
+    onSuccess: invalidate,
+  });
+}
+
+export function useCreatePayee(bookId: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PayeeIn) => api.createPayee(bookId, body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["books", bookId, "payees"] }),
+  });
+}
+
+export function useCreateTransaction(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: ({ body, idempotencyKey }: { body: TransactionIn; idempotencyKey?: string }) =>
+      api.createTransaction(bookId, body, idempotencyKey),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateTransaction(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: ({ transactionId, body }: { transactionId: string; body: TransactionUpdateIn }) =>
+      api.updateTransaction(bookId, transactionId, body),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteTransaction(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: (transactionId: string) => api.deleteTransaction(bookId, transactionId),
+    onSuccess: invalidate,
+  });
+}
+
+export type CommodityChange =
+  | { kind: "create"; body: CommodityIn }
+  | { kind: "patch"; commodityId: string; body: CommodityPatch }
+  | { kind: "delete"; commodityId: string };
+
+/**
+ * Commodities are embedded in every amount the book hands out, so a changed
+ * symbol or precision shows up everywhere: invalidate the whole book.
+ */
+export function useChangeCommodity(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: async (change: CommodityChange) => {
+      switch (change.kind) {
+        case "create":
+          return api.createCommodity(bookId, change.body);
+        case "patch":
+          return api.patchCommodity(bookId, change.commodityId, change.body);
+        case "delete":
+          await api.deleteCommodity(bookId, change.commodityId);
+          return null;
+      }
+    },
+    onSuccess: invalidate,
   });
 }

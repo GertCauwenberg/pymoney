@@ -353,7 +353,10 @@ credentials. Passwords are scrypt with per-user salts and the parameters stored
 alongside each hash; session tokens are stored only as a SHA-256 digest, so a
 leaked database yields no live sessions.
 
-Per-book grants are `viewer` / `editor` / `owner`, keyed on a *subject string*
+Per-book grants are `viewer` / `editor` / `owner`: a viewer reads, an editor
+also posts and edits transactions and adds payees, an owner also changes the
+chart of accounts (which reshapes every report the household shares), renames
+the book and manages sharing. They are keyed on a *subject string*
 rather than a user id — which is what lets OIDC slot in later and map a token's
 `sub` claim onto the same grants. A book you hold no grant on is a 404, not a
 403: whether it exists is itself information.
@@ -467,8 +470,9 @@ report hands back the `Conversion` objects it used.
 
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · importers other
-than KMyMoney (OFX, CSV) · attachments · tags · any UI beyond the reports and
-the read-only register (see [The web frontend](#the-web-frontend)).
+than KMyMoney (OFX, CSV) · attachments · tags · a UI for reconciliation,
+prices and payee management (see
+[The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
 
@@ -496,10 +500,12 @@ platform-agnostic client -- types generated from `docs/openapi.json`, the HTTP
 client with cookie+CSRF and bearer-token modes, exact (BigInt) money formatting,
 period presets and React Query hooks -- with no DOM dependency, so the mobile
 and desktop apps to come reuse it whole. `@pymoney/web` is the React web app
-built on it, currently the three reports: balance sheet, income statement and
-holdings, each with currency translation, a traceable list of the rates used,
-CSV export and print styles -- plus read-only drill-down from any report row to
-the account's register and from any register row to the transaction. `make web-check` is what CI runs; it fails if the
+built on it: the three reports (balance sheet, income statement and holdings,
+each with currency translation, a traceable list of the rates used, CSV export
+and print styles), drill-down from any report row to the account's register and
+from any register row to the transaction, and -- by role -- posting, editing and
+deleting transactions with payees created on the spot and managing commodities
+(editors), and managing the chart of accounts (owners). `make web-check` is what CI runs; it fails if the
 generated types no longer match the committed OpenAPI document.
 
 See [frontend/README.md](frontend/README.md).

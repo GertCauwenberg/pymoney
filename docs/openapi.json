@@ -764,6 +764,84 @@
         "title": "CommodityOut",
         "type": "object"
       },
+      "CommodityPatch": {
+        "additionalProperties": false,
+        "description": "The display fields of a commodity.\n\nNot ``minor_unit_factor``: every booked amount is a count of minor units,\nso changing the factor would reinterpret all of them. Create a new commodity\ninstead.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "display_precision": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Precision"
+          },
+          "isin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isin"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "quote_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Source"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          }
+        },
+        "title": "CommodityPatch",
+        "type": "object"
+      },
       "ConversionOut": {
         "additionalProperties": false,
         "properties": {
@@ -2642,7 +2720,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -2705,7 +2783,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -2775,7 +2853,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -2821,7 +2899,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -2895,7 +2973,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -2973,7 +3051,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -3053,7 +3131,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -3141,7 +3219,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -3267,7 +3345,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -3371,7 +3449,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -3470,7 +3548,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -3558,7 +3636,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -3672,7 +3750,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -3781,7 +3859,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -3897,7 +3975,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -4013,7 +4091,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -4129,7 +4207,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -4245,7 +4323,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -4355,7 +4433,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -4528,7 +4606,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -4644,7 +4722,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -4777,7 +4855,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -4866,7 +4944,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -4966,7 +5044,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5070,7 +5148,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5169,7 +5247,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5257,7 +5335,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5270,6 +5348,121 @@
           }
         },
         "summary": "One commodity",
+        "tags": [
+          "commodities"
+        ]
+      },
+      "patch": {
+        "description": "Name, code, symbol, precision and provenance. The minor unit factor is\nfixed for life: every booked amount is a count of it.",
+        "operationId": "update_commodity_books__book_id__commodities__commodity_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "commodity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Commodity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommodityPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommodityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Update a commodity's display fields",
         "tags": [
           "commodities"
         ]
@@ -5341,7 +5534,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5429,7 +5622,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5511,7 +5704,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5596,7 +5789,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5698,7 +5891,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5802,7 +5995,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5901,7 +6094,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -5989,7 +6182,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -6103,7 +6296,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -6219,7 +6412,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -6435,7 +6628,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -6539,7 +6732,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -6707,7 +6900,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -6806,7 +6999,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -6997,7 +7190,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -7148,7 +7341,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -7347,7 +7540,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -7532,7 +7725,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -7636,7 +7829,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -7735,7 +7928,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -7823,7 +8016,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -7937,7 +8130,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -8063,7 +8256,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -8100,7 +8293,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this."
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -8137,7 +8330,7 @@
       "name": "commodities"
     },
     {
-      "description": "The account tree, and balances.",
+      "description": "The account tree, and balances. Reading needs `viewer`; changing the chart of accounts needs `owner`, because it reshapes every report.",
       "name": "accounts"
     },
     {

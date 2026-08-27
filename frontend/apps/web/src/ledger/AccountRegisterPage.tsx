@@ -1,7 +1,7 @@
 import { formatAmount, naturalSign } from "@pymoney/core";
 import type { Account, Amount, RegisterRow } from "@pymoney/core";
-import { useAccount, useAccounts, useLedger, usePayees } from "@pymoney/core/hooks";
-import { useMemo } from "react";
+import { useAccount, useAccounts, useCommodities, useLedger, usePayees } from "@pymoney/core/hooks";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -11,6 +11,9 @@ import { ReportActions } from "../components/ReportActions";
 import { DateField, Toggle } from "../components/fields";
 import { useBookContext, useReportParams } from "../reports/useReportParams";
 import { ReconcileMark } from "./ReconcileMark";
+import { TransactionForm } from "./TransactionForm";
+
+const CAN_WRITE = new Set(["editor", "owner"]);
 
 const DEFAULTS = { start: "", end: "", children: false };
 
@@ -23,13 +26,18 @@ const DEFAULTS = { start: "", end: "", children: false };
  * the figure that was clicked on there.
  */
 export function AccountRegisterPage() {
-  const { bookId } = useBookContext();
+  const { bookId, baseCurrencyId, role } = useBookContext();
   const { accountId = "" } = useParams();
   const [params, update] = useReportParams(DEFAULTS);
+  const [adding, setAdding] = useState(false);
 
   const account = useAccount(bookId, accountId);
   const accounts = useAccounts(bookId, { include_closed: true });
   const payees = usePayees(bookId);
+  const commodities = useCommodities(bookId);
+  const currency = commodities.data?.find((c) => c.id === baseCurrencyId);
+  const canWrite = role !== null && CAN_WRITE.has(role);
+  const canPost = canWrite && account.data !== undefined && !account.data.closed && !account.data.placeholder;
   const query = useMemo(
     () => ({
       ...(params.start ? { start: params.start } : {}),
@@ -83,8 +91,33 @@ export function AccountRegisterPage() {
             {ledger.isPlaceholderData && " · updating…"}
           </p>
         </div>
-        <ReportActions csv={csv} filename={`register-${account.data?.name ?? accountId}.csv`} />
+        <div className="actions">
+          {canPost && !adding && (
+            <button type="button" className="btn btn--primary" onClick={() => setAdding(true)}>
+              New transaction
+            </button>
+          )}
+          {role === "owner" && (
+            <Link to={`../accounts?edit=${accountId}`} className="btn">
+              Edit account
+            </Link>
+          )}
+          <ReportActions csv={csv} filename={`register-${account.data?.name ?? accountId}.csv`} />
+        </div>
       </header>
+
+      {adding && accounts.data && payees.data && commodities.data && currency && (
+        <TransactionForm
+          bookId={bookId}
+          accounts={accounts.data}
+          payees={payees.data}
+          commodities={commodities.data}
+          currency={currency}
+          defaultAccountId={accountId}
+          onSaved={() => setAdding(false)}
+          onCancel={() => setAdding(false)}
+        />
+      )}
 
       <form className="toolbar" onSubmit={(e) => e.preventDefault()}>
         <DateField label="From" value={params.start} max={params.end || undefined} onChange={(start) => update({ start })} allowEmpty />
