@@ -11,11 +11,14 @@
     "dev": "npm run dev --workspace @pymoney/web",
     "build": "npm run build --workspace @pymoney/web",
     "preview": "npm run preview --workspace @pymoney/web",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p e2e/tsconfig.json",
     "test": "vitest run",
-    "check": "npm run generate && git diff --exit-code -- packages/core/src/generated && npm run typecheck && npm test && npm run build"
+    "check": "npm run generate && git diff --exit-code -- packages/core/src/generated && npm run typecheck && npm test && npm run build",
+    "e2e": "playwright test --config e2e/playwright.config.ts",
+    "e2e:install": "playwright install --with-deps chromium"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.6",

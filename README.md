@@ -553,7 +553,10 @@ from any register row to the transaction, and -- by role -- posting, editing and
 deleting transactions with payees created on the spot, managing commodities and
 prices, and fetching quotes (editors), and managing the chart of accounts
 (owners). `make web-check` is what CI runs; it fails if the
-generated types no longer match the committed OpenAPI document.
+generated types no longer match the committed OpenAPI document. `make e2e` runs
+the Playwright walkthroughs -- a real browser against the real API and app,
+from registering to posting and deleting a transaction; see
+[frontend/README.md](frontend/README.md#end-to-end-tests).
 
 See [frontend/README.md](frontend/README.md).
 

@@ -12,7 +12,7 @@ COMPOSE ?= docker compose
         serve migrate \
         migration clean \
         up down logs db-shell image image-test compose-config \
-        web-install web-dev web-build web-test web-check seed-demo
+        web-install web-dev web-build web-test web-check seed-demo e2e e2e-install
 
 help:  ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -135,3 +135,14 @@ web-check:  ## Everything frontend CI checks: generated types are current, typec
 
 seed-demo:  ## Create a small fully-priced demo book through a running API (see scripts/seed_demo.py)
 	$(BIN)/python scripts/seed_demo.py
+
+# --- end-to-end -------------------------------------------------------------
+# A real browser against the real API and the real web app. Playwright starts
+# both servers itself (fresh SQLite database, registration open); nothing else
+# needs to be running. See frontend/README.md, "End-to-end tests".
+
+e2e-install:  ## Download Playwright's Chromium (once; CI does this too)
+	$(NPM) run e2e:install
+
+e2e:  ## Browser walkthroughs: register, create a book, share, post, edit, delete
+	$(NPM) run e2e

@@ -88,7 +88,7 @@ export function BalanceSheetReport() {
             sections={sections}
             emptyMessage={
               accounts.data?.length === 0
-                ? "This book has no accounts yet. Creating accounts and posting transactions from here is coming; for now the API (or a KMyMoney import) fills a book."
+                ? "This book has no accounts yet. An owner creates them under Accounts; then post transactions from an account's register."
                 : undefined
             }
             linkFor={(row) => `../accounts/${row.account_id}?end=${asOf}`}

@@ -33,7 +33,56 @@ origin: no CORS, no cookie-domain settings. See `apps/web/vite.config.ts` and
 make web-check             # what CI runs: generated types current, typecheck, tests, build
 make web-test              # just the tests
 make web-build             # production build -> apps/web/dist
+make e2e                   # browser walkthroughs against the real API (see below)
 ```
+
+## End-to-end tests
+
+The unit and component tests above run against a fake server. `e2e/` holds
+the walkthroughs that do not: a real Chromium, driven by Playwright, against
+the real API (uvicorn, a fresh SQLite file in a temporary directory,
+registration open, the session cookie allowed over plain HTTP, the quote
+scheduler off) and the real web app (Vite, proxying `/api` exactly as `make
+web-dev` does). Playwright starts and stops both servers; nothing needs to be
+running beforehand, and the run never touches a development database.
+
+```bash
+make install                 # the API's virtualenv, if not already there
+make web-install
+make e2e-install             # once: Playwright's Chromium
+make e2e                     # or: cd frontend && npm run e2e
+```
+
+What they walk through:
+
+- `onboarding.spec.ts` -- a new user registers, lands on "create your first
+  book", creates it, sees the owner-only tabs, shares the book read-only with
+  a second address, cannot demote or remove herself as the last owner; the
+  second person registers and finds the book, without the owner's controls;
+  logging out and back in. Plus: a wrong password shows the server's words.
+- `ledger.spec.ts` -- an owner creates a credit card and a restaurant
+  category, opens the card's register, posts a dinner against the restaurant
+  with a payee created on the spot and the second leg left to balance, reads
+  the row with the card's natural sign and the running balance, opens the
+  transaction and sees the stored figures balance, edits the memo, finds the
+  debt on the balance sheet and the expense on the income statement, and
+  deletes the transaction.
+- `prices.spec.ts` -- an editor adds a currency with a manual quote source
+  (the picker offers the installed providers), enters a price as an exact
+  ratio, and sees it listed as theirs with the ratio intact.
+
+Knobs, all environment variables: `PYMONEY_E2E_PYTHON` (the interpreter with
+PyMoney installed; default `.venv/bin/python` at the repository root),
+`PYMONEY_E2E_API_PORT` / `PYMONEY_E2E_WEB_PORT` (8765 / 5174), and
+`PYMONEY_E2E_BROWSER` -- the path of a Chrome or Chromium of your own, for a
+machine where Playwright's download is not possible (the tests were first run
+that way, with `--no-sandbox`). A failed test leaves a trace in
+`e2e/test-results/`; `npx playwright show-trace <trace.zip>` replays it. In CI
+the `e2e` job runs these after the unit tests, with an HTML report as an
+artifact.
+
+These are deliberately few and long: each is one person doing one real thing
+from start to finish, which is what the component tests cannot show.
 
 ## The contract
 

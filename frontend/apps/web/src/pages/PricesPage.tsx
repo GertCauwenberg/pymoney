@@ -42,7 +42,6 @@ export function PricesPage() {
   const asQuote = useMemo(() => (params.commodity ? { quote_id: params.commodity } : {}), [params.commodity]);
   const prices = usePrices(bookId, query);
   const pricesAsQuote = usePrices(bookId, asQuote);
-  const byId = useMemo(() => new Map((commodities.data ?? []).map((c) => [c.id, c])), [commodities.data]);
 
   const rows = useMemo(() => {
     const seen = new Map<string, Price>();
@@ -153,7 +152,7 @@ export function PricesPage() {
                 </tr>
               )}
               {rows.map((p) => (
-                <PriceRow key={p.id} price={p} bookId={bookId} canWrite={canWrite} byId={byId} />
+                <PriceRow key={p.id} price={p} bookId={bookId} canWrite={canWrite} />
               ))}
             </tbody>
           </table>
@@ -195,20 +194,9 @@ function RunReport({ run, fresh }: { run: QuoteRun; fresh: boolean }) {
   );
 }
 
-function PriceRow({
-  price,
-  bookId,
-  canWrite,
-  byId,
-}: {
-  price: Price;
-  bookId: string;
-  canWrite: boolean;
-  byId: Map<string, Commodity>;
-}) {
+function PriceRow({ price, bookId, canWrite }: { price: Price; bookId: string; canWrite: boolean }) {
   const change = useChangePrice(bookId);
   const [confirming, setConfirming] = useState(false);
-  const quote = byId.get(price.quote_id);
   return (
     <tr className={price.source === "user" ? "prices__row--user" : undefined}>
       <td>{price.effective_date}</td>
@@ -216,7 +204,7 @@ function PriceRow({
         1 {price.base} in {price.quote}
       </td>
       <td className="num" title={`${price.rate.num}/${price.rate.den}`}>
-        {formatRate(price.rate, quote ? Math.max(quote.display_precision, 4) : 6)}
+        {formatRate(price.rate, 6)}
       </td>
       <td className="muted">{price.source}</td>
       <td className="muted">{new Date(price.as_of).toLocaleString()}</td>
