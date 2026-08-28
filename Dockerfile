@@ -47,7 +47,7 @@ RUN groupadd --system --gid 1001 pymoney \
 COPY --from=builder /dist/*.whl /tmp/
 # The `api`, `store` and `postgres` extras: the domain core needs nothing, but an
 # image that cannot serve or reach a database is not worth deploying.
-RUN pip install --no-cache-dir "$(echo /tmp/*.whl)[api,postgres]" \
+RUN pip install --no-cache-dir "$(echo /tmp/*.whl)[api,store,postgres]" \
     && rm -f /tmp/*.whl
 
 USER pymoney

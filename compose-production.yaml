@@ -1,0 +1,35 @@
+services:
+  api:
+    image: pymoney:runtime
+    container_name: pymoney-api
+    environment:
+      PYMONEY_DATABASE_URL: >-
+        postgresql://${PYMONEY_USER:-pymoney}:${PYMONEY_PASSWORD}@${POSTGRES_HOST:-localhost}:5432/${PYMONEY_DB:-pymoney}
+      # Behind a TLS-terminating proxy, keep this on: it marks the session
+      # cookie Secure. Turn it off only for plain-HTTP local work.
+      PYMONEY_COOKIE_SECURE: ${PYMONEY_COOKIE_SECURE:-true}
+      PYMONEY_ALLOW_REGISTRATION: ${PYMONEY_ALLOW_REGISTRATION:-false}
+      PYMONEY_CORS_ORIGINS: ${PYMONEY_CORS_ORIGINS:-[]}
+    command:
+      - uvicorn 
+      - pymoney.api:app
+      - --host
+      - 0.0.0.0
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          with urllib.request.urlopen("http://localhost:8000/health") as r:
+              sys.exit(0 if r.status == 200 else 1)
+      interval: 10s
+  frontend:
+    image: pymoney-frontend
+    container_name: pymoney-frontend
+    ports:
+      - "${PYMONEY_WEB_PORT:-80}:80"
+    depends_on:
+      api:
+        condition: service_healthy

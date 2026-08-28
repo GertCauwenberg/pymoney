@@ -35,7 +35,12 @@ api = [
     "pydantic-settings>=2.5",
     "uvicorn[standard]>=0.30",
 ]
-postgres = ["psycopg[binary]>=3.1"]
+postgres = ["psycopg[binary]>=3.1", "psycopg2-binary>=2.9"]
+local = [
+    # Starts a throwaway PostgreSQL server, so the PostgreSQL suite runs
+    # without Docker. CI uses a real service container instead.
+    "pgserver",
+]
 dev = [
     "pymoney-core[store,postgres,api]",
     "pytest>=8",
@@ -43,9 +48,6 @@ dev = [
     "hypothesis>=6",
     "ruff>=0.8",
     "mypy>=1.13",
-    # Starts a throwaway PostgreSQL server, so the PostgreSQL suite runs
-    # without Docker. CI uses a real service container instead.
-    "pgserver",
     "httpx>=0.27",
 ]
 
