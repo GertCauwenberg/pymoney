@@ -163,7 +163,14 @@ class ValuationPolicy:
     knowledge_time: datetime | None = None
     """Ignore prices we learned after this instant.  ``None`` means "latest"."""
     sources: tuple[str, ...] = ()
-    """Admissible sources, most preferred first.  Empty tuple means "any"."""
+    """Admissible sources, most preferred first.
+
+    Empty means "any", with one built-in preference: a price the user entered
+    by hand (:attr:`PriceSource.USER`) outranks a fetched quote for the same
+    date.  Someone who typed a rate in meant it to be used; a quote fetched
+    later that day must not silently displace it.  Name the sources explicitly
+    to rank them some other way.
+    """
     restrict_to_sources: bool = False
     """If true, prices from sources outside :attr:`sources` are unusable."""
     prefer_source_over_recency: bool = False
@@ -212,10 +219,14 @@ class ValuationPolicy:
 
     def rank(self, price: Price) -> tuple:
         """Sort key; larger is better."""
-        try:
-            source_rank = len(self.sources) - self.sources.index(price.source)
-        except ValueError:
-            source_rank = 0
+        if not self.sources:
+            # The default: a hand-entered price wins the day over a fetched one.
+            source_rank = 1 if price.source == PriceSource.USER else 0
+        else:
+            try:
+                source_rank = len(self.sources) - self.sources.index(price.source)
+            except ValueError:
+                source_rank = 0
         if self.prefer_source_over_recency:
             return (source_rank, price.effective_date, price.as_of, price.id.int)
         return (price.effective_date, source_rank, price.as_of, price.id.int)

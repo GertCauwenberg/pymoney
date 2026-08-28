@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     root_path: str = ""
     """Set when mounted behind a prefix-stripping proxy."""
 
+    quote_interval_minutes: int = Field(default=360, ge=0)
+    """How often the scheduler fetches quotes for every book. 0 turns it off;
+    `POST /books/{id}/quotes/fetch` and `python -m pymoney.quotes` still work."""
+    quote_lookback_days: int = Field(default=7, ge=0, le=3650)
+    """How far back a commodity's first fetch reaches. Backfill further by hand."""
+    quote_plugins: list[str] = Field(default_factory=list)
+    """Extra quote providers as `module:Class` references (see pymoney.quotes.registry)."""
+
     def production_warnings(self) -> list[str]:
         """Settings that are fine locally and wrong in production."""
         problems = []

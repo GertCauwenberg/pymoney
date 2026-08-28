@@ -1,6 +1,6 @@
 import { decimalsOf } from "@pymoney/core";
 import type { Account, Commodity, CommodityKind } from "@pymoney/core";
-import { useAccounts, useChangeCommodity, useCommodities } from "@pymoney/core/hooks";
+import { useAccounts, useChangeCommodity, useCommodities, useQuoteProviders } from "@pymoney/core/hooks";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
@@ -96,6 +96,7 @@ export function CommoditiesPage() {
                 Minor units
               </th>
               <th scope="col">ISIN</th>
+              <th scope="col">Quotes</th>
               <th scope="col" className="num">
                 Accounts
               </th>
@@ -153,6 +154,7 @@ function CommodityRow({
         {commodity.minor_unit_factor}
       </td>
       <td className="muted">{commodity.isin ?? ""}</td>
+      <td className="muted">{commodity.quote_source ?? "manual"}</td>
       <td className="num">{accounts}</td>
       {canWrite && (
         <td className="num">
@@ -197,6 +199,7 @@ function CommodityRow({
 
 function CommodityEditor({ bookId, existing, onDone }: { bookId: string; existing?: Commodity; onDone: () => void }) {
   const change = useChangeCommodity(bookId);
+  const providers = useQuoteProviders();
   const [code, setCode] = useState(existing?.code ?? "");
   const [name, setName] = useState(existing?.name ?? "");
   const [kind, setKind] = useState<CommodityKind>(existing?.kind ?? "CURRENCY");
@@ -312,8 +315,25 @@ function CommodityEditor({ bookId, existing, onDone }: { bookId: string; existin
         <Field label="ISIN">
           <input type="text" maxLength={32} value={isin} onChange={(e) => setIsin(e.target.value)} />
         </Field>
-        <Field label="Quote source" hint="Price provider to poll, e.g. ecb, yahoo">
-          <input type="text" maxLength={64} value={quoteSource} onChange={(e) => setQuoteSource(e.target.value)} />
+        <Field
+          label="Quote source"
+          hint={
+            providers.data?.find((p) => p.name === quoteSource)?.description ??
+            "Where the server fetches prices from, on its schedule. Manual: you enter them."
+          }
+        >
+          <select value={quoteSource} onChange={(e) => setQuoteSource(e.target.value)} disabled={providers.isPending}>
+            <option value="">Manual (no fetching)</option>
+            {providers.data?.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.name}
+              </option>
+            ))}
+            {/* A source the server no longer has a provider for still shows, so it can be cleared. */}
+            {quoteSource && providers.data && !providers.data.some((p) => p.name === quoteSource) && (
+              <option value={quoteSource}>{quoteSource} (not installed)</option>
+            )}
+          </select>
         </Field>
       </div>
       <div className="actions">

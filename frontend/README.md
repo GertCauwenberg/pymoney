@@ -138,6 +138,17 @@ manages the chart of accounts (the `Accounts` tab) and sharing.
   commodity exists, as on the server, and the list says up front why a delete
   would be refused (the base currency; accounts still using it).
 
+- **Prices** (the `Prices` tab) -- the history with each price's pair, exact
+  rate (the `num/den` is the tooltip), source and the moment it became known;
+  a filter by commodity on either side of the pair. Editors add a price by
+  hand (a decimal or an exact ratio like `10/9`, sent as typed; stored as
+  `user`, which the server ranks above any fetched quote for the same day) and
+  delete one. The fetching panel shows which commodities the server fetches
+  for and from where, runs a fetch now or a backfill from a date, and shows the
+  run's report -- stored, unchanged, and problems per provider and commodity --
+  or the last scheduled run's. The commodity editor's quote source is a choice
+  of the installed providers (`GET /quote-providers`) or manual.
+
 The form-side checks (`validateDraft`) only catch what would be refused
 anyway -- a missing account, an amount with too many decimals, two blank
 legs, a placeholder or closed account -- so the user hears about it before a
@@ -180,7 +191,8 @@ Create `apps/mobile` (or `apps/desktop`) in this workspace and depend on
    `useAccounts`, `useCommodities`, `useBooks`, `useSession`, `useLogin`,
    `useLogout`, and the mutations `useCreateTransaction`,
    `useUpdateTransaction`, `useDeleteTransaction`, `useCreatePayee`,
-   `useChangeAccount`, `useChangeCommodity` are all in `@pymoney/core/hooks`; `sectionRows`,
+   `useChangeAccount`, `useChangeCommodity`, `usePrices`, `useChangePrice`,
+   `useQuoteProviders`, `useFetchQuotes`, `useLastQuoteRun` are all in `@pymoney/core/hooks`; `sectionRows`,
    `visibleRows`, `periodFor`, `formatAmount`, `rowsToCsv`, and the
    transaction-draft helpers (`newDraft`, `validateDraft`, `draftBalance`,
    `draftToTransactionIn`, `draftFromTransaction`) in `@pymoney/core`.

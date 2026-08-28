@@ -35,7 +35,14 @@ import type {
   Payee,
   PayeeIn,
   PayeesQuery,
+  Price,
+  PriceIn,
+  PricePage,
+  PricesQuery,
   Problem,
+  QuoteFetchIn,
+  QuoteProvider,
+  QuoteRun,
   RegisterIn,
   RegisterPage,
   RegisterQuery,
@@ -400,6 +407,34 @@ export class ApiClient {
 
   deleteTransaction(bookId: string, transactionId: string): Promise<void> {
     return this.delete(`/books/${bookId}/transactions/${transactionId}`);
+  }
+
+  // -- prices and quotes ---------------------------------------------------
+
+  prices(bookId: string, query: PricesQuery = {}): Promise<PricePage> {
+    return this.get<PricePage>(`/books/${bookId}/prices${queryString(query)}`);
+  }
+
+  /** A hand-entered price: `source` "user", which outranks fetched quotes for the day. */
+  createPrice(bookId: string, body: PriceIn): Promise<Price> {
+    return this.post<Price>(`/books/${bookId}/prices`, body);
+  }
+
+  deletePrice(bookId: string, priceId: string): Promise<void> {
+    return this.delete(`/books/${bookId}/prices/${priceId}`);
+  }
+
+  quoteProviders(): Promise<QuoteProvider[]> {
+    return this.get<QuoteProvider[]>("/quote-providers");
+  }
+
+  /** Run the quote service now; the report comes back, failures included. */
+  fetchQuotes(bookId: string, body: QuoteFetchIn = {}): Promise<QuoteRun> {
+    return this.post<QuoteRun>(`/books/${bookId}/quotes/fetch`, body);
+  }
+
+  lastQuoteRun(bookId: string): Promise<QuoteRun | null> {
+    return this.get<QuoteRun | null>(`/books/${bookId}/quotes/last`);
   }
 
   // -- reports -----------------------------------------------------------

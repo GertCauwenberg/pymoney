@@ -25,7 +25,6 @@ from ..deps import IdempotencyKey, ReadableBook, WritableBook
 from ..schemas import (
     AmountOut,
     LegIn,
-    Page,
     ReconcileIn,
     ReconcileStateName,
     RegisterPage,
@@ -34,6 +33,7 @@ from ..schemas import (
     SetSplitStateIn,
     TransactionIn,
     TransactionOut,
+    TransactionPage,
     TransactionUpdateIn,
     to_fraction,
 )
@@ -60,7 +60,7 @@ def _legs(legs: list[LegIn]) -> tuple[LegSpec, ...]:
     )
 
 
-@router.get("/transactions", response_model=Page, summary="List transactions")
+@router.get("/transactions", response_model=TransactionPage, summary="List transactions")
 def list_transactions(
     book: ReadableBook,
     response: Response,
@@ -70,7 +70,7 @@ def list_transactions(
     end: date | None = Query(default=None, description="Inclusive post date."),
     cursor: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1),
-) -> Page:
+) -> TransactionPage:
     set_revision(response, book)
     size = page_size(limit, 100, 500)
     position = decode_cursor(cursor)
@@ -98,7 +98,7 @@ def list_transactions(
         if has_more and window
         else None
     )
-    return Page(
+    return TransactionPage(
         items=[TransactionOut.of(t) for t in window],
         next_cursor=next_cursor,
         has_more=has_more,

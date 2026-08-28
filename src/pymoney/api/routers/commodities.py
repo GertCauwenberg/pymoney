@@ -2,18 +2,40 @@
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from ...core import commands as cmd
 from ...core.commands import UNSET
 from ...core.commodity import CommodityKind
-from ..deps import IdempotencyKey, ReadableBook, WritableBook
+from ...quotes import QuoteService
+from ..deps import IdempotencyKey, ReadableBook, WritableBook, get_quotes
 from ..schemas import CommodityIn, CommodityOut, CommodityPatch
 from ._shared import set_revision
 
 router = APIRouter(prefix="/books/{book_id}/commodities", tags=["commodities"])
+
+# Starlette renamed this status constant; 422 is the number either way.
+UNPROCESSABLE = 422
+
+
+def _check_quote_source(source: str | None, quotes: QuoteService) -> None:
+    """A quote source names an installed provider, or nothing.
+
+    The domain accepts any string (an importer has to round-trip whatever a
+    file says), but a user setting one by hand gets told now rather than
+    finding out when the scheduler reports "no such provider".
+    """
+    if source and source not in quotes.registry:
+        raise HTTPException(
+            status_code=UNPROCESSABLE,
+            detail=(
+                f"no quote provider called {source!r}; installed: "
+                f"{', '.join(quotes.registry.names) or 'none'}"
+            ),
+        )
 
 
 @router.get("", response_model=list[CommodityOut], summary="List commodities")
@@ -39,7 +61,9 @@ def create_commodity(
     book: WritableBook,
     response: Response,
     key: IdempotencyKey,
+    quotes: Annotated[QuoteService, Depends(get_quotes)],
 ) -> CommodityOut:
+    _check_quote_source(body.quote_source, quotes)
     result = book.execute(
         cmd.CreateCommodity(
             code=body.code,
@@ -76,10 +100,12 @@ def update_commodity(
     book: WritableBook,
     response: Response,
     key: IdempotencyKey,
+    quotes: Annotated[QuoteService, Depends(get_quotes)],
 ) -> CommodityOut:
     """Name, code, symbol, precision and provenance. The minor unit factor is
     fixed for life: every booked amount is a count of it."""
     fields = body.model_dump(exclude_unset=True)
+    _check_quote_source(fields.get("quote_source"), quotes)
     result = book.execute(
         cmd.UpdateCommodity(
             commodity_id=commodity_id,

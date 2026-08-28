@@ -277,6 +277,33 @@ class TestSourcePreference:
         )
         assert db.direct(eur, usd, policy).rate == F(111, 100)
 
+    def test_a_hand_entered_price_wins_the_day_by_default(self, eur, usd):
+        """A quote fetched later the same day must not displace what the user
+        typed in; the policy has to say so explicitly to rank it otherwise."""
+        later = datetime(2026, 1, 5, 18, tzinfo=timezone.utc)
+        db = PriceDB(
+            [
+                price(eur, usd, "1.10", on=D0, source=PriceSource.USER),
+                Price.of(
+                    eur,
+                    usd,
+                    "1.12",
+                    effective_date=D0,
+                    as_of=later,
+                    source=PriceSource.ECB,
+                ),
+            ]
+        )
+        assert db.direct(eur, usd, ValuationPolicy(as_of=D0)).rate == F(110, 100)
+        # A newer *date* still wins: the rule is about the same day only.
+        db.add(price(eur, usd, "1.13", on=date(2026, 1, 6), source=PriceSource.ECB))
+        assert db.direct(eur, usd, ValuationPolicy(as_of=date(2026, 1, 6))).rate == F(
+            113, 100
+        )
+        # Naming the sources replaces the default.
+        explicit = ValuationPolicy(as_of=D0, sources=(PriceSource.ECB,))
+        assert db.direct(eur, usd, explicit).rate == F(112, 100)
+
     def test_restricting_sources_excludes_everything_else(self, db, eur, usd):
         policy = ValuationPolicy(
             as_of=date(2026, 1, 31),

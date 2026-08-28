@@ -92,6 +92,10 @@ services:
       PYMONEY_COOKIE_SECURE: ${PYMONEY_COOKIE_SECURE:-true}
       PYMONEY_ALLOW_REGISTRATION: ${PYMONEY_ALLOW_REGISTRATION:-false}
       PYMONEY_CORS_ORIGINS: ${PYMONEY_CORS_ORIGINS:-[]}
+      # Quote fetching: how often (minutes; 0 turns the scheduler off) and any
+      # extra providers as module:Class references.
+      PYMONEY_QUOTE_INTERVAL_MINUTES: ${PYMONEY_QUOTE_INTERVAL_MINUTES:-360}
+      PYMONEY_QUOTE_PLUGINS: ${PYMONEY_QUOTE_PLUGINS:-[]}
     ports:
       - "127.0.0.1:${PYMONEY_API_PORT:-8000}:8000"
     healthcheck:

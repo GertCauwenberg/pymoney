@@ -29,6 +29,7 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import Engine, select, update
 
 from ..core.book import Book
+from ..quotes import QuoteService
 from ..store import identity
 from .registry import BookRegistry
 from .security import hash_token, idempotency_key_to_uuid
@@ -42,6 +43,7 @@ __all__ = [
     "ReadableBook",
     "WritableBook",
     "get_engine",
+    "get_quotes",
     "get_registry",
     "get_settings_dep",
     "require_role",
@@ -66,6 +68,10 @@ def get_registry(request: Request) -> BookRegistry:
 
 def get_settings_dep(request: Request) -> Settings:
     return request.app.state.settings
+
+
+def get_quotes(request: Request) -> QuoteService:
+    return request.app.state.quotes
 
 
 # ==========================================================================

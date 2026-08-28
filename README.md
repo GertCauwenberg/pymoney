@@ -37,6 +37,15 @@ src/pymoney/store/              persistence. SQLAlchemy Core, no ORM mapping
     grants.py       who may see a book; the command line for books made outside the API
     migrations/     Alembic
 
+src/pymoney/quotes/               price quotes
+    provider.py     the QuoteProvider interface: one request in, exact quotes out
+    ecb.py          ECB daily reference rates (currencies, exact decimals)
+    yahoo.py        Yahoo Finance closes (securities; floats, rounded to Yahoo's own precision)
+    registry.py     built-ins plus plugins: entry points or PYMONEY_QUOTE_PLUGINS
+    service.py      plan, fetch, de-duplicate, store as Prices; the run report
+    scheduler.py    the periodic thread inside the API process
+    __main__.py     the command line, for cron and backfills
+
 src/pymoney/importers/kmymoney/   migration from KMyMoney
     model.py        the file's own structures, unintepreted
     parser.py       .kmy reading: gzip, XML, streamed transactions
@@ -470,8 +479,8 @@ report hands back the `Conversion` objects it used.
 
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · importers other
-than KMyMoney (OFX, CSV) · attachments · tags · a UI for reconciliation,
-prices and payee management (see
+than KMyMoney (OFX, CSV) · attachments · tags · a UI for reconciliation
+and payee management (see
 [The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
@@ -486,6 +495,43 @@ earned a second covering index yet.
 
 And from the importer: **per-point rounding corrections** (see above), and
 reading KMyMoney's SQL storage backend rather than only `.kmy` files.
+
+## Quotes
+
+```bash
+python -m pymoney.quotes --list-providers
+python -m pymoney.quotes --url ledger.sqlite                 # what is new since last time
+python -m pymoney.quotes --url ledger.sqlite --start 2020-01-01   # backfill
+```
+
+A commodity whose `quote_source` names a provider gets priced automatically.
+Two providers ship: **`ecb`** for currencies (the European Central Bank's daily
+reference rates, published as decimal text and therefore stored exactly; always
+against EUR, so a book kept in another currency needs a EUR commodity and the
+valuation engine triangulates) and **`yahoo`** for securities (the commodity's
+code is the Yahoo symbol; Yahoo hands out binary floats, which are rounded to
+the precision Yahoo itself declares for the instrument and stored as that
+decimal). A third kind is yours: subclass `QuoteProvider` -- one `fetch`
+method, a page of code -- and register it through the
+`pymoney.quote_providers` entry point or `PYMONEY_QUOTE_PLUGINS=module:Class`.
+
+Fetched prices are ordinary prices: `source` is the provider's name, `as_of`
+is the instant of the fetch (decision #9 -- knowledge time *is* `fetched_at`),
+and the rate is the exact rational the provider built from its text. A quote
+identical to one already stored for that day and source is skipped, so runs
+are idempotent; a different one is a new row, never an edit, so a report pinned
+to an earlier `knowledge_time` still shows what was known then. A price the
+user entered by hand is never touched, and the default valuation policy ranks
+it above any fetched quote for the same day.
+
+The API server runs the service on a schedule (`PYMONEY_QUOTE_INTERVAL_MINUTES`,
+default 360, `0` to disable) in a thread that takes each book's lock exactly as
+a request would; `POST /books/{id}/quotes/fetch` runs it on demand with an
+optional backfill range, `GET /books/{id}/quotes/last` shows the last report,
+and `GET /quote-providers` lists what `quote_source` may be set to. The command
+line is for cron and one-off backfills **when the server is not running**
+against the same database, since the server's caches assume they are the only
+writer.
 
 ## The web frontend
 
@@ -504,8 +550,9 @@ built on it: the three reports (balance sheet, income statement and holdings,
 each with currency translation, a traceable list of the rates used, CSV export
 and print styles), drill-down from any report row to the account's register and
 from any register row to the transaction, and -- by role -- posting, editing and
-deleting transactions with payees created on the spot and managing commodities
-(editors), and managing the chart of accounts (owners). `make web-check` is what CI runs; it fails if the
+deleting transactions with payees created on the spot, managing commodities and
+prices, and fetching quotes (editors), and managing the chart of accounts
+(owners). `make web-check` is what CI runs; it fails if the
 generated types no longer match the committed OpenAPI document.
 
 See [frontend/README.md](frontend/README.md).

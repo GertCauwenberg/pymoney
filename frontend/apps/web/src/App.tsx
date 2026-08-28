@@ -4,6 +4,7 @@ import { RequireAuth } from "./components/RequireAuth";
 import { AccountsPage } from "./pages/AccountsPage";
 import { BookShell } from "./pages/BookShell";
 import { CommoditiesPage } from "./pages/CommoditiesPage";
+import { PricesPage } from "./pages/PricesPage";
 import { BooksPage } from "./pages/BooksPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFound } from "./pages/NotFound";
@@ -30,6 +31,7 @@ export function App() {
           <Route path="sharing" element={<SharingPage />} />
           <Route path="accounts" element={<AccountsPage />} />
           <Route path="commodities" element={<CommoditiesPage />} />
+          <Route path="prices" element={<PricesPage />} />
           <Route path="accounts/:accountId" element={<AccountRegisterPage />} />
           <Route path="transactions/:transactionId" element={<TransactionPage />} />
         </Route>

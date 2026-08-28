@@ -16,6 +16,9 @@ import type {
   LoginIn,
   PayeeIn,
   PayeesQuery,
+  PriceIn,
+  PricesQuery,
+  QuoteFetchIn,
   RegisterIn,
   RegisterQuery,
   TransactionIn,
@@ -45,6 +48,9 @@ export const keys = {
     ["books", bookId, "accounts", accountId, "register", q] as const,
   transaction: (bookId: string, transactionId: string) =>
     ["books", bookId, "transactions", transactionId] as const,
+  prices: (bookId: string, q: Omit<PricesQuery, "cursor">) => ["books", bookId, "prices", q] as const,
+  lastQuoteRun: (bookId: string) => ["books", bookId, "quotes", "last"] as const,
+  quoteProviders: ["quote-providers"] as const,
 };
 
 /**
@@ -367,5 +373,57 @@ export function useChangeCommodity(bookId: string) {
       }
     },
     onSuccess: invalidate,
+  });
+}
+
+// -- prices and quotes --------------------------------------------------------
+
+export function useQuoteProviders() {
+  const api = useApi();
+  return useQuery({ queryKey: keys.quoteProviders, queryFn: () => api.quoteProviders(), staleTime: Infinity });
+}
+
+/** Price history, page by page; filters are part of the key. */
+export function usePrices(bookId: string, query: Omit<PricesQuery, "cursor"> = {}) {
+  const api = useApi();
+  return useInfiniteQuery({
+    queryKey: keys.prices(bookId, query),
+    queryFn: ({ pageParam }) => api.prices(bookId, pageParam ? { ...query, cursor: pageParam } : query),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => (last.has_more ? (last.next_cursor ?? null) : null),
+  });
+}
+
+export type PriceChange = { kind: "create"; body: PriceIn } | { kind: "delete"; priceId: string };
+
+/** Prices feed every valuation: a change invalidates the book. */
+export function useChangePrice(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: async (change: PriceChange) => {
+      if (change.kind === "create") return api.createPrice(bookId, change.body);
+      await api.deletePrice(bookId, change.priceId);
+      return null;
+    },
+    onSuccess: invalidate,
+  });
+}
+
+export function useLastQuoteRun(bookId: string) {
+  const api = useApi();
+  return useQuery({ queryKey: keys.lastQuoteRun(bookId), queryFn: () => api.lastQuoteRun(bookId) });
+}
+
+export function useFetchQuotes(bookId: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: (body: QuoteFetchIn = {}) => api.fetchQuotes(bookId, body),
+    onSuccess: (run) => {
+      qc.setQueryData(keys.lastQuoteRun(bookId), run);
+      invalidate();
+    },
   });
 }

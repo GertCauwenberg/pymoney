@@ -73,6 +73,7 @@ function mount(fetch: typeof globalThis.fetch, role = "editor") {
 const reads: Record<string, Handler> = {
   "GET /books/b1/commodities": () => ({ body: commodities }),
   "GET /books/b1/accounts": () => ({ body: accounts }),
+  "GET /quote-providers": () => ({ body: [{ name: "ecb", description: "ECB" }, { name: "yahoo", description: "Yahoo" }] }),
 };
 
 describe("CommoditiesPage", () => {
@@ -106,7 +107,9 @@ describe("CommoditiesPage", () => {
     await user.type(within(form).getByLabelText("Code"), "msft");
     await user.type(within(form).getByLabelText("Name"), "Microsoft");
     await user.type(within(form).getByLabelText("ISIN"), "US5949181045");
-    await user.type(within(form).getByLabelText("Quote source"), "yahoo");
+    const source = within(form).getByLabelText("Quote source");
+    await waitFor(() => expect(within(source).getAllByRole("option")).toHaveLength(3));
+    await user.selectOptions(source, "yahoo");
     await user.click(within(form).getByRole("button", { name: "Create commodity" }));
 
     await waitFor(() => expect(screen.queryByRole("form", { name: "New commodity" })).toBeNull());

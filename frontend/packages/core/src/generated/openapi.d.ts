@@ -520,6 +520,44 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/books/{book_id}/quotes/fetch": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Fetch quotes now, optionally backfilling
+         * @description Runs synchronously under the book's lock and returns the report. A
+         *     provider failing is a problem in the report, not an error response.
+         */
+        readonly post: operations["fetch_quotes_books__book_id__quotes_fetch_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/quotes/last": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** The last quote run for this book, if any since the server started */
+        readonly get: operations["last_run_books__book_id__quotes_last_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/books/{book_id}/reports/balance-sheet": {
         readonly parameters: {
             readonly query?: never;
@@ -638,6 +676,26 @@ export interface paths {
          *     not healthy however well the process is running.
          */
         readonly get: operations["health_health_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/quote-providers": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * The installed quote providers
+         * @description What a commodity's `quote_source` may be set to.
+         */
+        readonly get: operations["list_providers_quote_providers_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -1211,24 +1269,6 @@ export interface components {
              */
             readonly parent_id: string | null;
         };
-        /**
-         * Page
-         * @description One page of a list. Keyset cursors, so inserts cannot shift a page.
-         */
-        readonly Page: {
-            /**
-             * Has More
-             * @default false
-             */
-            readonly has_more: boolean;
-            /** Items */
-            readonly items: readonly unknown[];
-            /**
-             * Next Cursor
-             * @description Pass as `cursor` for the next page. Null when exhausted.
-             */
-            readonly next_cursor?: string | null;
-        };
         /** PayeeIn */
         readonly PayeeIn: {
             /**
@@ -1353,6 +1393,103 @@ export interface components {
             readonly revision: number;
             /** Source */
             readonly source: string;
+        };
+        /** PricePage */
+        readonly PricePage: {
+            /**
+             * Has More
+             * @default false
+             */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["PriceOut"][];
+            /**
+             * Next Cursor
+             * @description Pass as `cursor` for the next page. Null when exhausted.
+             */
+            readonly next_cursor?: string | null;
+        };
+        /**
+         * QuoteFetchIn
+         * @description Run the quote service now. Everything is optional: the default run asks
+         *     each provider for what it has not given yet.
+         */
+        readonly QuoteFetchIn: {
+            /**
+             * Commodity Ids
+             * @description Only these commodities.
+             */
+            readonly commodity_ids?: readonly string[] | null;
+            /**
+             * End
+             * @description Up to this date; default today.
+             */
+            readonly end?: string | null;
+            /**
+             * Providers
+             * @description Only these providers.
+             */
+            readonly providers?: readonly string[] | null;
+            /**
+             * Start
+             * @description Backfill from this date.
+             */
+            readonly start?: string | null;
+        };
+        /** QuoteProblemOut */
+        readonly QuoteProblemOut: {
+            /** Commodity */
+            readonly commodity: string;
+            /** Message */
+            readonly message: string;
+            /** Provider */
+            readonly provider: string;
+        };
+        /** QuoteProviderOut */
+        readonly QuoteProviderOut: {
+            /** Description */
+            readonly description: string;
+            /**
+             * Name
+             * @description What goes in a commodity's `quote_source`.
+             */
+            readonly name: string;
+        };
+        /**
+         * QuoteRunOut
+         * @description What one run did. `stored` counts new price rows; `unchanged` quotes the
+         *     book already had; `problems` is per provider and commodity.
+         */
+        readonly QuoteRunOut: {
+            /** End */
+            readonly end: string | null;
+            /** Fetched */
+            readonly fetched: number;
+            /** Finished At */
+            readonly finished_at: string | null;
+            /** Ok */
+            readonly ok: boolean;
+            /** Problems */
+            readonly problems: readonly components["schemas"]["QuoteProblemOut"][];
+            /** Providers */
+            readonly providers: readonly string[];
+            /** Requested */
+            readonly requested: number;
+            /** Start */
+            readonly start: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            readonly started_at: string;
+            /** Stored */
+            readonly stored: number;
+            /** Summary */
+            readonly summary: string;
+            /** Unchanged */
+            readonly unchanged: number;
+            /** Up To Date */
+            readonly up_to_date: number;
         };
         /**
          * RateOut
@@ -1700,6 +1837,21 @@ export interface components {
             readonly rounding: components["schemas"]["RoundingMode"];
             /** Splits */
             readonly splits: readonly components["schemas"]["SplitOut"][];
+        };
+        /** TransactionPage */
+        readonly TransactionPage: {
+            /**
+             * Has More
+             * @default false
+             */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["TransactionOut"][];
+            /**
+             * Next Cursor
+             * @description Pass as `cursor` for the next page. Null when exhausted.
+             */
+            readonly next_cursor?: string | null;
         };
         /**
          * TransactionUpdateIn
@@ -4162,7 +4314,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Page"];
+                    readonly "application/json": components["schemas"]["PricePage"];
                 };
             };
             /** @description Not authenticated. */
@@ -4357,6 +4509,130 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ConversionOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly fetch_quotes_books__book_id__quotes_fetch_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["QuoteFetchIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["QuoteRunOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly last_run_books__book_id__quotes_last_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["QuoteRunOut"] | null;
                 };
             };
             /** @description Not authenticated. */
@@ -4631,7 +4907,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Page"];
+                    readonly "application/json": components["schemas"]["TransactionPage"];
                 };
             };
             /** @description Not authenticated. */
@@ -5006,6 +5282,64 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HealthOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly list_providers_quote_providers_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["QuoteProviderOut"][];
                 };
             };
             /** @description Not authenticated. */

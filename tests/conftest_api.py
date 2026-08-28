@@ -140,8 +140,18 @@ def api(tmp_path: Path):
         create_schema=True,
         cookie_secure=False,
         allow_registration=True,
+        quote_interval_minutes=0,
     )
-    app = create_app(settings=settings, clock=ManualClock())
+    # Scripted providers and no network: tests/test_api_quotes.py drives them.
+    from pymoney.quotes import ProviderRegistry, QuoteService
+    from tests.test_quotes import FakeProvider, no_http
+
+    clock = ManualClock()
+    fake = FakeProvider()
+    quotes = QuoteService(ProviderRegistry.builtin(), http=no_http, clock=clock)
+    quotes.registry.add(fake)
+    app = create_app(settings=settings, clock=clock, quotes_service=quotes)
+    app.state.fake_provider = fake
     with TestClient(app) as http:
         yield Client(http=http)
 

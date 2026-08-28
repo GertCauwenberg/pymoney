@@ -716,3 +716,26 @@ button:focus-visible {
 .accounts .actions--inline .banner {
   margin: 0;
 }
+.banner--info {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border-color: var(--accent);
+}
+.quotes {
+  margin: 1rem 0;
+}
+.quotes__controls {
+  align-items: flex-end;
+}
+.quotes__controls .actions {
+  margin-bottom: 0.75rem;
+}
+.quotes__report {
+  margin-top: 0.5rem;
+}
+.quotes__problems {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+.prices__row--user td:first-child {
+  border-left: 3px solid var(--accent);
+}

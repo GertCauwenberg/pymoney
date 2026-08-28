@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from typing import Any
 
 from fastapi import FastAPI
@@ -23,6 +24,7 @@ from sqlalchemy import Engine
 
 from .. import __version__
 from ..core.clock import Clock
+from ..quotes import ProviderRegistry, QuoteScheduler, QuoteService
 from ..store import create_engine, create_schema
 from .errors import install_error_handlers
 from .registry import BookRegistry
@@ -33,6 +35,7 @@ from .routers import (
     commodities,
     payees,
     prices,
+    quotes,
     reports,
     sync,
     system,
@@ -112,6 +115,14 @@ TAGS = [
         "name": "sync",
         "description": "The pull half of the replica protocol.",
     },
+    {
+        "name": "quotes",
+        "description": (
+            "Fetching prices from providers (ECB, Yahoo, plugins). The server "
+            "also does this on a schedule; these endpoints run it on demand, "
+            "backfill, and show the last run."
+        ),
+    },
 ]
 
 # Documented on every route, so a client can generate error handling.
@@ -149,14 +160,24 @@ def create_app(
     settings: Settings | None = None,
     engine: Engine | None = None,
     clock: Clock | None = None,
+    quotes_service: QuoteService | None = None,
 ) -> FastAPI:
     """Build the application.
 
     :param engine: an open engine to use. Created from ``settings`` if omitted,
         and disposed on shutdown only in that case -- an engine we were handed is
         the caller's to close.
+    :param quotes_service: the quote service to use; built from the discovered
+        providers if omitted. Tests pass one with scripted providers and no
+        network.
     """
     settings = settings or Settings()
+    if quotes_service is None:
+        quotes_service = QuoteService(
+            ProviderRegistry.discover(settings.quote_plugins),
+            clock=clock,
+            lookback_days=settings.quote_lookback_days,
+        )
     if engine is None and _is_in_memory(settings.database_url):
         # An in-memory SQLite database is a *single connection*: SQLAlchemy has
         # to pin one with StaticPool, or each connection would get its own empty
@@ -178,12 +199,28 @@ def create_app(
         app.state.settings = settings
         app.state.engine = engine
         app.state.registry = BookRegistry(engine, clock=clock)
+        app.state.quotes = quotes_service
         for warning in settings.production_warnings():
             # Logged, not silent: someone should see this before a user does.
             print(f"pymoney: WARNING: {warning}")
+        for problem in quotes_service.registry.problems:
+            print(f"pymoney: WARNING: quote provider {problem}")
+        scheduler: QuoteScheduler | None = None
+        if settings.quote_interval_minutes > 0:
+            registry: BookRegistry = app.state.registry
+            scheduler = QuoteScheduler(
+                quotes_service,
+                book_ids=registry.known_ids,
+                open_book=registry.open,
+                interval=timedelta(minutes=settings.quote_interval_minutes),
+            )
+            scheduler.start()
+        app.state.quote_scheduler = scheduler
         try:
             yield
         finally:
+            if scheduler is not None:
+                scheduler.stop()
             app.state.registry.close()
             if owns_engine:
                 engine.dispose()
@@ -203,6 +240,8 @@ def create_app(
     app.state.settings = settings
     app.state.engine = engine
     app.state.registry = BookRegistry(engine, clock=clock)
+    app.state.quotes = quotes_service
+    app.state.quote_scheduler = None
 
     install_error_handlers(app)
 
@@ -228,4 +267,5 @@ def create_app(
     app.include_router(prices.router)
     app.include_router(reports.router)
     app.include_router(sync.router)
+    app.include_router(quotes.router)
     return app

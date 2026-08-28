@@ -145,6 +145,40 @@ class TestSettings:
 
 
 class TestAppFactory:
+    def test_the_quote_scheduler_lives_and_dies_with_the_app(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        from pymoney.quotes import ProviderRegistry, QuoteService
+        from tests.test_quotes import no_http
+
+        settings = Settings(
+            database_url=f"sqlite+pysqlite:///{tmp_path / 'sched.sqlite'}",
+            create_schema=True,
+            cookie_secure=False,
+            quote_interval_minutes=60,
+        )
+        quotes = QuoteService(ProviderRegistry([]), http=no_http)
+        app = create_app(settings=settings, quotes_service=quotes)
+        with TestClient(app):
+            scheduler = app.state.quote_scheduler
+            assert scheduler is not None and scheduler.running
+            assert scheduler.interval.total_seconds() == 3600
+        assert not scheduler.running
+
+    def test_the_scheduler_can_be_turned_off(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        settings = Settings(
+            database_url=f"sqlite+pysqlite:///{tmp_path / 'nosched.sqlite'}",
+            create_schema=True,
+            cookie_secure=False,
+            quote_interval_minutes=0,
+        )
+        with TestClient(create_app(settings=settings)) as http:
+            assert http.app.state.quote_scheduler is None
+            # The default service discovered the built-in providers.
+            assert http.app.state.quotes.registry.names == ("ecb", "yahoo")
+
     def test_a_supplied_engine_is_not_disposed(self, tmp_path):
         """It is the caller's to close; we did not open it."""
         from fastapi.testclient import TestClient

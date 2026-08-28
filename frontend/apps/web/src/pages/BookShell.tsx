@@ -57,6 +57,9 @@ export function BookShell() {
           <NavLink to="commodities" className="tabs__aside">
             Commodities
           </NavLink>
+          <NavLink to="prices" className="tabs__aside">
+            Prices
+          </NavLink>
           {book.data.role === "owner" && (
             <NavLink to="sharing" className="tabs__aside">
               Sharing

@@ -18,9 +18,9 @@ from ...core.price import ValuationPolicy
 from ..deps import IdempotencyKey, ReadableBook, WritableBook
 from ..schemas import (
     ConversionOut,
-    Page,
     PriceIn,
     PriceOut,
+    PricePage,
     RateOut,
     to_fraction,
 )
@@ -29,7 +29,7 @@ from ._shared import decode_cursor, encode_cursor, page_size, set_revision
 router = APIRouter(prefix="/books/{book_id}/prices", tags=["prices"])
 
 
-@router.get("", response_model=Page, summary="Price history")
+@router.get("", response_model=PricePage, summary="Price history")
 def list_prices(
     book: ReadableBook,
     response: Response,
@@ -47,7 +47,7 @@ def list_prices(
     ),
     cursor: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1),
-) -> Page:
+) -> PricePage:
     set_revision(response, book)
     size = page_size(limit, 200, 1000)
     found = [
@@ -72,7 +72,7 @@ def list_prices(
         if has_more and window
         else None
     )
-    return Page(
+    return PricePage(
         items=[PriceOut.of(p) for p in window],
         next_cursor=next_cursor,
         has_more=has_more,

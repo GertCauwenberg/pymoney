@@ -66,6 +66,10 @@ __all__ = [
     "PayeeOut",
     "PriceIn",
     "PriceOut",
+    "PricePage",
+    "QuoteFetchIn",
+    "QuoteProviderOut",
+    "QuoteRunOut",
     "RateOut",
     "ReconcileIn",
     "ReconcileStateName",
@@ -78,6 +82,7 @@ __all__ = [
     "SyncPageOut",
     "TransactionIn",
     "TransactionOut",
+    "TransactionPage",
     "TransactionUpdateIn",
     "UserOut",
 ]
@@ -220,7 +225,11 @@ class RateOut(Out):
 
 
 class Page(Out):
-    """One page of a list. Keyset cursors, so inserts cannot shift a page."""
+    """One page of a list. Keyset cursors, so inserts cannot shift a page.
+
+    Subclassed per item type, so the OpenAPI document says what is in a page
+    and a generated client does not get ``unknown[]``.
+    """
 
     items: list[Any]
     next_cursor: str | None = Field(
@@ -638,6 +647,10 @@ class TransactionOut(Out):
         )
 
 
+class TransactionPage(Page):
+    items: list[TransactionOut]
+
+
 class ReconcileIn(In):
     split_ids: list[UUID] = Field(default_factory=list)
     state: ReconcileStateName = ReconcileStateName.RECONCILED
@@ -732,6 +745,10 @@ class PriceOut(Out):
             source=price.source,
             revision=price.revision,
         )
+
+
+class PricePage(Page):
+    items: list[PriceOut]
 
 
 class ConversionOut(Out):
@@ -858,6 +875,74 @@ class SyncPageOut(Out):
     head: int = Field(description="The book's current revision.")
     complete: bool = Field(description="False means call again from to_revision.")
     batches: list[SyncBatchOut]
+
+
+# ==========================================================================
+# quotes
+# ==========================================================================
+class QuoteProviderOut(Out):
+    name: str = Field(description="What goes in a commodity's `quote_source`.")
+    description: str
+
+
+class QuoteFetchIn(In):
+    """Run the quote service now. Everything is optional: the default run asks
+    each provider for what it has not given yet."""
+
+    start: date | None = Field(default=None, description="Backfill from this date.")
+    end: date | None = Field(default=None, description="Up to this date; default today.")
+    commodity_ids: list[UUID] | None = Field(
+        default=None, description="Only these commodities."
+    )
+    providers: list[str] | None = Field(default=None, description="Only these providers.")
+
+
+class QuoteProblemOut(Out):
+    provider: str
+    commodity: str
+    message: str
+
+
+class QuoteRunOut(Out):
+    """What one run did. `stored` counts new price rows; `unchanged` quotes the
+    book already had; `problems` is per provider and commodity."""
+
+    started_at: datetime
+    finished_at: datetime | None
+    start: date | None
+    end: date | None
+    requested: int
+    up_to_date: int
+    fetched: int
+    stored: int
+    unchanged: int
+    ok: bool
+    providers: list[str]
+    problems: list[QuoteProblemOut]
+    summary: str
+
+    @classmethod
+    def of(cls, report: Any) -> QuoteRunOut:
+        return cls(
+            started_at=report.started_at,
+            finished_at=report.finished_at,
+            start=report.start,
+            end=report.end,
+            requested=report.requested,
+            up_to_date=report.up_to_date,
+            fetched=report.fetched,
+            stored=report.stored,
+            unchanged=report.unchanged,
+            ok=report.ok,
+            providers=list(report.providers),
+            problems=[
+                QuoteProblemOut(
+                    provider=p.provider, commodity=p.commodity, message=p.message
+                )
+                for p in report.problems
+            ],
+            summary=report.summary(),
+        )
 
 
 # ==========================================================================

@@ -21,6 +21,7 @@ _COMPONENTS = (
     ("pymoney.core", "domain model: accounts, transactions, prices, reports"),
     ("pymoney.store", "persistence: SQLAlchemy over SQLite and PostgreSQL"),
     ("pymoney.importers.kmymoney", "importer: KMyMoney .kmy files"),
+    ("pymoney.quotes", "price quotes: ECB, Yahoo, plugins, scheduler"),
     ("pymoney.api", "HTTP API: FastAPI, commands in, revisions out"),
     ("pymoney.desktop", "desktop client: PySide6"),
 )
