@@ -734,6 +734,15 @@ class SetSplitStateIn(In):
 # ==========================================================================
 # register
 # ==========================================================================
+class ConversionOut(Out):
+    base: str
+    quote: str
+    rate: RateOut
+    hops: int
+    path: list[str] = Field(description="The commodities chained through.")
+    sources: list[str]
+
+
 class RegisterRowOut(Out):
     transaction_id: UUID
     split_id: UUID
@@ -760,6 +769,24 @@ class RegisterTotals(Out):
     )
     closing: AmountOut | None = Field(
         default=None, description="Balance at the end of the window."
+    )
+    translated: bool = Field(
+        default=False,
+        description=(
+            "True when sub-accounts in other commodities were translated into the "
+            "account's commodity, at one rate: the window's end date (or today). "
+            "The running balance and both totals are then valuations, not sums."
+        ),
+    )
+    conversions: list[ConversionOut] = Field(
+        default_factory=list, description="The rates used for that translation."
+    )
+    unpriced: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Commodities of sub-accounts that could not be translated. Their rows "
+            "show no running balance, and the totals are null."
+        ),
     )
 
 
@@ -826,15 +853,6 @@ class PriceOut(Out):
 
 class PricePage(Page):
     items: list[PriceOut]
-
-
-class ConversionOut(Out):
-    base: str
-    quote: str
-    rate: RateOut
-    hops: int
-    path: list[str] = Field(description="The commodities chained through.")
-    sources: list[str]
 
 
 # ==========================================================================

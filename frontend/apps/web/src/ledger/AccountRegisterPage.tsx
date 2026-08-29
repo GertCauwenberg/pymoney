@@ -54,6 +54,9 @@ export function AccountRegisterPage() {
 
   const rows = useMemo(() => ledger.data?.pages.flatMap((p) => p.items) ?? [], [ledger.data]);
   const totals = ledger.data?.pages[0]?.totals;
+  const translated = totals?.translated ?? false;
+  const conversions = totals?.conversions ?? [];
+  const unpriced = totals?.unpriced ?? [];
   const cls = account.data?.account_class ?? "ASSET";
   const sign = (a: Amount | null | undefined) => (a ? naturalSign(a, cls) : a);
   // A Value column earns its place only when some leg was booked in another
@@ -162,8 +165,16 @@ export function AccountRegisterPage() {
                 <th scope="col" className="num">
                   Amount
                 </th>
-                <th scope="col" className="num">
-                  Balance
+                <th
+                  scope="col"
+                  className="num"
+                  title={
+                    translated
+                      ? `Sub-accounts in other commodities are translated into ${account.data?.commodity ?? "the account's commodity"} at one rate: the window's end date, or today.`
+                      : undefined
+                  }
+                >
+                  {translated ? "Balance ≈" : "Balance"}
                 </th>
               </tr>
             </thead>
@@ -245,6 +256,27 @@ export function AccountRegisterPage() {
               </tfoot>
             )}
           </table>
+          {translated && totals && (
+            <aside className="register__translation muted">
+              {conversions.length > 0 && (
+                <>
+                  Running balance and totals translated into {account.data?.commodity} at one rate
+                  {params.end ? ` (as of ${params.end})` : " (today's)"}:{" "}
+                  {conversions
+                    .map((c) => `1 ${c.base} = ${c.rate.approx.replace(/0+$/, "").replace(/\.$/, "")} ${c.quote} (${c.sources.join(", ")})`)
+                    .join("; ")}
+                  .
+                </>
+              )}
+              {unpriced.length > 0 && (
+                <span className="money--negative">
+                  {" "}
+                  No price for {unpriced.join(", ")}: the running balance stops at the first such row and the
+                  totals are not shown. Add a price under Prices.
+                </span>
+              )}
+            </aside>
+          )}
           {ledger.hasNextPage && (
             <div className="load-more">
               <button

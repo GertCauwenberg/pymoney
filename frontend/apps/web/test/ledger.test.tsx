@@ -191,3 +191,38 @@ describe("TransactionPage", () => {
     await waitFor(() => expect(screen.getByText("3,000.00 EUR")).toBeInTheDocument());
   });
 });
+
+describe("a register with sub-accounts in other commodities", () => {
+  it("shows the translated running balance, the rate used, and what stopped it", async () => {
+    const huf = { commodity_id: "huf", commodity: "HUF", minor: 8000, scale: 1, text: "8000" };
+    const { fetch } = server({
+      ...common,
+      "/register": () => ({
+        body: {
+          items: [
+            row(1, { account_id: "sal", quantity: eur(-2000), value: eur(-2000), running_balance: eur(-2000) }),
+            row(2, { account_id: "inc", quantity: huf, value: eur(-2000), running_balance: eur(-4000) }),
+            row(3, { account_id: "inc", quantity: { ...huf, commodity_id: "czk", commodity: "CZK" }, running_balance: null }),
+          ],
+          has_more: false,
+          next_cursor: null,
+          totals: {
+            opening: eur(0),
+            closing: null,
+            translated: true,
+            conversions: [{ base: "HUF", quote: "EUR", rate: { num: 1, den: 400, approx: "0.0025000000" }, hops: 1, path: ["HUF", "EUR"], sources: ["user"] }],
+            unpriced: ["CZK"],
+          },
+        },
+      }),
+    });
+    mount(fetch, "/books/b1/accounts/sal?children=1&end=2026-03-31");
+    expect(await screen.findByRole("columnheader", { name: "Balance ≈" })).toBeInTheDocument();
+    expect(screen.getByText(/translated into EUR at one rate \(as of 2026-03-31\)/)).toBeInTheDocument();
+    expect(screen.getByText(/1 HUF = 0.0025 EUR \(user\)/)).toBeInTheDocument();
+    expect(screen.getByText(/No price for CZK/)).toBeInTheDocument();
+    // The stopped row shows a dash where the balance would be.
+    const cells = screen.getAllByText("—");
+    expect(cells.length).toBeGreaterThan(0);
+  });
+});

@@ -745,8 +745,109 @@ class TestRegister:
             params={"include_children": True},
         ).json()
         assert len(body["items"]) == 3
-        # Totals are per-account, so a subtree view does not claim one.
-        assert body["totals"]["opening"] is None
+        # One commodity throughout: plain sums, nothing translated.
+        totals = body["totals"]
+        assert totals["translated"] is False and totals["conversions"] == []
+        assert totals["opening"]["minor"] == 0
+        assert [r["running_balance"]["minor"] for r in body["items"]] == [
+            100000,
+            91580,
+            411580,
+        ]
+        assert totals["closing"]["minor"] == 411580
+
+    def test_include_children_translates_other_commodities_at_one_rate(
+        self, ledger: Ledger
+    ):
+        """A restaurant with bills in EUR and in HUF: the running balance over
+        both is a valuation in the parent's commodity, every HUF leg at the
+        rate of the window's end date, and the response says so."""
+        client, b = ledger.client, f"/books/{ledger.book_id}"
+        huf = client.post(f"{b}/commodities", json={"code": "HUF", "scale": 0}).json()[
+            "id"
+        ]
+        restaurant = client.account("Restaurant", "EXPENSE", placeholder=True)
+        in_eur = client.account("Bills in EUR", "EXPENSE", parent_id=restaurant["id"])
+        in_huf = client.account(
+            "Bills in HUF", "EXPENSE", parent_id=restaurant["id"], commodity_id=huf
+        )
+        client.post_transaction(
+            "2026-03-01",
+            [
+                {"account_id": ledger.checking, "value": "-20"},
+                {"account_id": in_eur["id"]},
+            ],
+        )
+        # 8000 HUF dinner, paid from the EUR account at 400 HUF/EUR.
+        client.post_transaction(
+            "2026-03-02",
+            [
+                {"account_id": ledger.checking, "value": "-20"},
+                {"account_id": in_huf["id"], "price": "1/400"},
+            ],
+        )
+        url = f"{b}/accounts/{restaurant['id']}/register"
+
+        # No HUF price yet: the EUR row has a running balance, the HUF row stops it.
+        body = client.get(url, params={"include_children": True}).json()
+        assert [
+            r["running_balance"] and r["running_balance"]["minor"] for r in body["items"]
+        ] == [2000, None]
+        assert body["totals"]["unpriced"] == ["HUF"] and body["totals"]["closing"] is None
+
+        # With a rate (1 HUF = 0.0025 EUR, i.e. 400 HUF/EUR), translated at one rate.
+        client.post(
+            f"{b}/prices",
+            json={
+                "base_id": huf,
+                "quote_id": ledger.eur,
+                "rate": "1/400",
+                "effective_date": "2026-03-31",
+            },
+        )
+        body = client.get(
+            url, params={"include_children": True, "end": "2026-03-31"}
+        ).json()
+        assert [r["running_balance"]["minor"] for r in body["items"]] == [2000, 4000]
+        assert (
+            body["items"][1]["quantity"]["commodity"] == "HUF"
+            and body["items"][1]["quantity"]["minor"] == 8000
+        )
+        totals = body["totals"]
+        assert totals["translated"] is True
+        assert totals["opening"]["minor"] == 0 and totals["closing"]["minor"] == 4000
+        assert [(c["base"], c["quote"]) for c in totals["conversions"]] == [
+            ("HUF", "EUR")
+        ]
+
+        # Paging continues from the translated balance at the cursor.
+        first = client.get(
+            url, params={"include_children": True, "end": "2026-03-31", "limit": 1}
+        ).json()
+        second = client.get(
+            url,
+            params={
+                "include_children": True,
+                "end": "2026-03-31",
+                "limit": 1,
+                "cursor": first["next_cursor"],
+            },
+        ).json()
+        assert second["items"][0]["running_balance"]["minor"] == 4000
+        # The rate is the window's end date's: a later, different rate changes a later window.
+        client.post(
+            f"{b}/prices",
+            json={
+                "base_id": huf,
+                "quote_id": ledger.eur,
+                "rate": "1/200",
+                "effective_date": "2026-04-30",
+            },
+        )
+        later = client.get(
+            url, params={"include_children": True, "end": "2026-04-30"}
+        ).json()
+        assert later["items"][1]["running_balance"]["minor"] == 6000
 
 
 class TestPrices:

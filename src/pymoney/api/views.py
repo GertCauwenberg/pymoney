@@ -11,10 +11,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 from uuid import UUID
 
-from ..core.amount import Amount
+from ..core.amount import Amount, Balances, RationalAmount
 from ..core.book import Book
 from ..core.price import ValuationPolicy
-from ..core.reports import balance_sheet, holdings, income_statement
+from ..core.reports import Valuer, balance_sheet, holdings, income_statement
 from .routers._shared import encode_cursor
 from .schemas import (
     AccountBalanceOut,
@@ -79,48 +79,74 @@ def register_page(
     )
     has_more = len(rows) > size
     rows = rows[:size]
-
-    # Opening balance: everything strictly before the window. Answered by the
-    # pushed-down aggregate, not by walking the ledger.
     account = book.account(account_id)
-    opening: Amount | None = None
-    running: Amount | None = None
-    if not include_children:
-        if start is None:
-            opening = Amount.zero(book.live(account.commodity))
-        else:
-            opening = book.balance(account_id, as_of=start - timedelta(days=1))
-        # The running balance continues from wherever the previous page
-        # stopped, which is the balance *at the cursor*, not at the start of
-        # the window -- or every page would start counting from zero again.
-        running = opening if after is None else book.balance_at(account_id, after)
+    target = book.live(account.commodity)
 
-    items: list[RegisterRowOut] = []
-    single_commodity = len({r.quantity.commodity.id for r in rows}) <= 1
-    for row in rows:
-        if running is not None and single_commodity:
+    if not include_children:
+        # One account, one commodity: sums, exactly.
+        #
+        # Opening balance: everything strictly before the window, answered by the
+        # pushed-down aggregate. The running balance continues from wherever the
+        # previous page stopped, which is the balance *at the cursor*, not at the
+        # start of the window -- or every page would start counting from zero.
+        opening = (
+            Amount.zero(target)
+            if start is None
+            else book.balance(account_id, as_of=start - timedelta(days=1))
+        )
+        running = opening if after is None else book.balance_at(account_id, after)
+        items: list[RegisterRowOut] = []
+        for row in rows:
             running = running + row.quantity
-        items.append(
-            RegisterRowOut(
-                transaction_id=row.transaction.id,
-                split_id=row.split.id,
-                date=row.date,
-                memo=row.memo,
-                payee_id=row.split.payee_id or row.transaction.payee_id,
-                account_id=row.account_id,
-                quantity=AmountOut.of(row.quantity),
-                value=AmountOut.of(row.value),
-                reconcile_state=ReconcileStateName.of(row.reconcile_state),
-                number=row.split.number,
-                running_balance=(
-                    AmountOut.of(running)
-                    if running is not None and single_commodity
-                    else None
-                ),
+            items.append(_row_out(row, AmountOut.of(running)))
+        totals = RegisterTotals(
+            opening=AmountOut.of(opening),
+            closing=AmountOut.of(book.balance(account_id, as_of=end)),
+        )
+    else:
+        # A subtree may hold several commodities. The running balance is then a
+        # *valuation* in the account's own commodity, every leg translated at one
+        # rate -- the window's end date, or today -- exactly as the income
+        # statement translates a period. One rate keeps the figure reproducible,
+        # and makes opening, closing and the balance at a cursor plain aggregates
+        # times a rate rather than a walk over every earlier row. A sub-account
+        # whose commodity has no price stops the running balance rather than
+        # faking one; the response says which.
+        policy = ValuationPolicy(target=target, as_of=end or book.clock.today())
+        valuer = Valuer(book, policy, strict=False)
+        before = (
+            Balances()
+            if start is None
+            else book.subtree_balances(account_id, as_of=start - timedelta(days=1))
+        )
+        at_cursor = (
+            before if after is None else book.subtree_balance_at(account_id, after)
+        )
+        running_exact = valuer.value(at_cursor).value
+        items = []
+        stopped = False
+        for row in rows:
+            conversion = valuer.conversion(row.quantity.commodity)
+            if conversion is None or stopped:
+                stopped = True
+                items.append(_row_out(row, None))
+                continue
+            running_exact += conversion.apply(row.quantity).value
+            items.append(
+                _row_out(row, AmountOut.of(RationalAmount(target, running_exact).book()))
             )
+        opening_value = valuer.value_amount(before)
+        closing_value = valuer.value_amount(book.subtree_balances(account_id, as_of=end))
+        # Totals are only honest if everything in them could be translated.
+        unpriced = [c.code for c in valuer.unpriced]
+        totals = RegisterTotals(
+            opening=None if unpriced else AmountOut.of(opening_value),
+            closing=None if unpriced else AmountOut.of(closing_value),
+            translated=bool(valuer.conversions) or bool(unpriced),
+            conversions=conversions_out(valuer.conversions),
+            unpriced=unpriced,
         )
 
-    closing = book.balance(account_id, as_of=end) if not include_children else None
     next_cursor = (
         encode_cursor(
             {
@@ -133,13 +159,23 @@ def register_page(
         else None
     )
     return RegisterPage(
-        items=items,
-        next_cursor=next_cursor,
-        has_more=has_more,
-        totals=RegisterTotals(
-            opening=None if opening is None else AmountOut.of(opening),
-            closing=None if closing is None else AmountOut.of(closing),
-        ),
+        items=items, next_cursor=next_cursor, has_more=has_more, totals=totals
+    )
+
+
+def _row_out(row, running: AmountOut | None) -> RegisterRowOut:
+    return RegisterRowOut(
+        transaction_id=row.transaction.id,
+        split_id=row.split.id,
+        date=row.date,
+        memo=row.memo,
+        payee_id=row.split.payee_id or row.transaction.payee_id,
+        account_id=row.account_id,
+        quantity=AmountOut.of(row.quantity),
+        value=AmountOut.of(row.value),
+        reconcile_state=ReconcileStateName.of(row.reconcile_state),
+        number=row.split.number,
+        running_balance=running,
     )
 
 

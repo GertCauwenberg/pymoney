@@ -530,6 +530,15 @@ Two performance items are also deliberate non-goals for now:
 O(history). Worth doing when a real book gets big enough to notice; not worth the
 invalidation complexity before then.
 
+**A register over sub-accounts in several commodities** shows a running balance
+all the same: a *valuation* in the parent account's commodity, every leg
+translated at one rate -- the window's end date, or today -- exactly as the
+income statement translates a period. The response marks it `translated`, lists
+the rates used, and names any commodity it could not price, at which point the
+running balance stops rather than pretends. One rate rather than each leg's own
+date keeps the figure reproducible and keeps paging cheap: opening, closing and
+the balance at a cursor stay aggregates times a rate.
+
 **Value-column aggregation pushdown.** `value_balance` still goes through the
 register. It is used by one report over a handful of accounts, so it has not
 earned a second covering index yet.

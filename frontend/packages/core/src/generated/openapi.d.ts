@@ -1842,8 +1842,24 @@ export interface components {
         readonly RegisterTotals: {
             /** @description Balance at the end of the window. */
             readonly closing?: components["schemas"]["AmountOut"] | null;
+            /**
+             * Conversions
+             * @description The rates used for that translation.
+             */
+            readonly conversions?: readonly components["schemas"]["ConversionOut"][];
             /** @description Balance before the window. */
             readonly opening?: components["schemas"]["AmountOut"] | null;
+            /**
+             * Translated
+             * @description True when sub-accounts in other commodities were translated into the account's commodity, at one rate: the window's end date (or today). The running balance and both totals are then valuations, not sums.
+             * @default false
+             */
+            readonly translated: boolean;
+            /**
+             * Unpriced
+             * @description Commodities of sub-accounts that could not be translated. Their rows show no running balance, and the totals are null.
+             */
+            readonly unpriced?: readonly string[];
         };
         /** RenameIn */
         readonly RenameIn: {

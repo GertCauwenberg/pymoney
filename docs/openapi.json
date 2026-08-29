@@ -2432,6 +2432,14 @@
             ],
             "description": "Balance at the end of the window."
           },
+          "conversions": {
+            "description": "The rates used for that translation.",
+            "items": {
+              "$ref": "#/components/schemas/ConversionOut"
+            },
+            "title": "Conversions",
+            "type": "array"
+          },
           "opening": {
             "anyOf": [
               {
@@ -2442,6 +2450,20 @@
               }
             ],
             "description": "Balance before the window."
+          },
+          "translated": {
+            "default": false,
+            "description": "True when sub-accounts in other commodities were translated into the account's commodity, at one rate: the window's end date (or today). The running balance and both totals are then valuations, not sums.",
+            "title": "Translated",
+            "type": "boolean"
+          },
+          "unpriced": {
+            "description": "Commodities of sub-accounts that could not be translated. Their rows show no running balance, and the totals are null.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Unpriced",
+            "type": "array"
           }
         },
         "title": "RegisterTotals",

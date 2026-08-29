@@ -746,3 +746,7 @@ button:focus-visible {
 .danger h2 {
   color: var(--negative);
 }
+.register__translation {
+  font-size: 0.8rem;
+  margin: 0.5rem 0;
+}

@@ -500,6 +500,20 @@ class Book:
             total = total - ref.quantity
         return total
 
+    def subtree_balance_at(
+        self, account_id: UUID, position: tuple[date, UUID, UUID]
+    ) -> Balances:
+        """Like :meth:`balance_at`, for an account and its descendants, per
+        commodity: everything up to the cursor's date, less the rows on that
+        date that sort after the cursor."""
+        on = position[0]
+        total = self.subtree_balances(account_id, as_of=on)
+        for ref in self.register(
+            account_id, start=on, end=on, include_children=True, after=position
+        ):
+            total.add(-ref.quantity)
+        return total
+
     def balances_by_account(
         self, *, start: date | None = None, end: date | None = None
     ) -> dict[UUID, Amount]:
