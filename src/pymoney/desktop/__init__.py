@@ -18,6 +18,7 @@ from .client import (
     OfflineError,
     QueuedCommand,
     Rejection,
+    ReportOptions,
 )
 from .offline import OfflineClient
 from .remote import RemoteClient
@@ -32,6 +33,7 @@ __all__ = [
     "QueuedCommand",
     "Rejection",
     "RemoteClient",
+    "ReportOptions",
     "Transport",
     "UrllibTransport",
 ]

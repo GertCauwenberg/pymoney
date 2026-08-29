@@ -57,6 +57,8 @@ from ..api.schemas import (
     BookIn,
     BookOut,
     CommodityOut,
+    HoldingsOut,
+    IncomeStatementOut,
     PayeeIn,
     PayeeOut,
     RegisterPage,
@@ -67,7 +69,13 @@ from ..api.schemas import (
     TransactionUpdateIn,
     UserOut,
 )
-from ..api.views import account_balance, balance_sheet_out, register_page
+from ..api.views import (
+    account_balance,
+    balance_sheet_out,
+    holdings_out,
+    income_statement_out,
+    register_page,
+)
 from ..core import commands as cmd
 from ..core.book import Book
 from ..core.clock import Clock, SystemClock
@@ -75,6 +83,7 @@ from ..core.commands import UNSET
 from ..core.errors import PyMoneyError
 from ..core.ids import new_id
 from ..core.posting import LegSpec
+from ..core.price import ValuationPolicy
 from ..core.reports import account_tree
 from ..store import create_engine, create_schema, open_book, schema
 from ..store.types import Uuid
@@ -85,6 +94,7 @@ from .client import (
     OfflineError,
     QueuedCommand,
     Rejection,
+    ReportOptions,
 )
 from .replica import apply_batch
 from .transport import Transport, raise_for_problem
@@ -336,13 +346,62 @@ class OfflineClient(LedgerClient):
             lambda: account_balance(self._ready(book_id), account_id, as_of=as_of)
         )
 
+    def _policy(self, book: Book, options: ReportOptions | None) -> ValuationPolicy:
+        options = options or ReportOptions()
+        target = (
+            book.commodity(options.target_id) if options.target_id else book.base_currency
+        )
+        return ValuationPolicy(
+            target=target,
+            as_of=options.as_of or self._clock.today(),
+            knowledge_time=options.known_before,
+        )
+
     def balance_sheet(
-        self, book_id: UUID, *, as_of: date | None = None
+        self, book_id: UUID, options: ReportOptions | None = None
     ) -> BalanceSheetOut:
         book = self._ready(book_id)
-        policy = book.default_policy(as_of)
+        options = options or ReportOptions()
         return self._guarded(
-            lambda: balance_sheet_out(book, policy, include_closed=True, strict=False)
+            lambda: balance_sheet_out(
+                book,
+                self._policy(book, options),
+                include_closed=options.include_closed,
+                strict=options.strict,
+            )
+        )
+
+    def income_statement(
+        self, book_id: UUID, *, start: date, options: ReportOptions | None = None
+    ) -> IncomeStatementOut:
+        book = self._ready(book_id)
+        options = options or ReportOptions()
+        return self._guarded(
+            lambda: income_statement_out(
+                book,
+                self._policy(book, options),
+                start=start,
+                include_closed=options.include_closed,
+                strict=options.strict,
+            )
+        )
+
+    def holdings(
+        self,
+        book_id: UUID,
+        options: ReportOptions | None = None,
+        *,
+        include_empty: bool = False,
+    ) -> HoldingsOut:
+        book = self._ready(book_id)
+        options = options or ReportOptions()
+        return self._guarded(
+            lambda: holdings_out(
+                book,
+                self._policy(book, options),
+                include_empty=include_empty,
+                strict=options.strict,
+            )
         )
 
     def account_balances(

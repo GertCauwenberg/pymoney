@@ -521,7 +521,7 @@ report hands back the `Conversion` objects it used.
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · importers other
 than KMyMoney (OFX, CSV) · attachments · tags · a UI for reconciliation
-and payee management · the desktop app's reports and account/commodity management (see
+and payee management · the desktop app's account/commodity management and reconciliation (see
 [The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
@@ -583,8 +583,13 @@ python -m pymoney.desktop            # or: make desktop
 
 A PySide6 client with the web app's core functionality -- books, the account
 tree with balances, registers, posting, editing and deleting transactions with
-payees created on the spot -- and one thing the web app cannot have: a mode
-that works without the server.
+payees created on the spot, and under **Reports** the balance sheet, income
+statement and holdings with the same options as on the web (valuation date or
+period presets, reporting currency, closed accounts, strict mode, the rates used
+and what could not be valued, CSV export with the same columns) -- and one thing
+the web app cannot have: a mode that works without the server. Offline, the
+reports run the very same view code against the local replica, so the numbers
+are the ones the server would give.
 
 **One interface, two implementations.** The UI talks to
 `pymoney.desktop.LedgerClient` and nothing else. Its wire types are the API's

@@ -14,7 +14,7 @@ from uuid import UUID
 from ..core.amount import Amount
 from ..core.book import Book
 from ..core.price import ValuationPolicy
-from ..core.reports import balance_sheet
+from ..core.reports import balance_sheet, holdings, income_statement
 from .routers._shared import encode_cursor
 from .schemas import (
     AccountBalanceOut,
@@ -22,6 +22,9 @@ from .schemas import (
     AmountOut,
     BalanceSheetOut,
     ConversionOut,
+    HoldingOut,
+    HoldingsOut,
+    IncomeStatementOut,
     RateOut,
     ReconcileStateName,
     RegisterPage,
@@ -183,4 +186,63 @@ def balance_sheet_out(
         rows=report_rows(sheet.rows),
         conversions=conversions_out(sheet.conversions),
         unpriced=[c.code for c in sheet.unpriced],
+    )
+
+
+def income_statement_out(
+    book: Book,
+    policy: ValuationPolicy,
+    *,
+    start: date,
+    include_closed: bool,
+    strict: bool,
+) -> IncomeStatementOut:
+    report = income_statement(
+        book, policy, start=start, include_closed=include_closed, strict=strict
+    )
+    return IncomeStatementOut(
+        start=report.start,
+        end=report.end,
+        target=report.target.code,
+        income=AmountOut.of(report.income),
+        income_earned=AmountOut.of(report.income_earned),
+        expenses=AmountOut.of(report.expenses),
+        net=AmountOut.of(report.net),
+        savings_rate=(
+            None if report.savings_rate is None else RateOut.of(report.savings_rate)
+        ),
+        rows=report_rows(report.rows),
+        conversions=conversions_out(report.conversions),
+        unpriced=[c.code for c in report.unpriced],
+    )
+
+
+def holdings_out(
+    book: Book, policy: ValuationPolicy, *, include_empty: bool, strict: bool
+) -> HoldingsOut:
+    report = holdings(book, policy, include_empty=include_empty, strict=strict)
+    return HoldingsOut(
+        as_of=report.as_of,
+        target=report.target.code,
+        positions=[
+            HoldingOut(
+                account_id=p.account.id,
+                path=p.path,
+                commodity=p.commodity.code,
+                quantity=AmountOut.of(p.quantity),
+                cost=AmountOut.of(p.cost),
+                market_value=AmountOut.of(p.market_value),
+                # Only meaningful when both sides are in one commodity; otherwise
+                # it would mix exchange-rate movement with performance.
+                unrealised_gain=(
+                    AmountOut.of(p.unrealised_gain)
+                    if p.cost.commodity.id == p.market_value.commodity.id
+                    else None
+                ),
+                unit_price=None if p.unit_price is None else RateOut.of(p.unit_price),
+            )
+            for p in report.positions
+        ],
+        total_value=AmountOut.of(report.total_value),
+        total_cost=AmountOut.of(report.total_cost),
     )

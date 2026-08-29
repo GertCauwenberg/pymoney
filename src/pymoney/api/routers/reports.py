@@ -17,17 +17,13 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Response
 
 from ...core.price import ValuationPolicy
-from ...core.reports import holdings, income_statement
 from ..deps import ReadableBook
 from ..schemas import (
-    AmountOut,
     BalanceSheetOut,
-    HoldingOut,
     HoldingsOut,
     IncomeStatementOut,
-    RateOut,
 )
-from ..views import balance_sheet_out, conversions_out, report_rows
+from ..views import balance_sheet_out, holdings_out, income_statement_out
 from ._shared import set_revision
 
 router = APIRouter(prefix="/books/{book_id}/reports", tags=["reports"])
@@ -97,23 +93,8 @@ def get_income_statement(
 ) -> IncomeStatementOut:
     set_revision(response, book)
     policy = _policy(book, end, target_id, known_before, sources, max_staleness_days)
-    report = income_statement(
+    return income_statement_out(
         book, policy, start=start, include_closed=include_closed, strict=strict
-    )
-    return IncomeStatementOut(
-        start=report.start,
-        end=report.end,
-        target=report.target.code,
-        income=AmountOut.of(report.income),
-        income_earned=AmountOut.of(report.income_earned),
-        expenses=AmountOut.of(report.expenses),
-        net=AmountOut.of(report.net),
-        savings_rate=(
-            None if report.savings_rate is None else RateOut.of(report.savings_rate)
-        ),
-        rows=report_rows(report.rows),
-        conversions=conversions_out(report.conversions),
-        unpriced=[c.code for c in report.unpriced],
     )
 
 
@@ -129,32 +110,7 @@ def get_holdings(
 ) -> HoldingsOut:
     set_revision(response, book)
     policy = _policy(book, as_of, target_id, known_before, None, None)
-    report = holdings(book, policy, include_empty=include_empty, strict=strict)
-    return HoldingsOut(
-        as_of=report.as_of,
-        target=report.target.code,
-        positions=[
-            HoldingOut(
-                account_id=p.account.id,
-                path=p.path,
-                commodity=p.commodity.code,
-                quantity=AmountOut.of(p.quantity),
-                cost=AmountOut.of(p.cost),
-                market_value=AmountOut.of(p.market_value),
-                # Only meaningful when both sides are in one commodity; otherwise
-                # it would mix exchange-rate movement with performance.
-                unrealised_gain=(
-                    AmountOut.of(p.unrealised_gain)
-                    if p.cost.commodity.id == p.market_value.commodity.id
-                    else None
-                ),
-                unit_price=None if p.unit_price is None else RateOut.of(p.unit_price),
-            )
-            for p in report.positions
-        ],
-        total_value=AmountOut.of(report.total_value),
-        total_cost=AmountOut.of(report.total_cost),
-    )
+    return holdings_out(book, policy, include_empty=include_empty, strict=strict)
 
 
 __all__ = ["router"]

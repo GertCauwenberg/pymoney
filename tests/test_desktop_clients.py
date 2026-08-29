@@ -26,6 +26,7 @@ from pymoney.desktop import (
     OfflineClient,
     OfflineError,
     RemoteClient,
+    ReportOptions,
 )
 from tests.conftest_api import PASSWORD, Client
 
@@ -139,7 +140,7 @@ class TestBothClients:
             )
             assert savings.path == "Savings"
 
-            sheet = client.balance_sheet(book_id, as_of=date(2026, 2, 28))
+            sheet = client.balance_sheet(book_id, ReportOptions(as_of=date(2026, 2, 28)))
             assert sheet.assets.minor == -1250
             balances = client.account_balances(book_id, as_of=date(2026, 2, 28))
             assert balances[checking].minor == -1250 and balances[food].minor == 1250
@@ -349,7 +350,12 @@ class TestOffline:
         client.sync()
         assert [r.memo for r in client.register(book_id, checking).items] == ["Coffee"]
         assert {a.name for a in client.accounts(book_id)} == {"Current", "Food"}
-        assert client.balance_sheet(book_id, as_of=date(2026, 2, 28)).assets.minor == -300
+        assert (
+            client.balance_sheet(
+                book_id, ReportOptions(as_of=date(2026, 2, 28))
+            ).assets.minor
+            == -300
+        )
         client.close()
 
     def test_a_cold_start_offline_shows_what_it_has(self, server, tmp_path):
@@ -513,3 +519,162 @@ def test_connect_picks_the_client(tmp_path):
     assert isinstance(offline, OfflineClient)
     assert (tmp_path / "deep" / "replica.sqlite").exists()
     offline.close()
+
+
+@pytest.mark.parametrize("kind", ["remote", "offline"])
+class TestReports:
+    """The three reports, with every option the web app exposes, give the same
+    numbers through either client -- the offline one runs the very same view
+    code on its replica."""
+
+    @pytest.fixture
+    def rich(self, server, tmp_path, kind):
+        api, book_id, checking, food = server
+        client, _ = make_client(kind, api.http, tmp_path)
+        client.login(EMAIL, PASSWORD)
+        # A USD wallet, a security, a price for each, a closed account, and some history.
+        api.login(EMAIL)
+        b = f"/books/{book_id}"
+        usd_id = api.post(f"{b}/commodities", json={"code": "USD"}).json()["id"]
+        acme_id = api.post(
+            f"{b}/commodities", json={"code": "ACME", "kind": "STOCK", "scale": 4}
+        ).json()["id"]
+        wallet = api.account("Wallet", "CASH", commodity_id=usd_id)
+        shares = api.account("ACME shares", "STOCK", commodity_id=acme_id)
+        salary = api.account("Salary", "INCOME")
+        old = api.account("Old", "EXPENSE")
+        eur = api.get(f"{b}").json()["base_currency_id"]
+        api.post(
+            f"{b}/prices",
+            json={
+                "base_id": usd_id,
+                "quote_id": eur,
+                "rate": "0.9",
+                "effective_date": "2026-01-01",
+            },
+        )
+        api.post(
+            f"{b}/prices",
+            json={
+                "base_id": acme_id,
+                "quote_id": usd_id,
+                "rate": "100",
+                "effective_date": "2026-01-01",
+            },
+        )
+        posted = [
+            api.post_transaction(
+                "2026-01-05", [leg(checking, "3000"), leg(salary["id"])], memo="pay"
+            ),
+            api.post_transaction(
+                "2026-01-06", [leg(checking, "-50"), leg(food)], memo="lunch"
+            ),
+            api.post_transaction(
+                "2026-02-06", [leg(checking, "-20"), leg(old["id"])], memo="old thing"
+            ),
+            # 900 EUR of cash at 0.9 EUR/USD: the residual leg gets 1000 USD.
+            api.post_transaction(
+                "2026-01-07",
+                [leg(checking, "-900"), {"account_id": wallet["id"], "price": "0.9"}],
+                memo="cash",
+            ),
+            # 10 shares at 90 EUR each (100 USD * 0.9).
+            api.post_transaction(
+                "2026-01-08",
+                [
+                    leg(checking, "-900"),
+                    {"account_id": shares["id"], "quantity": "10", "price": "90"},
+                ],
+                memo="buy",
+            ),
+        ]
+        api.post(f"{b}/accounts/{old['id']}/closed", json={"closed": True})
+        assert [p.status_code for p in posted] == [201] * 5, [p.text for p in posted]
+        yield client, book_id, UUID(usd_id), UUID(eur), UUID(old["id"])
+        client.close()
+
+    def test_balance_sheet_options(self, rich, kind):
+        client, book_id, usd, _eur, _old = rich
+        sheet = client.balance_sheet(book_id, ReportOptions(as_of=date(2026, 1, 31)))
+        assert sheet.target == "EUR"
+        # checking 3000-50-900-900 = 1150; wallet 1000 USD * 0.9 = 900; 10 ACME * 100 USD * 0.9 = 900
+        assert sheet.assets.minor == 115000 + 90000 + 90000
+        assert {c.base for c in sheet.conversions} == {"USD", "ACME"}
+        in_usd = client.balance_sheet(
+            book_id, ReportOptions(as_of=date(2026, 1, 31), target_id=usd)
+        )
+        assert in_usd.target == "USD" and in_usd.assets.minor == round(
+            (115000 / 0.9) + 100000 + 100000
+        )
+        # Pinned to a knowledge time before the prices were entered: strict
+        # fails, lenient lists what it could not value and leaves it out.
+        from datetime import datetime, timezone
+
+        early = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        with pytest.raises(ApiError) as refused:
+            client.balance_sheet(
+                book_id,
+                ReportOptions(as_of=date(2026, 1, 31), known_before=early, strict=True),
+            )
+        assert refused.value.status == 422 and refused.value.type == "NoPriceError"
+        lenient = client.balance_sheet(
+            book_id,
+            ReportOptions(as_of=date(2026, 1, 31), known_before=early, strict=False),
+        )
+        assert lenient.unpriced == ["ACME", "USD"]
+        assert lenient.assets.minor == 115000
+
+    def test_income_statement_period_and_closed(self, rich, kind):
+        client, book_id, _usd, _eur, old = rich
+        january = client.income_statement(
+            book_id,
+            start=date(2026, 1, 1),
+            options=ReportOptions(as_of=date(2026, 1, 31)),
+        )
+        assert (
+            january.income_earned.minor,
+            january.expenses.minor,
+            january.net.minor,
+        ) == (300000, 5000, 295000)
+        assert (
+            january.savings_rate is not None
+            and january.savings_rate.num * 100 // january.savings_rate.den == 98
+        )
+        # February's expense sits on a closed account: hidden by default, shown on request; the total always has it.
+        february = client.income_statement(
+            book_id,
+            start=date(2026, 2, 1),
+            options=ReportOptions(as_of=date(2026, 2, 28)),
+        )
+        assert february.expenses.minor == 2000
+        assert all(r.account_id != old for r in february.rows)
+        shown = client.income_statement(
+            book_id,
+            start=date(2026, 2, 1),
+            options=ReportOptions(as_of=date(2026, 2, 28), include_closed=True),
+        )
+        assert any(r.account_id == old for r in shown.rows)
+
+    def test_holdings(self, rich, kind):
+        client, book_id, usd, _eur, _old = rich
+        report = client.holdings(book_id, ReportOptions(as_of=date(2026, 1, 31)))
+        assert [p.commodity for p in report.positions] == ["ACME"]
+        position = report.positions[0]
+        assert position.quantity.minor == 100000  # 10.0000 shares
+        assert position.market_value.minor == 90000  # 10 * 100 USD * 0.9
+        assert position.cost.minor == 90000 and position.unrealised_gain is not None
+        in_usd = client.holdings(
+            book_id, ReportOptions(as_of=date(2026, 1, 31), target_id=usd)
+        )
+        assert in_usd.total_value.minor == 100000
+        # Empty positions only on request.
+        before = client.holdings(book_id, ReportOptions(as_of=date(2026, 1, 7)))
+        assert before.positions == []
+        assert (
+            len(
+                client.holdings(
+                    book_id, ReportOptions(as_of=date(2026, 1, 7)), include_empty=True
+                ).positions
+            )
+            == 1
+        )

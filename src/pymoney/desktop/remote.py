@@ -28,6 +28,7 @@ from ..api.schemas import (
     BookIn,
     BookOut,
     CommodityOut,
+    HoldingsOut,
     IncomeStatementOut,
     PayeeIn,
     PayeeOut,
@@ -38,7 +39,7 @@ from ..api.schemas import (
     TransactionUpdateIn,
     UserOut,
 )
-from .client import ApiError, ConnectionStatus, LedgerClient, OfflineError
+from .client import ApiError, ConnectionStatus, LedgerClient, OfflineError, ReportOptions
 from .transport import Transport, raise_for_problem
 
 __all__ = ["RemoteClient"]
@@ -188,20 +189,67 @@ class RemoteClient(LedgerClient):
             f"/books/{book_id}/accounts/{account_id}/balance{_query({'as_of': as_of})}",
         )
 
+    @staticmethod
+    def _report_query(options: ReportOptions | None, **extra: Any) -> dict[str, Any]:
+        options = options or ReportOptions()
+        return {
+            "as_of": options.as_of,
+            "target_id": options.target_id,
+            "known_before": None
+            if options.known_before is None
+            else options.known_before.isoformat(),
+            "include_closed": options.include_closed,
+            "strict": options.strict,
+            **extra,
+        }
+
     def balance_sheet(
-        self, book_id: UUID, *, as_of: date | None = None
+        self, book_id: UUID, options: ReportOptions | None = None
     ) -> BalanceSheetOut:
+        query = _query(self._report_query(options))
         return self._cached(
             book_id,
-            f"balance-sheet:{as_of}",
+            f"balance-sheet:{query}",
             BalanceSheetOut,
-            f"/books/{book_id}/reports/balance-sheet{_query({'as_of': as_of, 'include_closed': True, 'strict': False})}",
+            f"/books/{book_id}/reports/balance-sheet{query}",
+        )
+
+    def income_statement(
+        self, book_id: UUID, *, start: date, options: ReportOptions | None = None
+    ) -> IncomeStatementOut:
+        params = self._report_query(options, start=start)
+        params["end"] = params.pop("as_of")
+        query = _query(params)
+        return self._cached(
+            book_id,
+            f"income-statement:{query}",
+            IncomeStatementOut,
+            f"/books/{book_id}/reports/income-statement{query}",
+        )
+
+    def holdings(
+        self,
+        book_id: UUID,
+        options: ReportOptions | None = None,
+        *,
+        include_empty: bool = False,
+    ) -> HoldingsOut:
+        params = self._report_query(options, include_empty=include_empty)
+        params.pop("include_closed")
+        query = _query(params)
+        return self._cached(
+            book_id,
+            f"holdings:{query}",
+            HoldingsOut,
+            f"/books/{book_id}/reports/holdings{query}",
         )
 
     def account_balances(
         self, book_id: UUID, *, as_of: date | None = None
     ) -> dict[UUID, AmountOut]:
-        sheet = self.balance_sheet(book_id, as_of=as_of)
+        sheet = self.balance_sheet(
+            book_id, ReportOptions(as_of=as_of, include_closed=True)
+        )
         statement = self._cached(
             book_id,
             f"income-statement:{as_of}",

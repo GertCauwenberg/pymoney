@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -199,6 +200,21 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         self.setCentralWidget(splitter)
 
+        # -- menus -------------------------------------------------------------
+        reports = self.menuBar().addMenu("&Reports")
+        self.report_actions: list[QAction] = []
+        for kind, label in (
+            ("balance-sheet", "&Balance sheet…"),
+            ("income-statement", "&Income statement…"),
+            ("holdings", "&Holdings…"),
+        ):
+            action = QAction(label, self)
+            action.setData(kind)
+            action.triggered.connect(lambda _=False, k=kind: self.open_report(k))
+            reports.addAction(action)
+            self.report_actions.append(action)
+        self.report_windows: list[QMainWindow] = []
+
         self.status_label = QLabel()
         self.statusBar().addWidget(self.status_label, 1)
         self.rejections_button = QPushButton("Rejected…")
@@ -357,6 +373,8 @@ class MainWindow(QMainWindow):
         return self.book is not None and self.book.role in ("editor", "owner")
 
     def _enable_actions(self) -> None:
+        for action in self.report_actions:
+            action.setEnabled(self.book is not None)
         writable = self._can_write()
         self.new_button.setEnabled(
             writable
@@ -460,6 +478,25 @@ class MainWindow(QMainWindow):
     def _reload_book(self) -> None:
         if self.book is not None:
             self._book_chosen(self.books.currentIndex())
+
+    # -- reports ---------------------------------------------------------------------------
+    def open_report(self, kind: str) -> QMainWindow | None:
+        """A report window for the current book, in its own top-level window."""
+        if self.book is None:
+            return None
+        from .reports import open_report
+
+        window = open_report(
+            self.client,
+            self.book.id,
+            kind,  # type: ignore[arg-type]
+            self.commodities,
+            self.book.base_currency_id,
+            executor=self.executor,
+            parent=self,
+        )
+        self.report_windows.append(window)
+        return window
 
     # -- sync and status --------------------------------------------------------------------
     def sync(self) -> None:

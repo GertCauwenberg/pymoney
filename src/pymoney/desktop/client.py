@@ -36,6 +36,8 @@ from ..api.schemas import (
     BookIn,
     BookOut,
     CommodityOut,
+    HoldingsOut,
+    IncomeStatementOut,
     PayeeIn,
     PayeeOut,
     RegisterPage,
@@ -52,7 +54,27 @@ __all__ = [
     "OfflineError",
     "QueuedCommand",
     "Rejection",
+    "ReportOptions",
 ]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ReportOptions:
+    """The valuation policy a report is run under, as the web app exposes it.
+
+    Every report takes these, so two reports run with the same options against
+    the same book give the same numbers (decision #12). ``as_of`` is the
+    valuation date -- for an income statement also the end of the period --
+    and ``target_id`` the commodity to report in (None: the book's currency).
+    ``strict`` fails when something cannot be valued; off, it is listed in
+    ``unpriced`` and left out of the totals.
+    """
+
+    as_of: date | None = None
+    target_id: UUID | None = None
+    known_before: datetime | None = None
+    include_closed: bool = False
+    strict: bool = False
 
 
 class ApiError(Exception):
@@ -151,8 +173,23 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def balance_sheet(
-        self, book_id: UUID, *, as_of: date | None = None
+        self, book_id: UUID, options: ReportOptions | None = None
     ) -> BalanceSheetOut: ...
+
+    @abstractmethod
+    def income_statement(
+        self, book_id: UUID, *, start: date, options: ReportOptions | None = None
+    ) -> IncomeStatementOut:
+        """Income and expenses from ``start`` to ``options.as_of`` inclusive."""
+
+    @abstractmethod
+    def holdings(
+        self,
+        book_id: UUID,
+        options: ReportOptions | None = None,
+        *,
+        include_empty: bool = False,
+    ) -> HoldingsOut: ...
 
     # -- ledger --------------------------------------------------------------
     @abstractmethod
