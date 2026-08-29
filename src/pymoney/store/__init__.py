@@ -27,6 +27,8 @@ from .engine import (
     drop_schema,
     open_book,
     session,
+    write_connection,
+    write_transaction,
 )
 from .mapper import Registry, Rows
 from .schema import ALL_TABLES, metadata
@@ -48,4 +50,6 @@ __all__ = [
     "metadata",
     "open_book",
     "session",
+    "write_connection",
+    "write_transaction",
 ]

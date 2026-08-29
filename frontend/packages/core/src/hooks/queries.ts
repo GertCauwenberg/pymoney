@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { ApiError } from "../client";
+import { ApiError, isPending } from "../client";
 import type {
   AccountIn,
   AccountPatch,
@@ -90,8 +90,60 @@ export function useRegister() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (details: RegisterIn) => api.register(details),
-    onSuccess: (session) => {
-      qc.setQueryData(keys.session, session.user);
+    onSuccess: (result) => {
+      if (!isPending(result)) qc.setQueryData(keys.session, result.user);
+    },
+  });
+}
+
+export function useActivate() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) => api.activate(token),
+    onSuccess: (session) => qc.setQueryData(keys.session, session.user),
+  });
+}
+
+export function useResendActivation() {
+  const api = useApi();
+  return useMutation({ mutationFn: (email: string) => api.resendActivation(email) });
+}
+
+export function useForgotPassword() {
+  const api = useApi();
+  return useMutation({ mutationFn: (email: string) => api.forgotPassword(email) });
+}
+
+export function useResetPassword() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ token, password }: { token: string; password: string }) => api.resetPassword(token, password),
+    onSuccess: (session) => qc.setQueryData(keys.session, session.user),
+  });
+}
+
+export function useDeleteAccount() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (password: string) => api.deleteMyAccount(password),
+    onSuccess: () => {
+      qc.setQueryData(keys.session, null);
+      qc.removeQueries({ queryKey: ["books"] });
+    },
+  });
+}
+
+export function useDeleteBook() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookId, name }: { bookId: string; name: string }) => api.deleteBook(bookId, name),
+    onSuccess: (_, { bookId }) => {
+      qc.removeQueries({ queryKey: keys.book(bookId) });
+      void qc.invalidateQueries({ queryKey: keys.books });
     },
   });
 }
@@ -424,6 +476,19 @@ export function useFetchQuotes(bookId: string) {
     onSuccess: (run) => {
       qc.setQueryData(keys.lastQuoteRun(bookId), run);
       invalidate();
+    },
+  });
+}
+
+export function useImportKmymoney() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, name, roundingAdjustments, skipPrices }: { file: Blob; name: string; roundingAdjustments?: boolean; skipPrices?: boolean }) =>
+      api.importKmymoney(file, name, { roundingAdjustments, skipPrices }),
+    onSuccess: (result) => {
+      qc.setQueryData(keys.book(result.book.id), result.book);
+      void qc.invalidateQueries({ queryKey: keys.books });
     },
   });
 }

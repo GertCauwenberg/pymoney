@@ -28,6 +28,7 @@ import type {
   CommoditiesQuery,
   Health,
   Holdings,
+  ImportResult,
   HoldingsQuery,
   IncomeStatement,
   IncomeStatementQuery,
@@ -35,6 +36,7 @@ import type {
   Payee,
   PayeeIn,
   PayeesQuery,
+  Pending,
   Price,
   PriceIn,
   PricePage,
@@ -133,6 +135,10 @@ export class ApiError extends Error {
     }
     return new ApiError(response.status, type, message, revisionOf(response));
   }
+}
+
+export function isPending(body: unknown): body is Pending {
+  return typeof body === "object" && body !== null && (body as { status?: unknown }).status === "pending";
 }
 
 function isProblem(body: unknown): body is Problem {
@@ -248,10 +254,48 @@ export class ApiClient {
     return session;
   }
 
-  async register(details: RegisterIn): Promise<Session> {
-    const session = await this.post<Session>("/auth/register", details);
+  /**
+   * Register. With activation required on the server the answer is `pending`
+   * and no session exists until the emailed link is followed; otherwise the
+   * session starts here.
+   */
+  async register(details: RegisterIn): Promise<Session | Pending> {
+    const result = await this.post<Session | Pending>("/auth/register", details);
+    if (isPending(result)) return result;
+    this.remember(result);
+    return result;
+  }
+
+  /** Follow the activation link: proves the address, logs in. */
+  async activate(token: string): Promise<Session> {
+    const session = await this.post<Session>("/auth/activate", { token });
     this.remember(session);
     return session;
+  }
+
+  resendActivation(email: string): Promise<Pending> {
+    return this.post<Pending>("/auth/resend-activation", { email });
+  }
+
+  /** Always resolves: whether the address is registered is not revealed. */
+  forgotPassword(email: string): Promise<Pending> {
+    return this.post<Pending>("/auth/forgot-password", { email });
+  }
+
+  /** Ends every other session of the account; starts a fresh one here. */
+  async resetPassword(token: string, password: string): Promise<Session> {
+    const session = await this.post<Session>("/auth/reset-password", { token, password });
+    this.remember(session);
+    return session;
+  }
+
+  /** Irreversible; refused (409) while the user owns a book. */
+  async deleteMyAccount(password: string): Promise<void> {
+    try {
+      await this.request<void>("DELETE", "/auth/me", { password });
+    } finally {
+      this.auth.clear();
+    }
   }
 
   private remember(session: Session): void {
@@ -291,6 +335,40 @@ export class ApiClient {
   /** Create a book; the caller becomes its owner. */
   createBook(body: BookIn): Promise<Book> {
     return this.post<Book>("/books", body);
+  }
+
+  /**
+   * Upload a KMyMoney file; the server makes a book from it and the caller
+   * owns it. `file` is whatever the platform's fetch accepts as a multipart
+   * part (a browser File, a Blob); the report says what was approximated.
+   */
+  async importKmymoney(file: Blob, name: string, options: { roundingAdjustments?: boolean | undefined; skipPrices?: boolean | undefined } = {}): Promise<ImportResult> {
+    const form = new FormData();
+    form.append("file", file, (file as { name?: string }).name ?? "upload.kmy");
+    form.append("name", name);
+    if (options.roundingAdjustments !== undefined) form.append("rounding_adjustments", String(options.roundingAdjustments));
+    if (options.skipPrices !== undefined) form.append("skip_prices", String(options.skipPrices));
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const { bearer, csrf } = this.auth.get();
+    if (bearer) headers["Authorization"] = `Bearer ${bearer}`;
+    else if (csrf) headers["X-CSRF-Token"] = csrf;
+    const response = await this.fetchImpl(`${this.baseUrl}/books/import/kmymoney`, {
+      method: "POST",
+      headers,
+      body: form,
+      credentials: this.credentialsMode,
+    });
+    if (!response.ok) {
+      const error = await ApiError.fromResponse(response);
+      if (error.status === 401) this.onUnauthorized?.();
+      throw error;
+    }
+    return (await response.json()) as ImportResult;
+  }
+
+  /** Irreversible. The server wants the book's exact name back as confirmation. */
+  deleteBook(bookId: string, name: string): Promise<void> {
+    return this.request<void>("DELETE", `/books/${bookId}`, { name });
   }
 
   // -- access control (owners only) ---------------------------------------

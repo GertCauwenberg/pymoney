@@ -30,7 +30,8 @@ from sqlalchemy import Engine, select, update
 
 from ..core.book import Book
 from ..quotes import QuoteService
-from ..store import identity
+from ..store import identity, write_transaction
+from .mail import Mailer
 from .registry import BookRegistry
 from .security import hash_token, idempotency_key_to_uuid
 from .settings import Settings
@@ -43,6 +44,7 @@ __all__ = [
     "ReadableBook",
     "WritableBook",
     "get_engine",
+    "get_mailer",
     "get_quotes",
     "get_registry",
     "get_settings_dep",
@@ -72,6 +74,10 @@ def get_settings_dep(request: Request) -> Settings:
 
 def get_quotes(request: Request) -> QuoteService:
     return request.app.state.quotes
+
+
+def get_mailer(request: Request) -> Mailer:
+    return request.app.state.mailer
 
 
 # ==========================================================================
@@ -138,29 +144,32 @@ def current_actor(
             )
             .where(identity.sessions.c.token_hash == hash_token(token))
         ).one_or_none()
-        if row is None or not row.active:
-            raise _unauthenticated()
+    if row is None or not row.active:
+        raise _unauthenticated()
 
-        # An abandoned session is as good as a stolen one, so idleness expires it
-        # as surely as the clock does.
-        idle = now - row.last_seen_at > timedelta(hours=settings.session_idle_hours)
-        if row.expires_at <= now or idle:
-            conn.execute(
+    # An abandoned session is as good as a stolen one, so idleness expires it
+    # as surely as the clock does.
+    # Writes happen on a connection of their own, begun as a writer: doing them
+    # on the connection that just read would turn a concurrent commit into
+    # "database is locked" (see store.engine.write_connection).
+    idle = now - row.last_seen_at > timedelta(hours=settings.session_idle_hours)
+    if row.expires_at <= now or idle:
+        with write_transaction(engine) as writer:
+            writer.execute(
                 identity.sessions.delete().where(identity.sessions.c.id == row.id)
             )
-            conn.commit()
-            raise _unauthenticated()
+        raise _unauthenticated()
 
-        # Only touch last_seen_at when it has actually gone stale. Refreshing it
-        # on every request would take a write lock each time, contending with
-        # whatever command is in flight for no benefit.
-        if now - row.last_seen_at > _LAST_SEEN_RESOLUTION:
-            conn.execute(
+    # Only touch last_seen_at when it has actually gone stale. Refreshing it
+    # on every request would take a write lock each time, contending with
+    # whatever command is in flight for no benefit.
+    if now - row.last_seen_at > _LAST_SEEN_RESOLUTION:
+        with write_transaction(engine) as writer:
+            writer.execute(
                 update(identity.sessions)
                 .where(identity.sessions.c.id == row.id)
                 .values(last_seen_at=now)
             )
-            conn.commit()
 
     # The cookie travels automatically, so on its own it proves nothing about who
     # initiated the request.

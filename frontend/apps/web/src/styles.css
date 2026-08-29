@@ -739,3 +739,10 @@ button:focus-visible {
 .prices__row--user td:first-child {
   border-left: 3px solid var(--accent);
 }
+.danger {
+  margin-top: 2rem;
+  border-color: color-mix(in srgb, var(--negative) 50%, var(--border));
+}
+.danger h2 {
+  color: var(--negative);
+}

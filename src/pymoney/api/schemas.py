@@ -48,6 +48,7 @@ from ..core.transaction import ReconcileState, Split, Transaction
 __all__ = [
     "AccountIn",
     "AccountOut",
+    "ActivateIn",
     "AmountOut",
     "BookIn",
     "BookOut",
@@ -55,7 +56,12 @@ __all__ = [
     "CommodityIn",
     "CommodityOut",
     "CommodityPatch",
+    "DeleteBookIn",
+    "DeleteMeIn",
+    "EmailIn",
     "Exact",
+    "ImportOut",
+    "ImportProblemOut",
     "LegIn",
     "LoginIn",
     "MergeAccountsIn",
@@ -64,6 +70,7 @@ __all__ = [
     "Page",
     "PayeeIn",
     "PayeeOut",
+    "PendingOut",
     "PriceIn",
     "PriceOut",
     "PricePage",
@@ -76,6 +83,7 @@ __all__ = [
     "RegisterRowOut",
     "RegisterTotals",
     "RenameIn",
+    "ResetPasswordIn",
     "SessionOut",
     "SplitOut",
     "SyncBatchOut",
@@ -253,6 +261,35 @@ class BookIn(In):
         description="Decimal places. 2 for EUR, 0 for JPY, 3 for KWD.",
     )
     base_currency_symbol: str | None = None
+
+
+class ImportProblemOut(Out):
+    level: str
+    category: str
+    message: str
+    source_id: str
+
+
+class ImportOut(Out):
+    """A book made from an uploaded file, and what the importer had to say."""
+
+    book: BookOut
+    ok: bool = Field(description="No errors. Warnings and notes may still be present.")
+    imported: dict[str, int] = Field(description="How many of each thing was created.")
+    skipped: dict[str, int] = Field(
+        description="What the file had that PyMoney has no home for yet."
+    )
+    problems: list[ImportProblemOut]
+    adjustments: list[str] = Field(
+        description="Rounding corrections posted, one line each."
+    )
+    summary: str
+
+
+class DeleteBookIn(In):
+    name: str = Field(
+        description="The book's exact name, repeated, to confirm an irreversible deletion."
+    )
 
 
 class BookOut(Out):
@@ -997,6 +1034,30 @@ class RegisterIn(In):
 class LoginIn(In):
     email: str
     password: str
+
+
+class EmailIn(In):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class ActivateIn(In):
+    token: str = Field(min_length=8, max_length=256)
+
+
+class ResetPasswordIn(In):
+    token: str = Field(min_length=8, max_length=256)
+    password: str = Field(min_length=12, max_length=1024)
+
+
+class DeleteMeIn(In):
+    password: str = Field(description="Your current password, to confirm.")
+
+
+class PendingOut(Out):
+    """Something was (or would have been) emailed; nothing else is revealed."""
+
+    status: Literal["pending"] = "pending"
+    email: str
 
 
 class UserOut(Out):

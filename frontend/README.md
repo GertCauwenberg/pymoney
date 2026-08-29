@@ -67,6 +67,16 @@ What they walk through:
   transaction and sees the stored figures balance, edits the memo, finds the
   debt on the balance sheet and the expense on the income statement, and
   deletes the transaction.
+- `identity.spec.ts` -- a pending account cannot log in until the emailed link
+  is followed, and the link works once; a forgotten password is reset through
+  the emailed link and the session on another device is logged out; an owner
+  deletes the book by typing its name, then deletes the account, and the
+  address is free again. Every `register()` in these tests goes through the
+  real activation email: the API runs with `PYMONEY_MAIL_BACKEND=file` and the
+  helpers read the mailbox the way a person reads their inbox.
+- `import.spec.ts` -- a new user uploads the KMyMoney fixture instead of
+  creating a book by hand, reads the report, opens the book as its owner and
+  finds the balance KMyMoney showed.
 - `prices.spec.ts` -- an editor adds a currency with a manual quote source
   (the picker offers the installed providers), enters a price as an exact
   ratio, and sees it listed as theirs with the ratio intact.

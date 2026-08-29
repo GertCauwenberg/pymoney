@@ -175,3 +175,47 @@ class TestFetch:
             == 403
         )
         assert client.get(f"/books/{ledger.book_id}/quotes/last").status_code == 200
+
+
+class TestSchedulerSeesChanges:
+    def test_a_quote_source_changed_over_the_api_is_used_by_the_next_tick(
+        self, ledger: Ledger
+    ):
+        """The scheduler opens the same Book object the API writes to, so a
+        PATCH to quote_source takes effect at the next tick -- no restart."""
+        from datetime import timedelta
+
+        from pymoney.quotes import QuoteScheduler
+
+        client = ledger.client
+        usd = client.post(
+            f"/books/{ledger.book_id}/commodities",
+            json={"code": "USD", "quote_source": "fake"},
+        ).json()["id"]
+        app = client.http.app
+        fake = app.state.fake_provider
+        fake.table["USD"] = [q(date(2025, 12, 31), "1.09")]
+        registry = app.state.registry
+        scheduler = QuoteScheduler(
+            app.state.quotes,
+            book_ids=registry.known_ids,
+            open_book=registry.open,
+            interval=timedelta(hours=1),
+        )
+        from uuid import UUID
+
+        book_id = UUID(ledger.book_id)
+        assert scheduler.tick()[book_id].requested == 1
+
+        client.patch(
+            f"/books/{ledger.book_id}/commodities/{usd}", json={"quote_source": None}
+        )
+        assert scheduler.tick()[book_id].requested == 0
+
+        client.patch(
+            f"/books/{ledger.book_id}/commodities/{usd}", json={"quote_source": "fake"}
+        )
+        report = scheduler.tick()[book_id]
+        assert report.requested == 1
+        # It resumes after the newest quote this provider gave, so nothing is re-asked.
+        assert fake.requests[-1].start == date(2026, 1, 1) and report.fetched == 0

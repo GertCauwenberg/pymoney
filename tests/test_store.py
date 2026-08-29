@@ -966,3 +966,78 @@ def test_postgres_is_actually_exercised():
     with engine.connect() as conn:
         assert "PostgreSQL" in conn.execute(text("SELECT version()")).scalar_one()
     engine.dispose()
+
+
+class TestWriteTransactions:
+    def test_a_writer_that_reads_first_survives_a_concurrent_commit(self, tmp_path):
+        """Deferred: the classic SQLITE_BUSY_SNAPSHOT. Declared as a writer: it
+        queues on the lock instead and the write goes through."""
+        from sqlalchemy import text
+
+        from pymoney.store import write_transaction
+
+        url = f"sqlite+pysqlite:///{tmp_path / 'w.sqlite'}"
+        engine = create_engine(url)
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE t (x INTEGER)"))
+        other = create_engine(url)
+
+        # Deferred read, foreign commit, then write: locked.
+        with engine.connect() as conn:
+            conn.execute(text("SELECT count(*) FROM t")).scalar()
+            with other.begin() as o:
+                o.execute(text("INSERT INTO t VALUES (1)"))
+            with pytest.raises(Exception, match="locked"):
+                conn.execute(text("INSERT INTO t VALUES (2)"))
+            conn.rollback()
+
+        # The same sequence as a declared writer: the foreign writer waits for us
+        # instead (it cannot commit while we hold the reserved lock), so we do
+        # it after our transaction; what matters is that our own read-then-write
+        # cannot be invalidated underneath us.
+        with write_transaction(engine) as conn:
+            conn.execute(text("SELECT count(*) FROM t")).scalar()
+            conn.execute(text("INSERT INTO t VALUES (3)"))
+        with other.begin() as o:
+            o.execute(text("INSERT INTO t VALUES (4)"))
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM t")).scalar() == 3
+        engine.dispose()
+        other.dispose()
+
+    def test_two_writers_queue_rather_than_fail(self, tmp_path):
+        import threading
+
+        from sqlalchemy import text
+
+        from pymoney.store import write_transaction
+
+        url = f"sqlite+pysqlite:///{tmp_path / 'q.sqlite'}"
+        engine = create_engine(url)
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE t (x INTEGER)"))
+        started, release = threading.Event(), threading.Event()
+        errors: list[Exception] = []
+
+        def slow_writer():
+            try:
+                with write_transaction(engine) as conn:
+                    conn.execute(text("INSERT INTO t VALUES (1)"))
+                    started.set()
+                    release.wait(5)
+            except Exception as exc:
+                errors.append(exc)
+
+        thread = threading.Thread(target=slow_writer)
+        thread.start()
+        assert started.wait(5)
+        threading.Timer(0.3, release.set).start()
+        # Blocks until the slow writer commits (well within busy_timeout), then succeeds.
+        with write_transaction(engine) as conn:
+            conn.execute(text("SELECT count(*) FROM t")).scalar()
+            conn.execute(text("INSERT INTO t VALUES (2)"))
+        thread.join(5)
+        assert errors == []
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM t")).scalar() == 2
+        engine.dispose()

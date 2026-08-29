@@ -10,7 +10,7 @@ COMPOSE ?= docker compose
 .PHONY: help install fmt lint types test test-ci test-all test-postgres \
         test-thorough cov check bench bench-scaling bench-import openapi \
         serve migrate \
-        migration clean distclean \
+        migration clean clean-all \
         up down logs db-shell image image-test compose-config \
         web-install web-dev web-build web-test web-check seed-demo e2e e2e-install \
         desktop desktop-build
@@ -82,16 +82,21 @@ migrate:  ## Apply migrations ($$PYMONEY_DATABASE_URL); the same command works i
 migration:  ## Autogenerate a migration: make migration M="what changed"
 	$(BIN)/alembic revision --autogenerate -m "$(M)"
 
-clean:  ## Remove every build artifact and cache (keeps .venv and node_modules)
+clean:  ## Remove caches and build output (keeps .venv, node_modules and your ledger)
 	rm -rf build dist htmlcov .coverage .coverage.* coverage.xml junit.xml
 	rm -rf .pytest_cache .ruff_cache .mypy_cache .hypothesis
-	rm -rf frontend/apps/web/dist frontend/e2e/test-results frontend/e2e/report
-	find . -path ./.venv -prune -o -path '*/node_modules' -prune -o \
-		\( -name __pycache__ -o -name '*.egg-info' -o -name .vite -o -name '*.tsbuildinfo' \) \
-		-prune -exec rm -rf {} +
+	rm -rf frontend/apps/web/dist frontend/coverage frontend/.vite \
+	       frontend/e2e/test-results frontend/e2e/report
+	find . -name '*.tsbuildinfo' -not -path '*/node_modules/*' -delete
+	find . \( -path ./.venv -o -path '*/node_modules' \) -prune -o \
+	       -name __pycache__ -type d -prune -exec rm -rf {} +
+	find . \( -path ./.venv -o -path '*/node_modules' \) -prune -o \
+	       -name '*.egg-info' -type d -prune -exec rm -rf {} +
+	@test ! -e pymoney.sqlite || echo "kept pymoney.sqlite (the 'make serve' ledger); 'make clean-all' removes it"
 
-distclean: clean  ## clean, plus the virtualenv and node_modules
-	rm -rf $(VENV) frontend/node_modules frontend/apps/web/node_modules frontend/packages/core/node_modules
+clean-all: clean  ## Also remove .venv, node_modules and the local development ledger
+	rm -rf .venv frontend/node_modules frontend/apps/web/node_modules frontend/packages/core/node_modules
+	rm -f pymoney.sqlite pymoney.sqlite-wal pymoney.sqlite-shm
 
 # --- containers -----------------------------------------------------------
 

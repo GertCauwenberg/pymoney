@@ -57,9 +57,15 @@ class Client:
             url, json=json, headers={**self.headers, **kw.pop("headers", {})}, **kw
         )
 
-    def delete(self, url: str, **kw: Any):
-        return self.http.delete(
-            url, headers={**self.headers, **kw.pop("headers", {})}, **kw
+    def delete(self, url: str, json: Any = None, **kw: Any):
+        # httpx's delete() takes no body; DELETE /books/{id} and DELETE /auth/me
+        # need one (the confirmation), so go through request().
+        return self.http.request(
+            "DELETE",
+            url,
+            json=json,
+            headers={**self.headers, **kw.pop("headers", {})},
+            **kw,
         )
 
     def get(self, url: str, **kw: Any):
@@ -141,6 +147,11 @@ def api(tmp_path: Path):
         cookie_secure=False,
         allow_registration=True,
         quote_interval_minutes=0,
+        maintenance_interval_minutes=0,
+        # Most tests want a session straight after registering; the activation
+        # flow has tests of its own, which build an app with it on.
+        require_activation=False,
+        mail_backend="memory",
     )
     # Scripted providers and no network: tests/test_api_quotes.py drives them.
     from pymoney.quotes import ProviderRegistry, QuoteService

@@ -20,6 +20,7 @@ export type Holdings = Schemas["HoldingsOut"];
 export type Holding = Schemas["HoldingOut"];
 export type Book = Schemas["BookOut"];
 export type BookIn = Schemas["BookIn"];
+export type ImportResult = Schemas["ImportOut"];
 export type Grant = Schemas["GrantOut"];
 export type GrantIn = Schemas["GrantIn"];
 export type Role = GrantIn["role"];
@@ -53,6 +54,7 @@ export type User = Schemas["UserOut"];
 export type Session = Schemas["SessionOut"];
 export type LoginIn = Schemas["LoginIn"];
 export type RegisterIn = Schemas["RegisterIn"];
+export type Pending = Schemas["PendingOut"];
 export type Health = Schemas["HealthOut"];
 
 type Query<Op extends keyof operations> = NonNullable<

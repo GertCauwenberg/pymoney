@@ -264,6 +264,13 @@ python -m pymoney.importers.kmymoney money.kmy --database ledger.sqlite --owner 
 book exists but nobody can see it (`python -m pymoney.store.grants` fixes that
 later).
 
+A user does not need the command line at all: the web app's books page has
+**Import from KMyMoney**, which uploads the file to `POST /books/import/kmymoney`.
+The server makes a new book from it, imports, and grants the uploader `owner`,
+in one request -- a failed import leaves no book behind -- and returns the same
+report the command line prints (`PYMONEY_MAX_UPLOAD_MB`, default 50, bounds the
+file).
+
 The guarantee: the same accounts exist, and **every balance matches the figure
 KMyMoney displayed, to the minor unit.** The importer verifies that itself, on
 your data, and says so in the report.
@@ -378,6 +385,31 @@ the book and manages sharing. They are keyed on a *subject string*
 rather than a user id — which is what lets OIDC slot in later and map a token's
 `sub` claim onto the same grants. A book you hold no grant on is a 404, not a
 403: whether it exists is itself information.
+
+### Accounts: getting in, getting out
+
+Registering sends an **activation link** (`PYMONEY_REQUIRE_ACTIVATION`, on by
+default): the account exists but cannot log in until the link is followed, and
+a never-activated account is deleted after `PYMONEY_PURGE_UNACTIVATED_AFTER_HOURS`
+(a week) by the maintenance job, so a mistyped address does not stay reserved.
+A **forgotten password** is reset through an emailed link; using it ends every
+other session of the account. Both links are single use, short-lived, and stored
+only as digests -- like session tokens, a leaked database yields none of them.
+`/forgot-password` and `/resend-activation` answer 202 whether or not the address
+is registered; the email is the only channel that confirms anything.
+
+Email goes through `PYMONEY_MAIL_BACKEND`: `console` (the default: the link is
+in the server log, which is fine for one person on a laptop and a startup
+warning everywhere else), `smtp` (`PYMONEY_SMTP_*`), `file` (one JSON line per
+message, for the browser tests) or `memory`. Links point at
+`PYMONEY_PUBLIC_URL`, the web app's address.
+
+**Deleting a book** is `DELETE /books/{id}` for an owner, with the book's exact
+name in the body as confirmation; everything goes, change log and grants
+included, and there is no undo. **Deleting an account** (`DELETE /auth/me`, with
+the password) is refused while the user owns a book -- a book with no owner
+could never be administered again -- and otherwise removes the login, its
+sessions and its grants on other people's books.
 
 ### One writer per book
 

@@ -13,7 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import Engine, select
 
 from ...core.commodity import Commodity
-from ...store import identity
+from ...store import identity, write_transaction
+from ...store.admin import delete_book as delete_book_rows
 from ...store.grants import grant
 from ..deps import (
     CurrentUser,
@@ -25,7 +26,7 @@ from ..deps import (
     role_on,
 )
 from ..registry import BookRegistry
-from ..schemas import BookIn, BookOut, GrantIn, GrantOut
+from ..schemas import BookIn, BookOut, DeleteBookIn, GrantIn, GrantOut
 from ._shared import set_revision
 
 # Starlette renamed this status constant; 422 is the number either way.
@@ -69,7 +70,7 @@ def create_book(
         symbol=body.base_currency_symbol,
     )
     book = registry.create(name=body.name, base_currency=currency, actor=actor.subject)
-    with engine.begin() as conn:
+    with write_transaction(engine) as conn:
         grant(conn, book.id, actor.subject, "owner")
     return BookOut.of(book.settings, book.revision, "owner")
 
@@ -97,6 +98,35 @@ def rename_book(
 
     book.execute(cmd.RenameBook(name=body.name))
     return BookOut.of(book.settings, book.revision, "owner")
+
+
+@router.delete(
+    "/books/{book_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a book, irreversibly",
+    responses={422: {"description": "The body did not name the book."}},
+)
+def delete_book(
+    book_id: UUID,
+    body: DeleteBookIn,
+    book: OwnedBook,
+    engine: Annotated[Engine, Depends(get_engine)],
+    registry: Annotated[BookRegistry, Depends(get_registry)],
+) -> None:
+    """Everything goes: accounts, transactions, prices, the change log, and
+    every grant. There is no undo, which is why the request has to repeat the
+    book's name -- a client cannot do this by accident."""
+    if body.name.strip() != book.name:
+        raise HTTPException(
+            status_code=UNPROCESSABLE,
+            detail=f"to delete this book, send its exact name ({book.name!r}) to confirm",
+        )
+    # Under the registry's lock (held by the dependency above), so no request
+    # is using the Book while its rows go; then forget it, so the registry never
+    # hands out the closed object again. A later request finds no book: 404.
+    with write_transaction(engine) as conn:
+        delete_book_rows(conn, book_id)
+    registry.forget(book_id)
 
 
 # -- access control --------------------------------------------------------
@@ -141,7 +171,7 @@ def put_grant(
             status_code=UNPROCESSABLE,
             detail="subject must not be empty",
         )
-    with engine.begin() as conn:
+    with write_transaction(engine) as conn:
         grant(conn, book_id, subject, body.role)
     return GrantOut(book_id=book_id, subject=subject, role=body.role)
 
@@ -160,7 +190,7 @@ def delete_grant(
 ) -> None:
 
     del book
-    with engine.begin() as conn:
+    with write_transaction(engine) as conn:
         owners = (
             conn.execute(
                 select(identity.book_grants.c.subject).where(

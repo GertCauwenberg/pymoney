@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    readonly "/auth/activate": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Activate an account with the emailed token
+         * @description Proves the address; logs the new user in.
+         */
+        readonly post: operations["activate_auth_activate_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/auth/forgot-password": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Email a password-reset link
+         * @description Always 202. A link is sent only to an activated account with that address.
+         */
+        readonly post: operations["forgot_password_auth_forgot_password_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/auth/login": {
         readonly parameters: {
             readonly query?: never;
@@ -49,7 +89,13 @@ export interface paths {
         readonly get: operations["me_auth_me_get"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
+        /**
+         * Delete your account
+         * @description Irreversible. Refused while the user owns any book, because a book with
+         *     no owner can never be administered again; grants on other people's books
+         *     are simply dropped.
+         */
+        readonly delete: operations["delete_me_auth_me_delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -64,8 +110,54 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Create an account and log in */
+        /**
+         * Create an account
+         * @description With activation required (the default), the account exists but cannot
+         *     log in until the emailed link is followed; the answer is 202 and no session.
+         *     Otherwise the session starts at once (201).
+         */
         readonly post: operations["register_auth_register_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/auth/resend-activation": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Send the activation link again
+         * @description Always 202: whether the address is registered is not revealed.
+         */
+        readonly post: operations["resend_activation_auth_resend_activation_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/auth/reset-password": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Set a new password with the emailed token
+         * @description Every existing session of the account is ended: whoever had the old
+         *     password is logged out everywhere. The caller gets a fresh one.
+         */
+        readonly post: operations["reset_password_auth_reset_password_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -101,7 +193,13 @@ export interface paths {
         readonly get: operations["get_book_books__book_id__get"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
+        /**
+         * Delete a book, irreversibly
+         * @description Everything goes: accounts, transactions, prices, the change log, and
+         *     every grant. There is no undo, which is why the request has to repeat the
+         *     book's name -- a client cannot do this by accident.
+         */
+        readonly delete: operations["delete_book_books__book_id__delete"];
         readonly options?: never;
         readonly head?: never;
         /** Rename a book */
@@ -663,6 +761,27 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/books/import/kmymoney": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Create a book from an uploaded KMyMoney file
+         * @description The uploader becomes the book's owner. Every balance is verified against
+         *     what KMyMoney displayed; the report says what was approximated or skipped.
+         */
+        readonly post: operations["import_kmymoney_file_books_import_kmymoney_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/health": {
         readonly parameters: {
             readonly query?: never;
@@ -847,6 +966,11 @@ export interface components {
          * @enum {string}
          */
         readonly AccountType: "CHECKING" | "SAVINGS" | "CASH" | "INVESTMENT" | "STOCK" | "ASSET" | "RECEIVABLE" | "CREDIT_CARD" | "LOAN" | "LIABILITY" | "PAYABLE" | "INCOME" | "EXPENSE" | "EQUITY";
+        /** ActivateIn */
+        readonly ActivateIn: {
+            /** Token */
+            readonly token: string;
+        };
         /**
          * AmountOut
          * @description A booked amount: exact minor units, plus what to show a human.
@@ -905,6 +1029,29 @@ export interface components {
              * @description Commodities that could not be valued (lenient mode only).
              */
             readonly unpriced: readonly string[];
+        };
+        /** Body_import_kmymoney_file_books_import_kmymoney_post */
+        readonly Body_import_kmymoney_file_books_import_kmymoney_post: {
+            /**
+             * File
+             * @description A .kmy file, gzipped or plain XML.
+             */
+            readonly file: string;
+            /**
+             * Name
+             * @description Name for the new book.
+             */
+            readonly name: string;
+            /**
+             * Rounding Adjustments
+             * @default true
+             */
+            readonly rounding_adjustments: boolean;
+            /**
+             * Skip Prices
+             * @default false
+             */
+            readonly skip_prices: boolean;
         };
         /** BookIn */
         readonly BookIn: {
@@ -1084,6 +1231,22 @@ export interface components {
             /** Sources */
             readonly sources: readonly string[];
         };
+        /** DeleteBookIn */
+        readonly DeleteBookIn: {
+            /**
+             * Name
+             * @description The book's exact name, repeated, to confirm an irreversible deletion.
+             */
+            readonly name: string;
+        };
+        /** DeleteMeIn */
+        readonly DeleteMeIn: {
+            /**
+             * Password
+             * @description Your current password, to confirm.
+             */
+            readonly password: string;
+        };
         /** DeletionOut */
         readonly DeletionOut: {
             /**
@@ -1093,6 +1256,11 @@ export interface components {
             readonly id: string;
             /** Kind */
             readonly kind: string;
+        };
+        /** EmailIn */
+        readonly EmailIn: {
+            /** Email */
+            readonly email: string;
         };
         /** GrantIn */
         readonly GrantIn: {
@@ -1167,6 +1335,52 @@ export interface components {
             readonly target: string;
             readonly total_cost: components["schemas"]["AmountOut"];
             readonly total_value: components["schemas"]["AmountOut"];
+        };
+        /**
+         * ImportOut
+         * @description A book made from an uploaded file, and what the importer had to say.
+         */
+        readonly ImportOut: {
+            /**
+             * Adjustments
+             * @description Rounding corrections posted, one line each.
+             */
+            readonly adjustments: readonly string[];
+            readonly book: components["schemas"]["BookOut"];
+            /**
+             * Imported
+             * @description How many of each thing was created.
+             */
+            readonly imported: {
+                readonly [key: string]: number;
+            };
+            /**
+             * Ok
+             * @description No errors. Warnings and notes may still be present.
+             */
+            readonly ok: boolean;
+            /** Problems */
+            readonly problems: readonly components["schemas"]["ImportProblemOut"][];
+            /**
+             * Skipped
+             * @description What the file had that PyMoney has no home for yet.
+             */
+            readonly skipped: {
+                readonly [key: string]: number;
+            };
+            /** Summary */
+            readonly summary: string;
+        };
+        /** ImportProblemOut */
+        readonly ImportProblemOut: {
+            /** Category */
+            readonly category: string;
+            /** Level */
+            readonly level: string;
+            /** Message */
+            readonly message: string;
+            /** Source Id */
+            readonly source_id: string;
         };
         /** IncomeStatementOut */
         readonly IncomeStatementOut: {
@@ -1335,6 +1549,20 @@ export interface components {
             readonly name?: string | null;
             /** Notes */
             readonly notes?: string | null;
+        };
+        /**
+         * PendingOut
+         * @description Something was (or would have been) emailed; nothing else is revealed.
+         */
+        readonly PendingOut: {
+            /** Email */
+            readonly email: string;
+            /**
+             * Status
+             * @default pending
+             * @constant
+             */
+            readonly status: "pending";
         };
         /** PriceIn */
         readonly PriceIn: {
@@ -1639,6 +1867,13 @@ export interface components {
             /** @description Subtree total, signed as stored. */
             readonly value: components["schemas"]["AmountOut"];
         };
+        /** ResetPasswordIn */
+        readonly ResetPasswordIn: {
+            /** Password */
+            readonly password: string;
+            /** Token */
+            readonly token: string;
+        };
         /**
          * RoundingMode
          * @description Rounding modes, matching the Decimal/ISO vocabulary.
@@ -1923,6 +2158,124 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    readonly activate_auth_activate_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ActivateIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly forgot_password_auth_forgot_password_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EmailIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PendingOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     readonly login_auth_login_post: {
         readonly parameters: {
             readonly query?: never;
@@ -2096,6 +2449,66 @@ export interface operations {
             };
         };
     };
+    readonly delete_me_auth_me_delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["DeleteMeIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description You still own a book: delete it or hand it to another owner first. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     readonly register_auth_register_post: {
         readonly parameters: {
             readonly query?: never;
@@ -2111,6 +2524,133 @@ export interface operations {
         readonly responses: {
             /** @description Successful Response */
             readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionOut"] | components["schemas"]["PendingOut"];
+                };
+            };
+            /** @description Created, pending activation: a link was emailed. */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PendingOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly resend_activation_auth_resend_activation_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EmailIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PendingOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly reset_password_auth_reset_password_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ResetPasswordIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
@@ -2327,6 +2867,68 @@ export interface operations {
                 content?: never;
             };
             /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly delete_book_books__book_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["DeleteBookIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body did not name the book. */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -5277,6 +5879,75 @@ export interface operations {
             };
             /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
             readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly import_kmymoney_file_books_import_kmymoney_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "multipart/form-data": components["schemas"]["Body_import_kmymoney_file_books_import_kmymoney_post"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ImportOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The file is larger than the server accepts. */
+            readonly 413: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

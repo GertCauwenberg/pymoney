@@ -38,6 +38,30 @@ class Settings(BaseSettings):
     allow_registration: bool = True
     """Whether POST /auth/register works. Off once the household is set up."""
 
+    require_activation: bool = True
+    """Registering sends an activation link and the account is unusable until it
+    is followed. Off: the address is taken on trust and the session starts at once."""
+    activation_hours: int = Field(default=48, ge=1)
+    """How long an activation link is valid."""
+    purge_unactivated_after_hours: int = Field(default=7 * 24, ge=1)
+    """A never-activated account older than this is deleted by the maintenance job."""
+    reset_hours: int = Field(default=2, ge=1)
+    """How long a password-reset link is valid."""
+    maintenance_interval_minutes: int = Field(default=60, ge=0)
+    """How often expired sessions and tokens and stale pending accounts are purged. 0 turns it off."""
+
+    public_url: str = "http://localhost:5173"
+    """Where the web app is reached: the links in emails point here."""
+    mail_backend: str = "console"
+    """console, smtp, file or memory (see pymoney.api.mail)."""
+    mail_from: str = "pymoney@localhost"
+    mail_file: str = "pymoney-mail.jsonl"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_starttls: bool = True
+
     cors_origins: list[str] = Field(default_factory=list)
     """Exact origins allowed to send credentialed requests. Never "*"."""
 
@@ -46,6 +70,9 @@ class Settings(BaseSettings):
 
     root_path: str = ""
     """Set when mounted behind a prefix-stripping proxy."""
+
+    max_upload_mb: int = Field(default=50, ge=1, le=2048)
+    """Largest file `POST /books/import/kmymoney` accepts."""
 
     quote_interval_minutes: int = Field(default=360, ge=0)
     """How often the scheduler fetches quotes for every book. 0 turns it off;
@@ -74,6 +101,15 @@ class Settings(BaseSettings):
             problems.append(
                 "PYMONEY_ALLOW_REGISTRATION is on: anyone who can reach this "
                 "server can create an account"
+            )
+        if self.allow_registration and not self.require_activation:
+            problems.append(
+                "PYMONEY_REQUIRE_ACTIVATION is off: email addresses are taken on trust"
+            )
+        if self.mail_backend == "console":
+            problems.append(
+                "PYMONEY_MAIL_BACKEND is console: activation and reset links go to the "
+                "server log, not to the user"
             )
         return problems
 

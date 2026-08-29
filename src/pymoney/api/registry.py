@@ -108,11 +108,14 @@ class BookRegistry:
         self,
         *,
         name: str,
-        base_currency: Commodity,
+        base_currency: Commodity | None,
         book_id: UUID | None = None,
         actor: str = "",
     ) -> Book:
-        """Create a new book and keep it open."""
+        """Create a new book and keep it open.
+
+        ``base_currency`` may be None for a book about to be filled by an
+        importer, which settles the currency from the file."""
         from ..core.ids import new_id
 
         book_id = book_id or new_id()

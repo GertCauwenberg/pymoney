@@ -373,6 +373,69 @@ class TestPlanning:
             date(2020, 12, 31),
         )
 
+    def test_a_changed_quote_source_is_honoured_at_the_next_run(
+        self, priced_chart: Chart, clock
+    ):
+        """The plan is drawn from the commodities as they are *now*: a provider
+        switch, or switching fetching off, takes effect at the next tick with no
+        restart and no stale request to the old provider."""
+        from pymoney.core import commands as c
+
+        book = priced_chart.book
+        first, second = FakeProvider(), FakeProvider()
+        second.name = "other"
+        first.table["USD"] = [quote("EUR", "USD", date(2025, 12, 30), "1.09")]
+        second.table["USD"] = [quote("EUR", "USD", date(2025, 12, 31), "1.10")]
+        service = QuoteService(
+            ProviderRegistry([first, second]), http=no_http, clock=clock
+        )
+
+        service.run(book)
+        assert len(first.requests) == 1 and second.requests == []
+
+        # Switch USD to the other provider.
+        book.execute(
+            c.UpdateCommodity(commodity_id=priced_chart.usd.id, quote_source="other")
+        )
+        report = service.run(book)
+        assert len(first.requests) == 1  # the old provider is not asked again
+        assert len(second.requests) == 1
+        # The new provider starts from its own history (none): the lookback,
+        # not the day after the *old* provider's last quote.
+        assert second.requests[0].start == clock.today() - timedelta(days=7)
+        assert report.stored == 1 and report.providers == ["other"]
+        stored = book.prices.history(
+            book.base_currency, priced_chart.usd, include_inverse=False
+        )
+        assert [(p.effective_date, p.source) for p in stored] == [
+            (date(2025, 12, 30), "fake"),
+            (date(2025, 12, 31), "other"),
+        ]
+
+        # Switch fetching off: nothing is asked, nothing already stored is touched.
+        book.execute(
+            c.UpdateCommodity(commodity_id=priced_chart.usd.id, quote_source=None)
+        )
+        report = service.run(book)
+        assert report.requested == 0 and report.up_to_date == 0
+        assert len(second.requests) == 1
+        assert (
+            len(
+                book.prices.history(
+                    book.base_currency, priced_chart.usd, include_inverse=False
+                )
+            )
+            == 2
+        )
+
+        # And on again, a week later: it resumes from that provider's newest quote.
+        clock.advance(days=7)
+        book.execute(
+            c.UpdateCommodity(commodity_id=priced_chart.usd.id, quote_source="other")
+        )
+        service.run(book)
+        assert second.requests[-1].start == date(2026, 1, 1)
+
     def test_filters_by_commodity_and_provider(self, priced_chart: Chart, service):
         book = priced_chart.book
         assert service.plan(book, commodity_ids=[priced_chart.aapl.id])[0] == []

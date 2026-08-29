@@ -38,7 +38,9 @@ from sqlalchemy import (
 from .schema import NAME, UTC, metadata
 from .types import Uuid
 
-__all__ = ["ROLES", "book_grants", "sessions", "users"]
+__all__ = ["ROLES", "TOKEN_KINDS", "book_grants", "sessions", "user_tokens", "users"]
+
+TOKEN_KINDS = ("activate", "reset")
 
 # Ordered weakest to strongest, so a check is a comparison.
 ROLES = ("viewer", "editor", "owner")
@@ -56,9 +58,29 @@ users = Table(
     Column("password_salt", LargeBinary(32), nullable=True),
     Column("password_params", String(64), nullable=True),
     Column("active", Boolean, nullable=False, server_default="1"),
+    # Null until the address has been proven by following the activation link.
+    # A never-activated account is purged after a grace period.
+    Column("activated_at", UTC, nullable=True),
     Column("created_at", UTC, nullable=False),
     Column("updated_at", UTC, nullable=False),
     UniqueConstraint("email_key", name="uq_users_email_key"),
+)
+
+# Activation and password-reset tokens. Like session tokens, only the SHA-256
+# digest is stored; the token itself lives in the email and nowhere else. Each
+# is single use and short-lived.
+user_tokens = Table(
+    "user_tokens",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("user_id", Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("kind", String(16), nullable=False),
+    Column("token_hash", LargeBinary(32), nullable=False),
+    Column("created_at", UTC, nullable=False),
+    Column("expires_at", UTC, nullable=False),
+    Column("used_at", UTC, nullable=True),
+    UniqueConstraint("token_hash", name="uq_user_tokens_token_hash"),
+    Index("ix_user_tokens_user_id", "user_id"),
 )
 
 sessions = Table(

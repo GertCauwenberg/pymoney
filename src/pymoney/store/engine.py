@@ -40,15 +40,19 @@ from ..core.clock import Clock
 from ..core.commodity import Commodity
 from ..core.ids import new_id
 from . import schema
+from .connections import WRITE_OPTION, write_connection, write_transaction
 from .sql import SqlStore
 
 __all__ = [
     "DEFAULT_URL_ENV",
+    "WRITE_OPTION",
     "create_engine",
     "create_schema",
     "drop_schema",
     "open_book",
     "session",
+    "write_connection",
+    "write_transaction",
 ]
 
 DEFAULT_URL_ENV = "PYMONEY_DATABASE_URL"
@@ -106,7 +110,16 @@ def _configure_sqlite(engine: Engine, *, synchronous: str, is_memory: bool) -> N
 
     @event.listens_for(engine, "begin")
     def _on_begin(connection: Any) -> None:
-        connection.exec_driver_sql("BEGIN")
+        # A transaction that knows it will write says so. In WAL mode a
+        # deferred transaction that reads first and writes later fails with
+        # SQLITE_BUSY_SNAPSHOT the moment another connection has committed in
+        # between -- and busy_timeout does not retry that. BEGIN IMMEDIATE takes
+        # the writer's lock up front, so concurrent writers queue (for up to
+        # busy_timeout) instead of failing. Readers stay deferred and never wait.
+        if connection.get_execution_options().get(WRITE_OPTION):
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        else:
+            connection.exec_driver_sql("BEGIN")
 
 
 def create_schema(engine: Engine) -> None:

@@ -7,6 +7,7 @@ import { CommoditiesPage } from "./pages/CommoditiesPage";
 import { PricesPage } from "./pages/PricesPage";
 import { BooksPage } from "./pages/BooksPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ActivatePage, ForgotPasswordPage, ResetPasswordPage } from "./pages/PasswordPages";
 import { NotFound } from "./pages/NotFound";
 import { SharingPage } from "./pages/SharingPage";
 import { BalanceSheetReport } from "./reports/BalanceSheetReport";
@@ -19,6 +20,9 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/activate" element={<ActivatePage />} />
       <Route element={<RequireAuth />}>
         <Route index element={<Navigate to="/books" replace />} />
         <Route path="/books" element={<BooksPage />} />

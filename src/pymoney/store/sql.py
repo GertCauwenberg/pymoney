@@ -55,6 +55,7 @@ from ..core.price import PriceDB
 from ..core.store import CommandRecord, Store, StoredBook
 from ..core.transaction import Transaction
 from . import schema
+from .connections import write_connection
 from .mapper import Registry, Rows
 
 __all__ = ["SqlStore"]
@@ -184,7 +185,9 @@ class SqlStore(Store):
         self._check_open()
         self._ensure_loaded()
         if self._connection is None:
-            self._connection = self._engine.connect()
+            # A unit of work reads (is the id taken?) and then writes; it must
+            # begin as a writer or a concurrent commit elsewhere would fail it.
+            self._connection = write_connection(self._engine)
         if not self._connection.in_transaction():
             self._connection.begin()
         # Everything else has a foreign key to `books`, so the row has to be

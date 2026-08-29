@@ -27,12 +27,15 @@ from ..core.clock import Clock
 from ..quotes import ProviderRegistry, QuoteScheduler, QuoteService
 from ..store import create_engine, create_schema
 from .errors import install_error_handlers
+from .mail import Mailer, mailer_from_settings
+from .maintenance import MaintenanceScheduler
 from .registry import BookRegistry
 from .routers import (
     accounts,
     auth,
     books,
     commodities,
+    imports,
     payees,
     prices,
     quotes,
@@ -161,6 +164,7 @@ def create_app(
     engine: Engine | None = None,
     clock: Clock | None = None,
     quotes_service: QuoteService | None = None,
+    mailer: Mailer | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -170,8 +174,11 @@ def create_app(
     :param quotes_service: the quote service to use; built from the discovered
         providers if omitted. Tests pass one with scripted providers and no
         network.
+    :param mailer: where activation and reset emails go; from the settings
+        (``PYMONEY_MAIL_BACKEND``) if omitted.
     """
     settings = settings or Settings()
+    mailer = mailer or mailer_from_settings(settings)
     if quotes_service is None:
         quotes_service = QuoteService(
             ProviderRegistry.discover(settings.quote_plugins),
@@ -200,6 +207,7 @@ def create_app(
         app.state.engine = engine
         app.state.registry = BookRegistry(engine, clock=clock)
         app.state.quotes = quotes_service
+        app.state.mailer = mailer
         for warning in settings.production_warnings():
             # Logged, not silent: someone should see this before a user does.
             print(f"pymoney: WARNING: {warning}")
@@ -216,9 +224,20 @@ def create_app(
             )
             scheduler.start()
         app.state.quote_scheduler = scheduler
+        maintenance: MaintenanceScheduler | None = None
+        if settings.maintenance_interval_minutes > 0:
+            maintenance = MaintenanceScheduler(
+                engine,
+                interval=timedelta(minutes=settings.maintenance_interval_minutes),
+                unactivated_after=timedelta(hours=settings.purge_unactivated_after_hours),
+            )
+            maintenance.start()
+        app.state.maintenance = maintenance
         try:
             yield
         finally:
+            if maintenance is not None:
+                maintenance.stop()
             if scheduler is not None:
                 scheduler.stop()
             app.state.registry.close()
@@ -242,6 +261,8 @@ def create_app(
     app.state.registry = BookRegistry(engine, clock=clock)
     app.state.quotes = quotes_service
     app.state.quote_scheduler = None
+    app.state.mailer = mailer
+    app.state.maintenance = None
 
     install_error_handlers(app)
 
@@ -260,6 +281,7 @@ def create_app(
     app.include_router(system.router)
     app.include_router(auth.router)
     app.include_router(books.router)
+    app.include_router(imports.router)
     app.include_router(commodities.router)
     app.include_router(accounts.router)
     app.include_router(payees.router)

@@ -327,6 +327,22 @@
         "title": "AccountType",
         "type": "string"
       },
+      "ActivateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "maxLength": 256,
+            "minLength": 8,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "ActivateIn",
+        "type": "object"
+      },
       "AmountOut": {
         "additionalProperties": false,
         "description": "A booked amount: exact minor units, plus what to show a human.",
@@ -432,6 +448,39 @@
           "unpriced"
         ],
         "title": "BalanceSheetOut",
+        "type": "object"
+      },
+      "Body_import_kmymoney_file_books_import_kmymoney_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "A .kmy file, gzipped or plain XML.",
+            "title": "File",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name for the new book.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "rounding_adjustments": {
+            "default": true,
+            "title": "Rounding Adjustments",
+            "type": "boolean"
+          },
+          "skip_prices": {
+            "default": false,
+            "title": "Skip Prices",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file",
+          "name"
+        ],
+        "title": "Body_import_kmymoney_file_books_import_kmymoney_post",
         "type": "object"
       },
       "BookIn": {
@@ -913,6 +962,36 @@
         "title": "ConversionOut",
         "type": "object"
       },
+      "DeleteBookIn": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The book's exact name, repeated, to confirm an irreversible deletion.",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "DeleteBookIn",
+        "type": "object"
+      },
+      "DeleteMeIn": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "description": "Your current password, to confirm.",
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "DeleteMeIn",
+        "type": "object"
+      },
       "DeletionOut": {
         "additionalProperties": false,
         "properties": {
@@ -931,6 +1010,22 @@
           "id"
         ],
         "title": "DeletionOut",
+        "type": "object"
+      },
+      "EmailIn": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "EmailIn",
         "type": "object"
       },
       "GrantIn": {
@@ -1110,6 +1205,95 @@
           "total_cost"
         ],
         "title": "HoldingsOut",
+        "type": "object"
+      },
+      "ImportOut": {
+        "additionalProperties": false,
+        "description": "A book made from an uploaded file, and what the importer had to say.",
+        "properties": {
+          "adjustments": {
+            "description": "Rounding corrections posted, one line each.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Adjustments",
+            "type": "array"
+          },
+          "book": {
+            "$ref": "#/components/schemas/BookOut"
+          },
+          "imported": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "How many of each thing was created.",
+            "title": "Imported",
+            "type": "object"
+          },
+          "ok": {
+            "description": "No errors. Warnings and notes may still be present.",
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ImportProblemOut"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "skipped": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "What the file had that PyMoney has no home for yet.",
+            "title": "Skipped",
+            "type": "object"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "book",
+          "ok",
+          "imported",
+          "skipped",
+          "problems",
+          "adjustments",
+          "summary"
+        ],
+        "title": "ImportOut",
+        "type": "object"
+      },
+      "ImportProblemOut": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "category",
+          "message",
+          "source_id"
+        ],
+        "title": "ImportProblemOut",
         "type": "object"
       },
       "IncomeStatementOut": {
@@ -1603,6 +1787,27 @@
           }
         },
         "title": "PayeePatch",
+        "type": "object"
+      },
+      "PendingOut": {
+        "additionalProperties": false,
+        "description": "Something was (or would have been) emailed; nothing else is revealed.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "status": {
+            "const": "pending",
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "PendingOut",
         "type": "object"
       },
       "PriceIn": {
@@ -2295,6 +2500,29 @@
           "own_value"
         ],
         "title": "ReportRowOut",
+        "type": "object"
+      },
+      "ResetPasswordIn": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 256,
+            "minLength": 8,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "title": "ResetPasswordIn",
         "type": "object"
       },
       "RoundingMode": {
@@ -3007,6 +3235,100 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/auth/activate": {
+      "post": {
+        "description": "Proves the address; logs the new user in.",
+        "operationId": "activate_auth_activate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Activate an account with the emailed token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/forgot-password": {
+      "post": {
+        "description": "Always 202. A link is sent only to an activated account with that address.",
+        "operationId": "forgot_password_auth_forgot_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Email a password-reset link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/auth/login": {
       "post": {
         "operationId": "login_auth_login_post",
@@ -3117,6 +3439,78 @@
       }
     },
     "/auth/me": {
+      "delete": {
+        "description": "Irreversible. Refused while the user owns any book, because a book with\nno owner can never be administered again; grants on other people's books\nare simply dropped.",
+        "operationId": "delete_me_auth_me_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteMeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "You still own a book: delete it or hand it to another owner first."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Delete your account",
+        "tags": [
+          "auth"
+        ]
+      },
       "get": {
         "operationId": "me_auth_me_get",
         "parameters": [
@@ -3188,6 +3582,7 @@
     },
     "/auth/register": {
       "post": {
+        "description": "With activation required (the default), the account exists but cannot\nlog in until the emailed link is followed; the answer is 202 and no session.\nOtherwise the session starts at once (201).",
         "operationId": "register_auth_register_post",
         "requestBody": {
           "content": {
@@ -3201,6 +3596,118 @@
         },
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PendingOut"
+                    }
+                  ],
+                  "title": "Response Register Auth Register Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingOut"
+                }
+              }
+            },
+            "description": "Created, pending activation: a link was emailed."
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Create an account",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/resend-activation": {
+      "post": {
+        "description": "Always 202: whether the address is registered is not revealed.",
+        "operationId": "resend_activation_auth_resend_activation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Send the activation link again",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/reset-password": {
+      "post": {
+        "description": "Every existing session of the account is ended: whoever had the old\npassword is logged out everywhere. The caller gets a fresh one.",
+        "operationId": "reset_password_auth_reset_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
@@ -3226,7 +3733,7 @@
             "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
           }
         },
-        "summary": "Create an account and log in",
+        "summary": "Set a new password with the emailed token",
         "tags": [
           "auth"
         ]
@@ -3384,7 +3891,173 @@
         ]
       }
     },
+    "/books/import/kmymoney": {
+      "post": {
+        "description": "The uploader becomes the book's owner. Every balance is verified against\nwhat KMyMoney displayed; the report says what was approximated or skipped.",
+        "operationId": "import_kmymoney_file_books_import_kmymoney_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_kmymoney_file_books_import_kmymoney_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "413": {
+            "description": "The file is larger than the server accepts."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Create a book from an uploaded KMyMoney file",
+        "tags": [
+          "books"
+        ]
+      }
+    },
     "/books/{book_id}": {
+      "delete": {
+        "description": "Everything goes: accounts, transactions, prices, the change log, and\nevery grant. There is no undo, which is why the request has to repeat the\nbook's name -- a client cannot do this by accident.",
+        "operationId": "delete_book_books__book_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteBookIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The body did not name the book."
+          }
+        },
+        "summary": "Delete a book, irreversibly",
+        "tags": [
+          "books"
+        ]
+      },
       "get": {
         "operationId": "get_book_books__book_id__get",
         "parameters": [

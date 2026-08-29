@@ -135,9 +135,21 @@ class TestSettings:
                 database_url="postgresql+psycopg://u:p@db/pymoney",
                 cookie_secure=True,
                 allow_registration=False,
+                mail_backend="smtp",
+                smtp_host="mail.example.org",
             ).production_warnings()
             == []
         )
+
+    def test_trusting_addresses_and_console_mail_are_warned_about(self):
+        warnings = Settings(
+            database_url="postgresql+psycopg2://u:p@db/pymoney",
+            cookie_secure=True,
+            allow_registration=True,
+            require_activation=False,
+        ).production_warnings()
+        assert any("REQUIRE_ACTIVATION" in w for w in warnings)
+        assert any("MAIL_BACKEND" in w for w in warnings)
 
     def test_the_env_prefix(self, monkeypatch):
         monkeypatch.setenv("PYMONEY_COOKIE_NAME", "custom")

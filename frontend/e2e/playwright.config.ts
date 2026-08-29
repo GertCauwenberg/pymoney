@@ -15,7 +15,16 @@ import { join, resolve } from "node:path";
 const root = resolve(__dirname, "../..");
 const apiPort = Number(process.env.PYMONEY_E2E_API_PORT ?? 8765);
 const webPort = Number(process.env.PYMONEY_E2E_WEB_PORT ?? 5174);
-const database = join(mkdtempSync(join(tmpdir(), "pymoney-e2e-")), "e2e.sqlite");
+// Playwright evaluates this file in the main process and again in every
+// worker; the scratch directory is made once and handed down through the
+// environment, so the workers read the same mailbox the API writes to.
+const scratch = process.env.PYMONEY_E2E_SCRATCH ?? mkdtempSync(join(tmpdir(), "pymoney-e2e-"));
+process.env.PYMONEY_E2E_SCRATCH = scratch;
+const database = join(scratch, "e2e.sqlite");
+// The API writes its emails here, one JSON line each; the tests read them the
+// way a person reads their inbox. Exposed to the specs through the environment.
+const mailbox = join(scratch, "mail.jsonl");
+process.env.PYMONEY_E2E_MAILBOX = mailbox;
 const python = process.env.PYMONEY_E2E_PYTHON ?? join(root, ".venv", "bin", "python");
 // A browser of your own (CI installs Playwright's; a sandbox may only have a
 // system Chrome): PYMONEY_E2E_BROWSER=/path/to/chrome.
@@ -53,6 +62,13 @@ export default defineConfig({
         PYMONEY_COOKIE_SECURE: "0",
         PYMONEY_ALLOW_REGISTRATION: "1",
         PYMONEY_QUOTE_INTERVAL_MINUTES: "0",
+        PYMONEY_MAINTENANCE_INTERVAL_MINUTES: "0",
+        // Activation on, as in production: every registration in these tests
+        // goes through the emailed link (see helpers.register).
+        PYMONEY_REQUIRE_ACTIVATION: "1",
+        PYMONEY_MAIL_BACKEND: "file",
+        PYMONEY_MAIL_FILE: mailbox,
+        PYMONEY_PUBLIC_URL: `http://127.0.0.1:${webPort}`,
       },
     },
     {
