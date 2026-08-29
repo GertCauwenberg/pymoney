@@ -753,6 +753,11 @@ export interface components {
              */
             readonly iban: string;
             /**
+             * Id
+             * @description Client-chosen id (UUIDv7 recommended). An offline client applies the command locally first and replays it later; with the id fixed, the server's copy and the local one are the same row. 409 if taken.
+             */
+            readonly id?: string | null;
+            /**
              * Institution
              * @default
              */
@@ -977,6 +982,11 @@ export interface components {
             readonly code: string;
             /** Display Precision */
             readonly display_precision?: number | null;
+            /**
+             * Id
+             * @description Client-chosen id (UUIDv7 recommended). An offline client applies the command locally first and replays it later; with the id fixed, the server's copy and the local one are the same row. 409 if taken.
+             */
+            readonly id?: string | null;
             /** Isin */
             readonly isin?: string | null;
             /** @default CURRENCY */
@@ -1278,6 +1288,11 @@ export interface components {
             readonly address: string;
             /** Default Account Id */
             readonly default_account_id?: string | null;
+            /**
+             * Id
+             * @description Client-chosen id (UUIDv7 recommended). An offline client applies the command locally first and replays it later; with the id fixed, the server's copy and the local one are the same row. 409 if taken.
+             */
+            readonly id?: string | null;
             /** Match Keys */
             readonly match_keys?: readonly string[];
             /** Name */
@@ -1339,6 +1354,11 @@ export interface components {
              * @description The date the rate applies to.
              */
             readonly effective_date: string;
+            /**
+             * Id
+             * @description Client-chosen id (UUIDv7 recommended). An offline client applies the command locally first and replays it later; with the id fixed, the server's copy and the local one are the same row. 409 if taken.
+             */
+            readonly id?: string | null;
             /**
              * Quote Id
              * Format: uuid
@@ -1772,6 +1792,11 @@ export interface components {
              * @description Post date. A plain date, no timezone.
              */
             readonly date: string;
+            /**
+             * Id
+             * @description Client-chosen id (UUIDv7 recommended). An offline client applies the command locally first and replays it later; with the id fixed, the server's copy and the local one are the same row. 409 if taken.
+             */
+            readonly id?: string | null;
             /**
              * Imbalance Account Id
              * @description If set, a leg is appended to absorb any residual instead of the request being rejected as unbalanced.

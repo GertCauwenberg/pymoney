@@ -51,6 +51,7 @@ def create_payee(
             address=body.address,
             match_keys=tuple(body.match_keys),
             default_account_id=body.default_account_id,
+            id=body.id,
             command_id=key,
         )
     )

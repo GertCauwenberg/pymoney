@@ -77,6 +77,19 @@
             "title": "Iban",
             "type": "string"
           },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client-chosen id (UUIDv7 recommended). An offline client applies the command locally first and replays it later; with the id fixed, the server's copy and the local one are the same row. 409 if taken.",
+            "title": "Id"
+          },
           "institution": {
             "default": "",
             "title": "Institution",
@@ -594,6 +607,19 @@
               }
             ],
             "title": "Display Precision"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client-chosen id (UUIDv7 recommended). An offline client applies the command locally first and replays it later; with the id fixed, the server's copy and the local one are the same row. 409 if taken.",
+            "title": "Id"
           },
           "isin": {
             "anyOf": [
@@ -1419,6 +1445,19 @@
             ],
             "title": "Default Account Id"
           },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client-chosen id (UUIDv7 recommended). An offline client applies the command locally first and replays it later; with the id fixed, the server's copy and the local one are the same row. 409 if taken.",
+            "title": "Id"
+          },
           "match_keys": {
             "items": {
               "type": "string"
@@ -1592,6 +1631,19 @@
             "format": "date",
             "title": "Effective Date",
             "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client-chosen id (UUIDv7 recommended). An offline client applies the command locally first and replays it later; with the id fixed, the server's copy and the local one are the same row. 409 if taken.",
+            "title": "Id"
           },
           "quote_id": {
             "format": "uuid",
@@ -2596,6 +2648,19 @@
             "format": "date",
             "title": "Date",
             "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client-chosen id (UUIDv7 recommended). An offline client applies the command locally first and replays it later; with the id fixed, the server's copy and the local one are the same row. 409 if taken.",
+            "title": "Id"
           },
           "imbalance_account_id": {
             "anyOf": [

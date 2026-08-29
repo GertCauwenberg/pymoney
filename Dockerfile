@@ -79,7 +79,11 @@ COPY tests ./tests
 # The shipped API contract; tests/test_api_sync.py checks the code still
 # matches it (resolved as <repo>/docs/openapi.json relative to tests/).
 COPY docs/openapi.json ./docs/openapi.json
-RUN pip install --no-cache-dir -e '.[dev]' && chown -R pymoney:pymoney /home/pymoney
+# `dev` pulls PySide6 for the desktop tests (a quarter of a gigabyte of Qt);
+# the image does without, and those tests skip when PySide6 is absent.
+RUN pip install --no-cache-dir -e '.[store,postgres,api]' \
+        pytest pytest-cov hypothesis httpx ruff mypy \
+    && chown -R pymoney:pymoney /home/pymoney
 
 USER pymoney
 ENV HYPOTHESIS_STORAGE_DIRECTORY=/tmp/hypothesis

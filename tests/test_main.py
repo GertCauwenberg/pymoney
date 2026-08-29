@@ -51,7 +51,7 @@ class TestAvailable:
         assert _available("pymoney.core")
 
     def test_detects_a_missing_module(self):
-        assert not _available("pymoney.desktop")
+        assert not _available("pymoney.mobile")
 
     def test_a_missing_parent_package_is_not_an_error(self):
         assert not _available("pymoney.nope.deeper")

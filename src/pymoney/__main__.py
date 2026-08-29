@@ -23,7 +23,7 @@ _COMPONENTS = (
     ("pymoney.importers.kmymoney", "importer: KMyMoney .kmy files"),
     ("pymoney.quotes", "price quotes: ECB, Yahoo, plugins, scheduler"),
     ("pymoney.api", "HTTP API: FastAPI, commands in, revisions out"),
-    ("pymoney.desktop", "desktop client: PySide6"),
+    ("pymoney.desktop.ui", "desktop client: PySide6 (python -m pymoney.desktop)"),
 )
 
 

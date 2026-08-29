@@ -680,3 +680,40 @@ def test_quote_request_validates_its_range(eur):
         Quote(base_code="A", quote_code="B", effective_date=TODAY, rate=F(0), raw="0")
     assert CommodityKind.CURRENCY  # keeps the import honest
     assert datetime.now(timezone.utc).tzinfo is timezone.utc
+
+
+class TestTransport:
+    def test_a_timeout_is_retried_once_then_explained(self, monkeypatch):
+        import urllib.request
+
+        from pymoney.quotes import provider
+
+        calls = []
+
+        def slow(request, timeout):
+            calls.append(timeout)
+            raise TimeoutError("The read operation timed out")
+
+        monkeypatch.setattr(urllib.request, "urlopen", slow)
+        with pytest.raises(QuoteError, match=r"timed out.*PYMONEY_QUOTE_TIMEOUT"):
+            provider.urllib_http("https://example.invalid/x", {})
+        assert len(calls) == 2 and calls[0] == provider.DEFAULT_TIMEOUT
+
+    def test_an_http_error_is_not_retried(self, monkeypatch):
+        import urllib.error
+        import urllib.request
+
+        from pymoney.quotes import provider
+
+        calls = []
+
+        def refuse(request, timeout):
+            calls.append(1)
+            raise urllib.error.HTTPError(
+                request.full_url, 429, "Too Many Requests", {}, None
+            )  # type: ignore[arg-type]
+
+        monkeypatch.setattr(urllib.request, "urlopen", refuse)
+        with pytest.raises(QuoteError, match="HTTP 429"):
+            provider.urllib_http("https://example.invalid/x", {})
+        assert calls == [1]

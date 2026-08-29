@@ -12,24 +12,19 @@ transaction must not exist even transiently.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from ...core import commands as cmd
-from ...core.amount import Amount
 from ...core.commands import UNSET
 from ...core.posting import LegSpec
 from ..deps import IdempotencyKey, ReadableBook, WritableBook
 from ..schemas import (
-    AmountOut,
     LegIn,
     ReconcileIn,
-    ReconcileStateName,
     RegisterPage,
-    RegisterRowOut,
-    RegisterTotals,
     SetSplitStateIn,
     TransactionIn,
     TransactionOut,
@@ -37,6 +32,7 @@ from ..schemas import (
     TransactionUpdateIn,
     to_fraction,
 )
+from ..views import register_page
 from ._shared import cursor_key, decode_cursor, encode_cursor, page_size, set_revision
 
 router = APIRouter(prefix="/books/{book_id}", tags=["transactions"])
@@ -128,6 +124,7 @@ def post_transaction(
             rounding=body.rounding,
             imbalance_account_id=body.imbalance_account_id,
             imported_id=body.imported_id,
+            id=body.id,
             command_id=key,
         )
     )
@@ -263,76 +260,14 @@ def register(
         when, transaction_int, split_int = cursor_key(position)
         after = (when, UUID(int=transaction_int), UUID(int=split_int))
 
-    rows = book.register(
+    return register_page(
+        book,
         account_id,
         start=start,
         end=end,
         include_children=include_children,
         after=after,
-        limit=size + 1,
-    )
-    has_more = len(rows) > size
-    rows = rows[:size]
-
-    # Opening balance: everything strictly before the window. Answered by the
-    # pushed-down aggregate, not by walking the ledger.
-    account = book.account(account_id)
-    opening: Amount | None = None
-    running: Amount | None = None
-    if not include_children:
-        if start is None:
-            opening = Amount.zero(book.live(account.commodity))
-        else:
-            opening = book.balance(account_id, as_of=start - timedelta(days=1))
-        # The running balance continues from wherever the previous page
-        # stopped, which is the balance *at the cursor*, not at the start of
-        # the window -- or every page would start counting from zero again.
-        running = opening if after is None else book.balance_at(account_id, after)
-    items: list[RegisterRowOut] = []
-    single_commodity = len({r.quantity.commodity.id for r in rows}) <= 1
-    for row in rows:
-        if running is not None and single_commodity:
-            running = running + row.quantity
-        items.append(
-            RegisterRowOut(
-                transaction_id=row.transaction.id,
-                split_id=row.split.id,
-                date=row.date,
-                memo=row.memo,
-                payee_id=row.split.payee_id or row.transaction.payee_id,
-                account_id=row.account_id,
-                quantity=AmountOut.of(row.quantity),
-                value=AmountOut.of(row.value),
-                reconcile_state=ReconcileStateName.of(row.reconcile_state),
-                number=row.split.number,
-                running_balance=(
-                    AmountOut.of(running)
-                    if running is not None and single_commodity
-                    else None
-                ),
-            )
-        )
-
-    closing = book.balance(account_id, as_of=end) if not include_children else None
-    next_cursor = (
-        encode_cursor(
-            {
-                "d": str(rows[-1].date),
-                "t": str(rows[-1].transaction.id),
-                "s": str(rows[-1].split.id),
-            }
-        )
-        if has_more and rows
-        else None
-    )
-    return RegisterPage(
-        items=items,
-        next_cursor=next_cursor,
-        has_more=has_more,
-        totals=RegisterTotals(
-            opening=None if opening is None else AmountOut.of(opening),
-            closing=None if closing is None else AmountOut.of(closing),
-        ),
+        size=size,
     )
 
 

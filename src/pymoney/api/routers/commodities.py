@@ -74,6 +74,7 @@ def create_commodity(
             symbol=body.symbol,
             isin=body.isin,
             quote_source=body.quote_source,
+            id=body.id,
             command_id=key,
         )
     )

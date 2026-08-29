@@ -17,18 +17,17 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Response
 
 from ...core.price import ValuationPolicy
-from ...core.reports import balance_sheet, holdings, income_statement
+from ...core.reports import holdings, income_statement
 from ..deps import ReadableBook
 from ..schemas import (
     AmountOut,
     BalanceSheetOut,
-    ConversionOut,
     HoldingOut,
     HoldingsOut,
     IncomeStatementOut,
     RateOut,
-    ReportRowOut,
 )
+from ..views import balance_sheet_out, conversions_out, report_rows
 from ._shared import set_revision
 
 router = APIRouter(prefix="/books/{book_id}/reports", tags=["reports"])
@@ -49,34 +48,6 @@ def _policy(
         sources=tuple(sources or ()),
         max_staleness_days=max_staleness_days,
     )
-
-
-def _rows(rows) -> list[ReportRowOut]:
-    return [
-        ReportRowOut(
-            account_id=row.account.id,
-            path=row.path,
-            depth=row.depth,
-            value=AmountOut.of(row.value),
-            display_value=AmountOut.of(row.display_value),
-            own_value=AmountOut.of(row.own_value),
-        )
-        for row in rows
-    ]
-
-
-def _conversions(conversions) -> list[ConversionOut]:
-    return [
-        ConversionOut(
-            base=c.base.code,
-            quote=c.quote.code,
-            rate=RateOut.of(c.rate),
-            hops=c.hops,
-            path=[c.base.code] + [p.quote.code for p in c.prices],
-            sources=sorted({p.source for p in c.prices}),
-        )
-        for c in conversions
-    ]
 
 
 @router.get("/balance-sheet", response_model=BalanceSheetOut, summary="Balance sheet")
@@ -101,19 +72,7 @@ def get_balance_sheet(
 ) -> BalanceSheetOut:
     set_revision(response, book)
     policy = _policy(book, as_of, target_id, known_before, sources, max_staleness_days)
-    sheet = balance_sheet(book, policy, include_closed=include_closed, strict=strict)
-    return BalanceSheetOut(
-        as_of=sheet.as_of,
-        target=sheet.target.code,
-        assets=AmountOut.of(sheet.assets),
-        liabilities=AmountOut.of(sheet.liabilities),
-        liabilities_owed=AmountOut.of(sheet.liabilities_owed),
-        equity=AmountOut.of(sheet.equity),
-        net_worth=AmountOut.of(sheet.net_worth),
-        rows=_rows(sheet.rows),
-        conversions=_conversions(sheet.conversions),
-        unpriced=[c.code for c in sheet.unpriced],
-    )
+    return balance_sheet_out(book, policy, include_closed=include_closed, strict=strict)
 
 
 @router.get(
@@ -152,8 +111,8 @@ def get_income_statement(
         savings_rate=(
             None if report.savings_rate is None else RateOut.of(report.savings_rate)
         ),
-        rows=_rows(report.rows),
-        conversions=_conversions(report.conversions),
+        rows=report_rows(report.rows),
+        conversions=conversions_out(report.conversions),
         unpriced=[c.code for c in report.unpriced],
     )
 

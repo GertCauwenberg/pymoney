@@ -29,13 +29,13 @@ from ..schemas import (
     AccountIn,
     AccountOut,
     AccountPatch,
-    AmountOut,
     MergeAccountsIn,
     MoveAccountIn,
     RenameIn,
     SetClosedIn,
     SetCommodityIn,
 )
+from ..views import account_balance as account_balance_view
 from ._shared import set_revision
 
 router = APIRouter(prefix="/books/{book_id}/accounts", tags=["accounts"])
@@ -83,6 +83,7 @@ def create_account(
             notes=body.notes,
             institution=body.institution,
             iban=body.iban,
+            id=body.id,
             command_id=key,
         )
     )
@@ -237,12 +238,7 @@ def account_balance(
     ),
 ) -> AccountBalanceOut:
     set_revision(response, book)
-    return AccountBalanceOut(
-        account_id=account_id,
-        path=book.path(account_id),
-        balance=AmountOut.of(book.balance(account_id, as_of=as_of)),
-        subtree=[AmountOut.of(a) for a in book.subtree_balances(account_id, as_of=as_of)],
-    )
+    return account_balance_view(book, account_id, as_of=as_of)
 
 
 __all__ = ["router"]

@@ -887,3 +887,60 @@ class TestPrices:
         )
         assert response.status_code == 422
         assert "64-bit" in response.text
+
+
+class TestClientChosenIds:
+    """An offline client applies a command locally and replays it later; with
+    the id fixed by the client, the server's row and the local one are one."""
+
+    def test_a_transaction_keeps_the_id_it_was_given(self, ledger: Ledger):
+        from uuid import uuid4
+
+        chosen = str(uuid4())
+        response = ledger.client.post_transaction(
+            "2026-02-01",
+            [
+                {"account_id": ledger.checking, "value": "-1.00"},
+                {"account_id": ledger.fuel},
+            ],
+            id=chosen,
+        )
+        assert response.status_code == 201 and response.json()["id"] == chosen
+        again = ledger.client.post_transaction(
+            "2026-02-01",
+            [
+                {"account_id": ledger.checking, "value": "-1.00"},
+                {"account_id": ledger.fuel},
+            ],
+            id=chosen,
+        )
+        assert again.status_code == 409
+
+    def test_accounts_payees_commodities_and_prices_too(self, ledger: Ledger):
+        from uuid import uuid4
+
+        client, b = ledger.client, f"/books/{ledger.book_id}"
+        for path, body in (
+            ("/accounts", {"name": "Chosen", "type": "CASH"}),
+            ("/payees", {"name": "Chosen"}),
+            ("/commodities", {"code": "CHF"}),
+        ):
+            chosen = str(uuid4())
+            response = client.post(f"{b}{path}", json={**body, "id": chosen})
+            assert response.status_code == 201, response.text
+            assert response.json()["id"] == chosen
+        chf = next(
+            c["id"] for c in client.get(f"{b}/commodities").json() if c["code"] == "CHF"
+        )
+        chosen = str(uuid4())
+        price = client.post(
+            f"{b}/prices",
+            json={
+                "base_id": chf,
+                "quote_id": ledger.eur,
+                "rate": "1.05",
+                "effective_date": "2026-01-01",
+                "id": chosen,
+            },
+        )
+        assert price.status_code == 201 and price.json()["id"] == chosen

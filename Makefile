@@ -10,9 +10,10 @@ COMPOSE ?= docker compose
 .PHONY: help install fmt lint types test test-ci test-all test-postgres \
         test-thorough cov check bench bench-scaling bench-import openapi \
         serve migrate \
-        migration clean \
+        migration clean distclean \
         up down logs db-shell image image-test compose-config \
-        web-install web-dev web-build web-test web-check seed-demo e2e e2e-install
+        web-install web-dev web-build web-test web-check seed-demo e2e e2e-install \
+        desktop desktop-build
 
 help:  ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -81,11 +82,16 @@ migrate:  ## Apply migrations ($$PYMONEY_DATABASE_URL); the same command works i
 migration:  ## Autogenerate a migration: make migration M="what changed"
 	$(BIN)/alembic revision --autogenerate -m "$(M)"
 
-clean:  ## Remove caches and build output
-	rm -rf build dist htmlcov .coverage coverage.xml junit.xml
+clean:  ## Remove every build artifact and cache (keeps .venv and node_modules)
+	rm -rf build dist htmlcov .coverage .coverage.* coverage.xml junit.xml
 	rm -rf .pytest_cache .ruff_cache .mypy_cache .hypothesis
-	find . -name __pycache__ -type d -prune -exec rm -rf {} +
-	find . -name '*.egg-info' -type d -prune -exec rm -rf {} +
+	rm -rf frontend/apps/web/dist frontend/e2e/test-results frontend/e2e/report
+	find . -path ./.venv -prune -o -path '*/node_modules' -prune -o \
+		\( -name __pycache__ -o -name '*.egg-info' -o -name .vite -o -name '*.tsbuildinfo' \) \
+		-prune -exec rm -rf {} +
+
+distclean: clean  ## clean, plus the virtualenv and node_modules
+	rm -rf $(VENV) frontend/node_modules frontend/apps/web/node_modules frontend/packages/core/node_modules
 
 # --- containers -----------------------------------------------------------
 
@@ -146,3 +152,14 @@ e2e-install:  ## Download Playwright's Chromium (once; CI does this too)
 
 e2e:  ## Browser walkthroughs: register, create a book, share, post, edit, delete
 	$(NPM) run e2e
+
+# --- desktop --------------------------------------------------------------------
+# The PySide6 client (pip install -e '.[desktop]'). The same API, two ways: a
+# thin online client or a local replica with an outbox. See README.md.
+
+desktop:  ## Run the desktop app against $$PYMONEY_SERVER (default http://127.0.0.1:8000)
+	$(BIN)/python -m pymoney.desktop
+
+desktop-build:  ## Build a distributable folder with PyInstaller into dist/PyMoney
+	$(BIN)/pip install -q pyinstaller
+	cd packaging && ../$(BIN)/pyinstaller --noconfirm --distpath ../dist --workpath ../build/pyinstaller pymoney-desktop.spec

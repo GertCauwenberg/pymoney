@@ -46,6 +46,15 @@ src/pymoney/quotes/               price quotes
     scheduler.py    the periodic thread inside the API process
     __main__.py     the command line, for cron and backfills
 
+src/pymoney/desktop/              the PySide6 client
+    client.py       LedgerClient: the one interface the UI talks to
+    transport.py    HTTP as one function, swappable for a test
+    remote.py       online: every write a request; a revision-invalidated read cache
+    offline.py      a local SQLite replica, an outbox, replay; rejections rebuild
+    replica.py      server sync batches -> local rows
+    drafts.py       transaction form logic without Qt (the twin of the web's ledger.ts)
+    ui/             the windows and dialogs
+
 src/pymoney/importers/kmymoney/   migration from KMyMoney
     model.py        the file's own structures, unintepreted
     parser.py       .kmy reading: gzip, XML, streamed transactions
@@ -480,7 +489,7 @@ report hands back the `Conversion` objects it used.
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · importers other
 than KMyMoney (OFX, CSV) · attachments · tags · a UI for reconciliation
-and payee management (see
+and payee management · the desktop app's reports and account/commodity management (see
 [The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
@@ -532,6 +541,76 @@ and `GET /quote-providers` lists what `quote_source` may be set to. The command
 line is for cron and one-off backfills **when the server is not running**
 against the same database, since the server's caches assume they are the only
 writer.
+
+## The desktop app
+
+```bash
+pip install -e '.[desktop]'
+python -m pymoney.desktop            # or: make desktop
+```
+
+A PySide6 client with the web app's core functionality -- books, the account
+tree with balances, registers, posting, editing and deleting transactions with
+payees created on the spot -- and one thing the web app cannot have: a mode
+that works without the server.
+
+**One interface, two implementations.** The UI talks to
+`pymoney.desktop.LedgerClient` and nothing else. Its wire types are the API's
+own pydantic schemas, so the desktop and the web frontend speak the identical
+contract.
+
+- `RemoteClient` holds nothing but a read cache. Every write is an HTTP request
+  to the same API the web frontend uses, and fails the moment the network does.
+  The cache is kept honest by the `X-PyMoney-Revision` header every response
+  carries: a newer revision -- this client's write or someone else's -- drops
+  the book's entries, so no timer is needed.
+- `OfflineClient` keeps a **local SQLite replica** of each book (a `Book` over
+  the same `SqlStore` the server runs, fed by `GET /changes` batches), applies
+  every write to it at once, and queues the write in an **outbox**. Reads never
+  need the server. A write is validated locally by the very same domain rules
+  the server enforces -- an unbalanced entry is refused in the living room, not
+  on the train back -- and ids are chosen by the client (hence the optional
+  `id` on the create endpoints), so the server's row and the local one are one
+  row when the command is replayed.
+
+**Replay, and what a conflict looks like.** On reconnect the outbox replays in
+order, each command with the idempotency key it was queued with, so a dropped
+acknowledgement cannot post twice. A 2xx removes the entry. A 4xx is a
+*rejection*: the server, which is authoritative, disagrees with what the replica
+accepted -- typically because someone else changed the book in between (the
+account was deleted, the transaction reconciled). The entry is removed and
+recorded, the replica is **rebuilt from the server**, and the remaining entries
+are applied to it again so the screen keeps showing what is still pending. The
+status bar says "2 rejected…" and the dialog behind it says what and why.
+Nothing is merged, ever. A 5xx or no connection stops the replay; the entries
+stay and are tried next time. A pull follows every replay.
+
+The login dialog has the choice ("Keep a local copy and work offline"); the
+replica lives in the platform's app-data directory. `tests/test_desktop_clients.py`
+runs both clients against the real API in-process, with a transport that can be
+unplugged, through the whole story: work offline, replay, dropped ack,
+rejection and rebuild, cold start offline. `tests/test_desktop_ui.py` drives the
+real window offscreen (`pytest-qt`) through posting, editing, deleting,
+reconnecting and a rejection.
+
+### Packaging: PyInstaller, not Briefcase (for now)
+
+`make desktop-build` runs `packaging/pymoney-desktop.spec` and produces
+`dist/PyMoney/`, a one-folder build. The reasoning:
+
+- **PyInstaller** is one command, has maintained hooks for both PySide6 and
+  SQLAlchemy, runs anywhere CI runs, and produces a folder or a single file you
+  can hand to someone today. Its weak spots -- no installer, no code signing, no
+  store metadata -- do not matter until there is a release process.
+- **Briefcase** does those things well (native installers, signing, app-store
+  layouts, per-platform templates), at the price of its own project scaffold,
+  `pyproject.toml` sections, and a per-platform build host. That is the right
+  tool *once PyMoney ships installers*; adopting it now would be building a
+  pipeline for a release that does not exist.
+
+So: PyInstaller for "give me a binary", and move to Briefcase when signed
+installers are a requirement -- the app itself needs no change for that,
+Briefcase consumes the same entry point (`pymoney.desktop.__main__:main`).
 
 ## The web frontend
 

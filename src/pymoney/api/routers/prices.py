@@ -96,6 +96,7 @@ def create_price(
             effective_date=body.effective_date,
             as_of=body.as_of,
             source=body.source,
+            id=body.id,
             command_id=key,
         )
     )

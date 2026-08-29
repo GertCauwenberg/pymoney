@@ -24,6 +24,7 @@ The contract a provider keeps:
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
@@ -47,7 +48,10 @@ __all__ = [
 Http = Callable[[str, Mapping[str, str]], bytes]
 """``http(url, headers) -> body``: a GET that raises :class:`QuoteError` on failure."""
 
-DEFAULT_TIMEOUT = 20.0
+DEFAULT_TIMEOUT = float(os.environ.get("PYMONEY_QUOTE_TIMEOUT", "60"))
+"""Seconds per request. The ECB's API routinely takes 20-40 s on a cold series,
+so this is generous; PYMONEY_QUOTE_TIMEOUT overrides it."""
+RETRIES_ON_TIMEOUT = 1
 
 
 class QuoteError(Exception):
@@ -120,13 +124,32 @@ def urllib_http(url: str, headers: Mapping[str, str]) -> bytes:
     needs more (authentication, POST) wraps this or brings its own.
     """
     request = urllib.request.Request(url, headers=dict(headers), method="GET")
-    try:
-        with urllib.request.urlopen(request, timeout=DEFAULT_TIMEOUT) as response:
-            return bytes(response.read())
-    except urllib.error.HTTPError as exc:
-        raise QuoteError(f"{url}: HTTP {exc.code} {exc.reason}") from exc
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise QuoteError(f"{url}: {exc}") from exc
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            with urllib.request.urlopen(request, timeout=DEFAULT_TIMEOUT) as response:
+                return bytes(response.read())
+        except urllib.error.HTTPError as exc:
+            raise QuoteError(f"{url}: HTTP {exc.code} {exc.reason}") from exc
+        except TimeoutError as exc:
+            # A slow service, not a broken one: try once more before giving up.
+            if attempt <= RETRIES_ON_TIMEOUT:
+                continue
+            raise QuoteError(
+                f"{url}: timed out after {DEFAULT_TIMEOUT:.0f}s (twice); the service is "
+                f"slow, raise PYMONEY_QUOTE_TIMEOUT or try again later"
+            ) from exc
+        except (urllib.error.URLError, OSError) as exc:
+            if (
+                isinstance(
+                    exc.reason if isinstance(exc, urllib.error.URLError) else None,
+                    TimeoutError,
+                )
+                and attempt <= RETRIES_ON_TIMEOUT
+            ):
+                continue
+            raise QuoteError(f"{url}: {exc}") from exc
 
 
 def parse_json(body: bytes, what: str) -> Any:

@@ -302,6 +302,14 @@ class CommodityIn(In):
     symbol: str | None = None
     isin: str | None = None
     quote_source: str | None = None
+    id: UUID | None = Field(
+        default=None,
+        description=(
+            "Client-chosen id (UUIDv7 recommended). An offline client applies the "
+            "command locally first and replays it later; with the id fixed, the "
+            "server's copy and the local one are the same row. 409 if taken."
+        ),
+    )
 
     def factor(self) -> int:
         if self.minor_unit_factor is not None:
@@ -369,6 +377,14 @@ class AccountIn(In):
     notes: str = ""
     institution: str = ""
     iban: str = ""
+    id: UUID | None = Field(
+        default=None,
+        description=(
+            "Client-chosen id (UUIDv7 recommended). An offline client applies the "
+            "command locally first and replays it later; with the id fixed, the "
+            "server's copy and the local one are the same row. 409 if taken."
+        ),
+    )
 
 
 class AccountPatch(In):
@@ -466,6 +482,14 @@ class PayeeIn(In):
     address: str = ""
     match_keys: list[str] = Field(default_factory=list)
     default_account_id: UUID | None = None
+    id: UUID | None = Field(
+        default=None,
+        description=(
+            "Client-chosen id (UUIDv7 recommended). An offline client applies the "
+            "command locally first and replays it later; with the id fixed, the "
+            "server's copy and the local one are the same row. 409 if taken."
+        ),
+    )
 
 
 class PayeePatch(In):
@@ -551,6 +575,14 @@ class TransactionIn(In):
     )
     imported_id: str | None = Field(
         default=None, description="External reference, unique per book."
+    )
+    id: UUID | None = Field(
+        default=None,
+        description=(
+            "Client-chosen id (UUIDv7 recommended). An offline client applies the "
+            "command locally first and replays it later; with the id fixed, the "
+            "server's copy and the local one are the same row. 409 if taken."
+        ),
     )
 
 
@@ -717,6 +749,14 @@ class PriceIn(In):
         ),
     )
     source: str = "user"
+    id: UUID | None = Field(
+        default=None,
+        description=(
+            "Client-chosen id (UUIDv7 recommended). An offline client applies the "
+            "command locally first and replays it later; with the id fixed, the "
+            "server's copy and the local one are the same row. 409 if taken."
+        ),
+    )
 
 
 class PriceOut(Out):
