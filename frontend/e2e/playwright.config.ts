@@ -72,11 +72,18 @@ export default defineConfig({
       },
     },
     {
-      command: `npx vite --port ${webPort} --strictPort`,
+      // --host 127.0.0.1, explicitly: Vite's default host is `localhost`, and
+      // Node binds only the *first* address that resolves to. On a machine
+      // whose /etc/hosts maps localhost to ::1 as well (GitHub's runners do),
+      // that is IPv6 loopback only -- and this config polls, browses and mails
+      // links to 127.0.0.1, so the run times out waiting for a server that is
+      // up. One interface, named once, on both sides.
+      command: `npx vite --port ${webPort} --strictPort --host 127.0.0.1`,
       url: `http://127.0.0.1:${webPort}/`,
       cwd: resolve(__dirname, "../apps/web"),
       reuseExistingServer: false,
       timeout: 60_000,
+      stdout: "pipe",
       env: { ...process.env, PYMONEY_API_URL: `http://127.0.0.1:${apiPort}` },
     },
   ],

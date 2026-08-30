@@ -47,6 +47,9 @@ test("a forgotten password is reset through the emailed link, logging the old se
 
   await logout(page);
   await page.getByRole("link", { name: "Forgotten your password?" }).click();
+  // Wait for the new page: until it renders, getByLabel("Email") still matches
+  // the login form's field and the fill would land on the page being replaced.
+  await expect(page.getByRole("heading", { name: "Forgotten your password?" })).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Email me a link" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
