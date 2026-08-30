@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import type { Grant, Role } from "@pymoney/core";
 import { useBook, useDeleteBook, useDeleteGrant, useGrants, usePutGrant, useSession } from "@pymoney/core/hooks";
 import { useState, type FormEvent } from "react";
@@ -23,6 +24,7 @@ const ROLES: { id: Role; label: string; blurb: string }[] = [
  * simply grants access to nobody. The page says so.
  */
 export function SharingPage() {
+  const t = useT();
   const { bookId, role } = useBookContext();
   const me = useSession();
   const grants = useGrants(bookId, role === "owner");
@@ -47,23 +49,23 @@ export function SharingPage() {
       <header className="report-page__header">
         <div>
           <p className="breadcrumbs muted">
-            <Link to="../reports/balance-sheet">Reports</Link> › Sharing
+            <Link to="../reports/balance-sheet">{t("Reports")}</Link> › Sharing
           </p>
-          <h1>Sharing</h1>
-          <p className="muted">Who can see this book, and what they may do.</p>
+          <h1>{t("Sharing")}</h1>
+          <p className="muted">{t("Who can see this book, and what they may do.")}</p>
         </div>
       </header>
 
       {grants.isPending && <Loading />}
       {grants.isError && <ErrorBanner error={grants.error} onRetry={() => void grants.refetch()} />}
-      {del.error && <ErrorBanner error={del.error} title="Could not revoke access" />}
+      {del.error && <ErrorBanner error={del.error} title={t("Could not revoke access")} />}
 
       {grants.data && (
         <table className="report grants">
           <thead>
             <tr>
-              <th scope="col">Person</th>
-              <th scope="col">Role</th>
+              <th scope="col">{t("Person")}</th>
+              <th scope="col">{t("Role")}</th>
               <th scope="col" />
             </tr>
           </thead>
@@ -84,21 +86,20 @@ export function SharingPage() {
       )}
 
       <form className="card sharing__form" onSubmit={submit}>
-        <h2>Share with someone</h2>
+        <h2>{t("Share with someone")}</h2>
         <p className="muted">
-          Enter the email address they log in with (or will register with). Access is tied to that exact
-          address, so check the spelling: a typo grants access to nobody.
+          {t("Enter the email address they log in with (or will register with). Access is tied to that exact address, so check the spelling: a typo grants access to nobody.")}
         </p>
-        {put.error && <ErrorBanner error={put.error} title="Could not share" />}
+        {put.error && <ErrorBanner error={put.error} title={t("Could not share")} />}
         <div className="field-row">
-          <Field label="Email">
+          <Field label={t("Email")}>
             <input type="email" required value={subject} onChange={(e) => setSubject(e.target.value)} />
           </Field>
-          <Field label="Role" hint={ROLES.find((r) => r.id === newRole)?.blurb}>
+          <Field label={t("Role")} hint={t(ROLES.find((r) => r.id === newRole)?.blurb ?? "")}>
             <select value={newRole} onChange={(e) => setNewRole(e.target.value as Role)}>
               {ROLES.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.label}
+                  {t(r.label)}
                 </option>
               ))}
             </select>
@@ -106,7 +107,7 @@ export function SharingPage() {
         </div>
         <div className="actions">
           <button type="submit" className="btn btn--primary" disabled={put.isPending || !subject.trim()}>
-            {put.isPending ? "…" : "Share"}
+            {put.isPending ? "…" : t("Share")}
           </button>
         </div>
       </form>
@@ -121,6 +122,7 @@ export function SharingPage() {
  * name back, so the user types it; the button stays disabled until it matches.
  */
 function DeleteBook({ bookId, name }: { bookId: string; name: string }) {
+  const t = useT();
   const del = useDeleteBook();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -128,14 +130,13 @@ function DeleteBook({ bookId, name }: { bookId: string; name: string }) {
   const matches = typed.trim() === name;
   return (
     <section className="card danger" aria-labelledby="danger-heading">
-      <h2 id="danger-heading">Delete this book</h2>
+      <h2 id="danger-heading">{t("Delete this book")}</h2>
       <p className="muted">
-        Everything goes: every account, transaction, price and the whole history, for everyone it is shared with.
-        There is no undo and no backup on the server. If you only want out, revoke your own access instead.
+        {t("Everything goes: every account, transaction, price and the whole history, for everyone it is shared with. There is no undo and no backup on the server. If you only want out, revoke your own access instead.")}
       </p>
       {!open ? (
         <button type="button" className="btn btn--danger" onClick={() => setOpen(true)}>
-          Delete this book…
+          {t("Delete this book…")}
         </button>
       ) : (
         <form
@@ -144,16 +145,16 @@ function DeleteBook({ bookId, name }: { bookId: string; name: string }) {
             if (matches) del.mutate({ bookId, name: typed.trim() }, { onSuccess: () => void navigate("/books", { state: { pick: true } }) });
           }}
         >
-          {del.error && <ErrorBanner error={del.error} title="Could not delete the book" />}
+          {del.error && <ErrorBanner error={del.error} title={t("Could not delete the book")} />}
           <Field label={`Type the book's name (${name}) to confirm`}>
             <input type="text" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
           </Field>
           <div className="actions">
             <button type="submit" className="btn btn--danger" disabled={!matches || del.isPending}>
-              {del.isPending ? "…" : "Delete it, irreversibly"}
+              {del.isPending ? "…" : t("Delete it, irreversibly")}
             </button>
             <button type="button" className="btn" onClick={() => setOpen(false)} disabled={del.isPending}>
-              Keep it
+              {t("Keep it")}
             </button>
           </div>
         </form>
@@ -177,6 +178,7 @@ function GrantRow({
   onRole: (role: Role) => void;
   onRevoke: () => void;
 }) {
+  const t = useT();
   const [confirming, setConfirming] = useState(false);
   return (
     <tr>
@@ -202,12 +204,12 @@ function GrantRow({
       <td className="num">
         {confirming ? (
           <span className="actions actions--inline">
-            <span className="muted">{isMe ? "Remove yourself? You will lose access." : "Revoke access?"}</span>
+            <span className="muted">{isMe ? t("Remove yourself? You will lose access.") : t("Revoke access?")}</span>
             <button type="button" className="btn btn--small btn--danger" disabled={busy} onClick={onRevoke}>
-              Yes, revoke
+              {t("Yes, revoke")}
             </button>
             <button type="button" className="btn btn--small" onClick={() => setConfirming(false)}>
-              No
+              {t("No")}
             </button>
           </span>
         ) : (
@@ -218,7 +220,7 @@ function GrantRow({
             title={lastOwner ? "The last owner cannot be removed; make someone else an owner first." : undefined}
             onClick={() => setConfirming(true)}
           >
-            Revoke
+            {t("Revoke")}
           </button>
         )}
       </td>

@@ -1,4 +1,5 @@
 import type { ReconcileState } from "@pymoney/core";
+import { useT } from "@pymoney/core/hooks";
 
 const MARKS: Record<ReconcileState, { mark: string; label: string }> = {
   NOT_RECONCILED: { mark: "", label: "Not reconciled" },
@@ -9,7 +10,9 @@ const MARKS: Record<ReconcileState, { mark: string; label: string }> = {
 
 /** The one-letter column every ledger has had since paper. */
 export function ReconcileMark({ state }: { state: ReconcileState }) {
-  const { mark, label } = MARKS[state];
+  const t = useT();
+  const { mark, label: key } = MARKS[state];
+  const label = t(key);
   return (
     <span className={`reconcile reconcile--${state.toLowerCase()}`} title={label} aria-label={label}>
       {mark}

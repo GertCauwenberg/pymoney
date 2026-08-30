@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { PERIOD_PRESETS, formatRatePercent, periodFor, presetOf, rowsToCsv, sectionRows } from "@pymoney/core";
 import type { IncomeStatementQuery } from "@pymoney/core";
 import { useAccounts, useCommodities, useIncomeStatement } from "@pymoney/core/hooks";
@@ -20,6 +21,7 @@ const DEFAULTS = {
 };
 
 export function IncomeStatementReport() {
+  const t = useT();
   const { bookId, baseCurrencyId } = useBookContext();
   const [params, update] = useReportParams(DEFAULTS);
   const fallback = periodFor("year-to-date");
@@ -50,7 +52,7 @@ export function IncomeStatementReport() {
     <article className="report-page">
       <header className="report-page__header">
         <div>
-          <h1>Income statement</h1>
+          <h1>{t("Income statement")}</h1>
           <p className="muted">
             {period.start} to {period.end}
             {report.data && ` · in ${report.data.target}`}
@@ -64,7 +66,7 @@ export function IncomeStatementReport() {
       </header>
 
       <form className="toolbar" onSubmit={(e) => e.preventDefault()}>
-        <div className="presets" role="group" aria-label="Period">
+        <div className="presets" role="group" aria-label={t("Period")}>
           {PERIOD_PRESETS.map((p) => (
             <button
               key={p.id}
@@ -73,12 +75,12 @@ export function IncomeStatementReport() {
               aria-pressed={activePreset === p.id}
               onClick={() => update(periodFor(p.id))}
             >
-              {p.label}
+              {t(p.label)}
             </button>
           ))}
         </div>
-        <DateField label="From" value={period.start} max={period.end} onChange={(start) => update({ start })} />
-        <DateField label="To" value={period.end} min={period.start} onChange={(end) => update({ end })} />
+        <DateField label={t("From")} value={period.start} max={period.end} onChange={(start) => update({ start })} />
+        <DateField label={t("To")} value={period.end} min={period.start} onChange={(end) => update({ end })} />
         <CurrencyField
           currencies={currencies.data}
           value={params.target}
@@ -86,10 +88,10 @@ export function IncomeStatementReport() {
           onChange={(target) => update({ target })}
         />
         <div className="toolbar__toggles">
-          <Toggle label="Include closed accounts" checked={params.closed} onChange={(closed) => update({ closed })} />
+          <Toggle label={t("Include closed accounts")} checked={params.closed} onChange={(closed) => update({ closed })} />
           <Toggle
-            label="Fail if anything cannot be valued"
-            hint="Off: list it below and leave it out of the totals."
+            label={t("Fail if anything cannot be valued")}
+            hint={t("Off: list it below and leave it out of the totals.")}
             checked={params.strict}
             onChange={(strict) => update({ strict })}
           />
@@ -98,7 +100,7 @@ export function IncomeStatementReport() {
 
       {period.start > period.end && (
         <div className="banner banner--warning" role="alert">
-          The period ends before it starts.
+          {t("The period ends before it starts.")}
         </div>
       )}
       {report.isError && <ErrorBanner error={report.error} onRetry={() => void report.refetch()} />}
@@ -111,15 +113,15 @@ export function IncomeStatementReport() {
             sections={sections}
             emptyMessage={
               accounts.data?.length === 0
-                ? "This book has no accounts yet. An owner creates them under Accounts and posts from an account's register -- or, coming from KMyMoney, imports the .kmy file from the books page, which makes a new book with everything in it."
+                ? t("This book has no accounts yet. An owner creates them under Accounts and posts from an account's register -- or, coming from KMyMoney, imports the .kmy file from the books page, which makes a new book with everything in it.")
                 : undefined
             }
             linkFor={(row) => `../accounts/${row.account_id}?start=${period.start}&end=${period.end}`}
-            valueHeader="Amount"
+            valueHeader={t("Amount")}
             totals={[
-              { label: "Income", amount: report.data.income_earned },
-              { label: "Expenses", amount: report.data.expenses },
-              { label: "Net", amount: report.data.net, emphasis: true },
+              { label: t("Income"), amount: report.data.income_earned },
+              { label: t("Expenses"), amount: report.data.expenses },
+              { label: t("Net"), amount: report.data.net, emphasis: true },
             ]}
           />
           {report.data.savings_rate && (
@@ -128,7 +130,7 @@ export function IncomeStatementReport() {
               <strong title={`${report.data.savings_rate.num}/${report.data.savings_rate.den}`}>
                 {formatRatePercent(report.data.savings_rate)}
               </strong>
-              <span className="muted"> of income kept</span>
+              <span className="muted"> {t("of income kept")}</span>
             </p>
           )}
           <ValuationPanel conversions={report.data.conversions} unpriced={report.data.unpriced} target={report.data.target} />

@@ -318,6 +318,11 @@ export class ApiClient {
     return this.get<User>("/auth/me");
   }
 
+  /** Change the display name or the language, stored with the account. */
+  patchMe(body: { display_name?: string; locale?: string }): Promise<User> {
+    return this.patch<User>("/auth/me", body);
+  }
+
   health(): Promise<Health> {
     return this.get<Health>("/health");
   }

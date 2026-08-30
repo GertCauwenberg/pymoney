@@ -44,6 +44,8 @@ jobs:
       # The OpenAPI document is part of the contract we ship, so a changed
       # endpoint must come with a regenerated spec. A client generated from the
       # committed document is then never wrong about the server.
+      - name: Every UI string has a Dutch translation, and the frontend's copy is current
+        run: python scripts/i18n.py --check && git diff --exit-code -- frontend/packages/core/src/generated/nl.json
       - name: OpenAPI document is up to date
         run: |
           python scripts/openapi.py

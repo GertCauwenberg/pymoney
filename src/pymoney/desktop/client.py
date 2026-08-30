@@ -149,6 +149,11 @@ class LedgerClient(ABC):
     def me(self) -> UserOut | None:
         """The current user, or None when not logged in."""
 
+    @abstractmethod
+    def set_locale(self, locale: str) -> UserOut | None:
+        """Store the user's language with the account. None if it could not
+        reach the server (the offline client remembers it for next time)."""
+
     # -- books ---------------------------------------------------------------
     @abstractmethod
     def books(self) -> list[BookOut]: ...

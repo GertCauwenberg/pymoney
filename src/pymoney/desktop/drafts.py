@@ -21,6 +21,7 @@ from ..api.schemas import (
     TransactionOut,
     TransactionUpdateIn,
 )
+from .i18n import _
 
 __all__ = [
     "LegDraft",
@@ -164,32 +165,43 @@ def problems(
     """What stops the draft being sent; the server still has the final say."""
     out: list[str] = []
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", draft.date):
-        out.append("A date is needed.")
+        out.append(_("A date is needed."))
     if len(draft.legs) < 2:
-        out.append("A transaction needs at least two legs.")
+        out.append(_("A transaction needs at least two legs."))
     blanks = 0
     for i, leg in enumerate(draft.legs, start=1):
         if leg.account_id is None:
-            out.append(f"Leg {i}: choose an account.")
+            out.append(_("Leg {n}: choose an account.", n=i))
             continue
         account = accounts.get(leg.account_id)
         if account is None:
-            out.append(f"Leg {i}: unknown account.")
+            out.append(_("Leg {n}: unknown account.", n=i))
             continue
         if account.placeholder:
-            out.append(f"Leg {i}: {account.path} is a placeholder and takes no postings.")
+            out.append(
+                _(
+                    "Leg {n}: {path} is a placeholder and takes no postings.",
+                    n=i,
+                    path=account.path,
+                )
+            )
         if account.closed:
-            out.append(f"Leg {i}: {account.path} is closed.")
+            out.append(_("Leg {n}: {path} is closed.", n=i, path=account.path))
         if not leg.value.strip():
             blanks += 1
         elif parse_decimal(leg.value, currency.minor_unit_factor) is None:
-            out.append(f"Leg {i}: not an amount in {currency.code}.")
+            out.append(_("Leg {n}: not an amount in {code}.", n=i, code=currency.code))
         if account.commodity_id != currency.id and not leg.quantity.strip():
             out.append(
-                f"Leg {i}: an amount in {account.commodity} is needed, the account is not held in {currency.code}."
+                _(
+                    "Leg {n}: an amount in {own} is needed, the account is not held in {code}.",
+                    n=i,
+                    own=account.commodity,
+                    code=currency.code,
+                )
             )
     if blanks > 1:
-        out.append("Only one leg may be left blank to balance the entry.")
+        out.append(_("Only one leg may be left blank to balance the entry."))
     return out
 
 

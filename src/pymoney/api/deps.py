@@ -93,6 +93,7 @@ class Actor:
     display_name: str
     session_id: UUID
     via_cookie: bool
+    locale: str = "en"
 
     @property
     def audit_name(self) -> str:
@@ -137,6 +138,7 @@ def current_actor(
                 identity.users.c.email,
                 identity.users.c.display_name,
                 identity.users.c.active,
+                identity.users.c.locale,
             )
             .join(
                 identity.users,
@@ -192,6 +194,7 @@ def current_actor(
         display_name=row.display_name,
         session_id=row.id,
         via_cookie=via_cookie,
+        locale=row.locale,
     )
 
 

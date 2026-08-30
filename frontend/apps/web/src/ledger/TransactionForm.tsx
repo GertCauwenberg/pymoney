@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import {
   balanceAmount,
   draftBalance,
@@ -57,6 +58,7 @@ export function TransactionForm({
   onSaved: (saved: Transaction) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState<TransactionDraft>(() =>
     existing ? draftFromTransaction(existing, currency.id) : newDraft(defaultAccountId ?? "", today()),
   );
@@ -78,7 +80,7 @@ export function TransactionForm({
   const problems = validateDraft(draft, accountsById, currency, commoditiesById);
   const balance = draftBalance(draft, currency);
   const creatingPayee = payeeChoice === NEW_PAYEE;
-  const payeeProblem = creatingPayee && newPayeeName.trim() === "" ? "Give the new payee a name." : null;
+  const payeeProblem = creatingPayee && newPayeeName.trim() === "" ? t("Give the new payee a name.") : null;
   const showQuantity = draft.legs.some((leg) => needsQuantity(leg, accountsById, currency.id));
   const busy = create.isPending || update.isPending || createPayee.isPending;
   const error = create.error ?? update.error ?? createPayee.error;
@@ -123,15 +125,15 @@ export function TransactionForm({
   };
 
   return (
-    <form className="card transaction-form" onSubmit={(e) => void submit(e)} aria-label={existing ? "Edit transaction" : "New transaction"}>
-      <h2>{existing ? "Edit transaction" : "New transaction"}</h2>
-      {error && <ErrorBanner error={error} title={existing ? "Could not save" : "Could not post"} />}
+    <form className="card transaction-form" onSubmit={(e) => void submit(e)} aria-label={existing ? t("Edit transaction") : t("New transaction")}>
+      <h2>{existing ? t("Edit transaction") : t("New transaction")}</h2>
+      {error && <ErrorBanner error={error} title={existing ? t("Could not save") : t("Could not post")} />}
 
       <div className="field-row">
-        <Field label="Date">
+        <Field label={t("Date")}>
           <input type="date" required value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
         </Field>
-        <Field label="Payee">
+        <Field label={t("Payee")}>
           <select
             value={payeeChoice}
             onChange={(e) => {
@@ -145,18 +147,18 @@ export function TransactionForm({
                 {p.name}
               </option>
             ))}
-            <option value={NEW_PAYEE}>New payee…</option>
+            <option value={NEW_PAYEE}>{t("New payee…")}</option>
           </select>
         </Field>
         {creatingPayee && (
-          <Field label="New payee name">
+          <Field label={t("New payee name")}>
             <input type="text" required autoFocus value={newPayeeName} onChange={(e) => setNewPayeeName(e.target.value)} />
           </Field>
         )}
-        <Field label="Memo">
+        <Field label={t("Memo")}>
           <input type="text" value={draft.memo} onChange={(e) => setDraft({ ...draft, memo: e.target.value })} />
         </Field>
-        <Field label="Number" hint="Cheque or reference">
+        <Field label={t("Number")} hint={t("Cheque or reference")}>
           <input type="text" value={draft.number} onChange={(e) => setDraft({ ...draft, number: e.target.value })} className="input--short" />
         </Field>
       </div>
@@ -164,11 +166,11 @@ export function TransactionForm({
       <table className="report transaction-form__legs">
         <thead>
           <tr>
-            <th scope="col">Account</th>
-            <th scope="col">Leg memo</th>
+            <th scope="col">{t("Account")}</th>
+            <th scope="col">{t("Leg memo")}</th>
             {showQuantity && (
               <th scope="col" className="num">
-                Quantity
+                {t("Quantity")}
               </th>
             )}
             <th scope="col" className="num">
@@ -185,11 +187,11 @@ export function TransactionForm({
               <tr key={leg.key} className={legProblems.length ? "transaction-form__leg--invalid" : undefined}>
                 <td>
                   <select
-                    aria-label={`Account of leg ${i + 1}`}
+                    aria-label={t("Account of leg {n}", { n: i + 1 })}
                     value={leg.account_id}
                     onChange={(e) => setLeg(i, { account_id: e.target.value })}
                   >
-                    <option value="">Choose an account…</option>
+                    <option value="">{t("Choose an account…")}</option>
                     {account && (account.placeholder || account.closed) && (
                       <option value={account.id} disabled>
                         {account.path}
@@ -211,7 +213,7 @@ export function TransactionForm({
                 <td>
                   <input
                     type="text"
-                    aria-label={`Memo of leg ${i + 1}`}
+                    aria-label={t("Memo of leg {n}", { n: i + 1 })}
                     value={leg.memo}
                     onChange={(e) => setLeg(i, { memo: e.target.value })}
                   />
@@ -223,7 +225,7 @@ export function TransactionForm({
                         type="text"
                         inputMode="decimal"
                         className="input--amount"
-                        aria-label={`Quantity of leg ${i + 1} in ${account.commodity}`}
+                        aria-label={t("Quantity of leg {n} in {commodity}", { n: i + 1, commodity: account.commodity })}
                         placeholder={account.commodity}
                         value={leg.quantity}
                         onChange={(e) => setLeg(i, { quantity: e.target.value })}
@@ -236,7 +238,7 @@ export function TransactionForm({
                     type="text"
                     inputMode="decimal"
                     className="input--amount"
-                    aria-label={`Amount of leg ${i + 1}`}
+                    aria-label={t("Amount of leg {n}", { n: i + 1 })}
                     placeholder={balance.blank && leg.value === "" ? "balances" : "0.00"}
                     value={leg.value}
                     onChange={(e) => setLeg(i, { value: e.target.value })}
@@ -246,7 +248,7 @@ export function TransactionForm({
                   <button
                     type="button"
                     className="btn btn--small"
-                    aria-label={`Remove leg ${i + 1}`}
+                    aria-label={t("Remove leg {n}", { n: i + 1 })}
                     disabled={draft.legs.length <= 2}
                     onClick={() => removeLeg(i)}
                   >
@@ -261,19 +263,19 @@ export function TransactionForm({
           <tr>
             <td colSpan={showQuantity ? 3 : 2}>
               <button type="button" className="btn btn--small" onClick={addLeg}>
-                Add leg
+                {t("Add leg")}
               </button>
             </td>
             <td className="num muted">
               {balance.blank ? (
                 <>
-                  blank leg gets <Money amount={balanceAmount(-balance.sum, currency)} />
+                  {t("blank leg gets")} <Money amount={balanceAmount(-balance.sum, currency)} />
                 </>
               ) : balance.sum === 0n ? (
                 "balanced"
               ) : (
                 <span className="money--negative">
-                  off by <Money amount={balanceAmount(balance.sum, currency)} />
+                  {t("off by")} <Money amount={balanceAmount(balance.sum, currency)} />
                 </span>
               )}
             </td>
@@ -282,8 +284,7 @@ export function TransactionForm({
         </tfoot>
       </table>
       <p className="muted transaction-form__hint">
-        Money into an account is positive, money out of it negative. Leave one amount blank and it takes whatever balances
-        the entry.
+        {t("Money into an account is positive, money out of it negative. Leave one amount blank and it takes whatever balances the entry.")}
       </p>
 
       {touched &&
@@ -295,10 +296,10 @@ export function TransactionForm({
 
       <div className="actions">
         <button type="submit" className="btn btn--primary" disabled={busy}>
-          {busy ? "…" : existing ? "Save" : "Post"}
+          {busy ? "…" : existing ? t("Save") : t("Post")}
         </button>
         <button type="button" className="btn" onClick={onCancel} disabled={busy}>
-          Cancel
+          {t("Cancel")}
         </button>
       </div>
     </form>

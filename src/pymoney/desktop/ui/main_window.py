@@ -42,11 +42,16 @@ from ...api.schemas import (
     RegisterRowOut,
 )
 from ..client import ApiError, LedgerClient, OfflineError
+from ..i18n import _, current_locale
 from .transaction_dialog import TransactionDialog
 
 __all__ = ["Executor", "MainWindow", "SyncExecutor", "ThreadedExecutor"]
 
 CREDIT_NORMAL = {"LIABILITY", "EQUITY", "INCOME"}
+
+
+# Thousands and decimal separators per language; the digits never go through a float.
+SEPARATORS = {"en": (",", "."), "nl": (".", ",")}
 
 
 def format_amount(amount: AmountOut, *, sign: int = 1) -> str:
@@ -55,8 +60,9 @@ def format_amount(amount: AmountOut, *, sign: int = 1) -> str:
     negative = minor < 0
     s = str(abs(minor)).rjust(digits + 1, "0")
     whole, frac = (s[:-digits], s[-digits:]) if digits else (s, "")
-    whole = f"{int(whole):,}"
-    text = f"{whole}.{frac}" if frac else whole
+    group, point = SEPARATORS.get(current_locale(), SEPARATORS["en"])
+    whole = f"{int(whole):,}".replace(",", group)
+    text = f"{whole}{point}{frac}" if frac else whole
     return f"-{text}" if negative else text
 
 
@@ -137,7 +143,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.client = client
         self.executor = executor or ThreadedExecutor()
-        self.setWindowTitle("PyMoney")
+        self.setWindowTitle(_("PyMoney"))
         self.resize(1100, 700)
         self.book: BookOut | None = None
         self.accounts: list[AccountOut] = []
@@ -155,24 +161,24 @@ class MainWindow(QMainWindow):
         bar.addWidget(QLabel(" Book: "))
         bar.addWidget(self.books)
         bar.addSeparator()
-        self.new_button = QPushButton("New transaction")
+        self.new_button = QPushButton(_("New transaction"))
         self.new_button.clicked.connect(self.new_transaction)
         bar.addWidget(self.new_button)
-        self.edit_button = QPushButton("Edit")
+        self.edit_button = QPushButton(_("Edit"))
         self.edit_button.clicked.connect(self.edit_transaction)
         bar.addWidget(self.edit_button)
-        self.delete_button = QPushButton("Delete")
+        self.delete_button = QPushButton(_("Delete"))
         self.delete_button.clicked.connect(self.delete_transaction)
         bar.addWidget(self.delete_button)
         bar.addSeparator()
-        self.sync_button = QPushButton("Sync now")
+        self.sync_button = QPushButton(_("Sync now"))
         self.sync_button.clicked.connect(self.sync)
         bar.addWidget(self.sync_button)
-        self.logout_button = QPushButton("Log out")
+        self.logout_button = QPushButton(_("Log out"))
         bar.addWidget(self.logout_button)
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Account", "Balance"])
+        self.tree.setHeaderLabels([_("Account"), _("Balance")])
         self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.tree.currentItemChanged.connect(
             lambda current, _: self._account_chosen(current)
@@ -180,15 +186,15 @@ class MainWindow(QMainWindow):
 
         self.register = QTableWidget(0, 6)
         self.register.setHorizontalHeaderLabels(
-            ["Date", "No.", "Payee", "Memo", "Amount", "Balance"]
+            [_("Date"), _("No."), _("Payee"), _("Memo"), _("Amount"), _("Balance")]
         )
         self.register.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeMode.Stretch
         )
         self.register.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.register.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.register.doubleClicked.connect(lambda _: self.edit_transaction())
-        self.register_title = QLabel("Choose an account")
+        self.register.doubleClicked.connect(lambda _index: self.edit_transaction())
+        self.register_title = QLabel(_("Choose an account"))
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.addWidget(self.register_title)
@@ -204,11 +210,11 @@ class MainWindow(QMainWindow):
         reports = self.menuBar().addMenu("&Reports")
         self.report_actions: list[QAction] = []
         for kind, label in (
-            ("balance-sheet", "&Balance sheet…"),
-            ("income-statement", "&Income statement…"),
-            ("holdings", "&Holdings…"),
+            ("balance-sheet", "Balance sheet"),
+            ("income-statement", "Income statement"),
+            ("holdings", "Holdings"),
         ):
-            action = QAction(label, self)
+            action = QAction(f"&{_(label)}…", self)
             action.setData(kind)
             action.triggered.connect(lambda _=False, k=kind: self.open_report(k))
             reports.addAction(action)
@@ -217,7 +223,7 @@ class MainWindow(QMainWindow):
 
         self.status_label = QLabel()
         self.statusBar().addWidget(self.status_label, 1)
-        self.rejections_button = QPushButton("Rejected…")
+        self.rejections_button = QPushButton(_("Rejected…"))
         self.rejections_button.clicked.connect(self.show_rejections)
         self.rejections_button.setVisible(False)
         self.statusBar().addPermanentWidget(self.rejections_button)
@@ -234,14 +240,14 @@ class MainWindow(QMainWindow):
         self.executor.run(
             self.client.books,
             self._books_loaded,
-            self._failed("Could not list the books"),
+            self._failed(_("Could not list the books")),
         )
 
     def _books_loaded(self, books: list[BookOut]) -> None:
         self.books.blockSignals(True)
         self.books.clear()
         for b in books:
-            self.books.addItem(f"{b.name} ({b.role})", b)
+            self.books.addItem(f"{b.name} ({_(str(b.role))})", b)
         self.books.blockSignals(False)
         if books:
             self.books.setCurrentIndex(0)
@@ -267,7 +273,7 @@ class MainWindow(QMainWindow):
             )
 
         self.executor.run(
-            work, self._book_loaded, self._failed("Could not open the book")
+            work, self._book_loaded, self._failed(_("Could not open the book"))
         )
 
     def _book_loaded(self, loaded) -> None:
@@ -304,7 +310,7 @@ class MainWindow(QMainWindow):
         self.tree.expandAll()
         self.tree.blockSignals(False)
         self.register.setRowCount(0)
-        self.register_title.setText("Choose an account")
+        self.register_title.setText(_("Choose an account"))
         if self.current_account is not None and self.current_account.id in items:
             self.tree.blockSignals(True)
             self.tree.setCurrentItem(items[self.current_account.id])
@@ -327,7 +333,7 @@ class MainWindow(QMainWindow):
         self.executor.run(
             lambda: self.client.register(book_id, account.id, limit=500),
             self._register_loaded,
-            self._failed("Could not read the register"),
+            self._failed(_("Could not read the register")),
         )
 
     def _register_loaded(self, page) -> None:
@@ -357,7 +363,7 @@ class MainWindow(QMainWindow):
         closing = page.totals.closing
         if closing is not None and account is not None:
             self.register_title.setText(
-                f"{account.path} · balance {format_amount(closing, sign=sign)} {closing.commodity}"
+                f"{account.path} · {_('balance')} {format_amount(closing, sign=sign)} {closing.commodity}"
             )
         self._enable_actions()
 
@@ -420,7 +426,7 @@ class MainWindow(QMainWindow):
             )
 
         self.executor.run(
-            work, lambda _: self._reload_book(), self._failed("Could not post")
+            work, lambda _result: self._reload_book(), self._failed(_("Could not post"))
         )
 
     def edit_transaction(self) -> None:
@@ -432,13 +438,15 @@ class MainWindow(QMainWindow):
         try:
             existing = self.client.transaction(book_id, row.transaction_id)
         except (ApiError, OfflineError) as exc:
-            self._failed("Could not load the transaction")(exc)
+            self._failed(_("Could not load the transaction"))(exc)
             return
         if existing.locked:
             QMessageBox.information(
                 self,
-                "Locked",
-                "A reconciled transaction cannot be changed; unreconcile its splits first.",
+                _("Locked"),
+                _(
+                    "A reconciled transaction cannot be changed; unreconcile its splits first."
+                ),
             )
             return
         dialog = TransactionDialog(
@@ -459,20 +467,20 @@ class MainWindow(QMainWindow):
             )
 
         self.executor.run(
-            work, lambda _: self._reload_book(), self._failed("Could not save")
+            work, lambda _result: self._reload_book(), self._failed(_("Could not save"))
         )
 
     def delete_transaction(self) -> None:
         row = self._selected_row()
         if row is None or self.book is None or not self._can_write():
             return
-        if self.confirm("Delete this transaction?") is not True:
+        if self.confirm(_("Delete this transaction?")) is not True:
             return
         book_id = self.book.id
         self.executor.run(
             lambda: self.client.delete_transaction(book_id, row.transaction_id),
-            lambda _: self._reload_book(),
-            self._failed("Could not delete"),
+            lambda _result: self._reload_book(),
+            self._failed(_("Could not delete")),
         )
 
     def _reload_book(self) -> None:
@@ -504,32 +512,39 @@ class MainWindow(QMainWindow):
             self._refresh_status()
             self._reload_book()
 
-        self.executor.run(self.client.sync, done, self._failed("Sync failed"))
+        self.executor.run(self.client.sync, done, self._failed(_("Sync failed")))
 
     def _refresh_status(self) -> None:
         status = self.client.status()
-        parts = ["Online" if status.online else "Offline"]
+        parts = [_("Online") if status.online else _("Offline")]
         if status.mode == "offline":
-            parts.append("local copy")
+            parts.append(_("local copy"))
             parts.append(
-                f"{status.queued} waiting for the server" if status.queued else "all sent"
+                _("{count} waiting for the server", count=status.queued)
+                if status.queued
+                else _("all sent")
             )
         else:
-            parts.append("no local copy")
+            parts.append(_("no local copy"))
         if status.last_error:
             parts.append(status.last_error)
         self.status_label.setText(" · ".join(parts))
         self.rejections_button.setVisible(bool(status.rejections))
-        self.rejections_button.setText(f"{len(status.rejections)} rejected…")
+        self.rejections_button.setText(
+            _("{count} rejected…", count=len(status.rejections))
+        )
 
     def show_rejections(self) -> None:
         status = self.client.status()
         lines = [f"{r.command.summary}: {r.message}" for r in status.rejections]
         QMessageBox.warning(
             self,
-            "The server refused",
-            "These changes were made here while offline, but the server -- which has the final say -- "
-            "refused them on replay. The local copy has been rebuilt from the server; nothing was merged.\n\n"
+            _("The server refused"),
+            _(
+                "These changes were made here while offline, but the server -- which has the final say -- "
+                "refused them on replay. The local copy has been rebuilt from the server; nothing was merged."
+            )
+            + "\n\n"
             + "\n".join(lines),
         )
         dismiss = getattr(self.client, "dismiss_rejections", None)

@@ -1,5 +1,6 @@
 import { formatAmount, isNegative, isZero } from "@pymoney/core";
 import type { Amount } from "@pymoney/core";
+import { useLocale } from "@pymoney/core/hooks";
 
 /**
  * An amount in a table cell: right-aligned tabular digits, negatives marked,
@@ -17,6 +18,7 @@ export function Money({
   blankZero?: boolean;
   strong?: boolean;
 }) {
+  const locale = useLocale();
   if (!amount) return <span className="money money--na">—</span>;
   const classes = ["money"];
   if (isNegative(amount)) classes.push("money--negative");
@@ -24,7 +26,7 @@ export function Money({
   if (strong) classes.push("money--strong");
   return (
     <span className={classes.join(" ")} data-minor={amount.minor} title={`${amount.text} ${amount.commodity}`}>
-      {formatAmount(amount, { withCommodity, blankZero })}
+      {formatAmount(amount, { withCommodity, blankZero, locale })}
     </span>
   );
 }

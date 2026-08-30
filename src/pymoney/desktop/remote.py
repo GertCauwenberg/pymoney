@@ -156,6 +156,12 @@ class RemoteClient(LedgerClient):
                 raise
         return self._user
 
+    def set_locale(self, locale: str) -> UserOut | None:
+        self._user = UserOut.model_validate(
+            self._call("PATCH", "/auth/me", {"locale": locale})
+        )
+        return self._user
+
     # -- books -------------------------------------------------------------------
     def books(self) -> list[BookOut]:
         return [BookOut.model_validate(b) for b in self._call("GET", "/books")]

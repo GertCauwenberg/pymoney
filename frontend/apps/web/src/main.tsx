@@ -6,6 +6,7 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
 import { createWebClient } from "./api";
+import { AppI18n } from "./i18n";
 import "./styles.css";
 
 const queryClient = createQueryClient();
@@ -18,9 +19,11 @@ const client = createWebClient(() => {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ApiProvider client={client} queryClient={queryClient}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <AppI18n>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </AppI18n>
     </ApiProvider>
   </StrictMode>,
 );

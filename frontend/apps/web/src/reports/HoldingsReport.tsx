@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { formatAmount, formatRate, today } from "@pymoney/core";
 import type { Holding, HoldingsQuery } from "@pymoney/core";
 import { useCommodities, useHoldings } from "@pymoney/core/hooks";
@@ -37,6 +38,7 @@ function holdingsCsv(positions: readonly Holding[]): string {
 }
 
 export function HoldingsReport() {
+  const t = useT();
   const { bookId, baseCurrencyId } = useBookContext();
   const [params, update] = useReportParams(DEFAULTS);
   const asOf = params.as_of || today();
@@ -58,7 +60,7 @@ export function HoldingsReport() {
     <article className="report-page">
       <header className="report-page__header">
         <div>
-          <h1>Holdings</h1>
+          <h1>{t("Holdings")}</h1>
           <p className="muted">
             As of {asOf}
             {report.data && ` · valued in ${report.data.target}`}
@@ -72,18 +74,18 @@ export function HoldingsReport() {
       </header>
 
       <form className="toolbar" onSubmit={(e) => e.preventDefault()}>
-        <DateField label="As of" value={asOf} onChange={(as_of) => update({ as_of })} />
+        <DateField label={t("As of")} value={asOf} onChange={(as_of) => update({ as_of })} />
         <CurrencyField
-          label="Value in"
+          label={t("Value in")}
           currencies={currencies.data}
           value={params.target}
           baseCurrencyId={baseCurrencyId}
           onChange={(target) => update({ target })}
         />
         <div className="toolbar__toggles">
-          <Toggle label="Include empty positions" checked={params.empty} onChange={(empty) => update({ empty })} />
+          <Toggle label={t("Include empty positions")} checked={params.empty} onChange={(empty) => update({ empty })} />
           <Toggle
-            label="Fail if anything cannot be valued"
+            label={t("Fail if anything cannot be valued")}
             checked={params.strict}
             onChange={(strict) => update({ strict })}
           />
@@ -100,22 +102,22 @@ export function HoldingsReport() {
           <table className="report">
             <thead>
               <tr>
-                <th scope="col">Account</th>
-                <th scope="col">Security</th>
+                <th scope="col">{t("Account")}</th>
+                <th scope="col">{t("Security")}</th>
                 <th scope="col" className="num">
-                  Quantity
+                  {t("Quantity")}
                 </th>
                 <th scope="col" className="num">
-                  Price
+                  {t("Price")}
                 </th>
                 <th scope="col" className="num">
-                  Cost
+                  {t("Cost")}
                 </th>
                 <th scope="col" className="num">
-                  Market value
+                  {t("Market value")}
                 </th>
                 <th scope="col" className="num">
-                  Unrealised
+                  {t("Unrealised")}
                 </th>
               </tr>
             </thead>
@@ -123,7 +125,7 @@ export function HoldingsReport() {
               {report.data.positions.map((p) => (
                 <tr key={p.account_id}>
                   <td>
-                    <Link to={`../accounts/${p.account_id}?end=${asOf}`} className="account-link" title="Open the register">
+                    <Link to={`../accounts/${p.account_id}?end=${asOf}`} className="account-link" title={t("Open the register")}>
                       {p.path}
                     </Link>
                   </td>
@@ -135,7 +137,7 @@ export function HoldingsReport() {
                     {p.unit_price ? (
                       <span title={`${p.unit_price.num}/${p.unit_price.den}`}>{formatRate(p.unit_price)}</span>
                     ) : (
-                      <span className="muted">unpriced</span>
+                      <span className="muted">{t("unpriced")}</span>
                     )}
                   </td>
                   <td className="num">
@@ -153,7 +155,7 @@ export function HoldingsReport() {
             <tfoot>
               <tr className="report__total report__total--emphasis">
                 <th scope="row" colSpan={4}>
-                  Total
+                  {t("Total")}
                 </th>
                 <td className="num">
                   <Money amount={report.data.total_cost} strong withCommodity />

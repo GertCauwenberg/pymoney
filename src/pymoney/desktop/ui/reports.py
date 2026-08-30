@@ -47,6 +47,7 @@ from ...api.schemas import (
     ReportRowOut,
 )
 from ..client import LedgerClient, ReportOptions
+from ..i18n import _
 from .main_window import Executor, ThreadedExecutor, format_amount
 
 __all__ = [
@@ -193,7 +194,7 @@ class ReportWindow(QMainWindow):
         self.kind: ReportKind = kind
         self.executor = executor or ThreadedExecutor()
         self.today = today or date.today()
-        self.setWindowTitle(f"PyMoney — {TITLES[kind]}")
+        self.setWindowTitle(f"PyMoney — {_(TITLES[kind])}")
         self.resize(900, 650)
         self.report: BalanceSheetOut | IncomeStatementOut | HoldingsOut | None = None
         self.last_error: Exception | None = None
@@ -215,22 +216,23 @@ class ReportWindow(QMainWindow):
         self.as_of.setCalendarPopup(True)
         self.as_of.setDisplayFormat("yyyy-MM-dd")
         if kind == "income-statement":
-            self.preset.addItem("Custom period", "")
+            self.preset.addItem(_("Custom period"), "")
             for key, label in PERIOD_PRESETS:
-                self.preset.addItem(label, key)
+                self.preset.addItem(_(label), key)
             self.preset.setCurrentIndex(1)
-            controls.addWidget(QLabel("Period"))
+            controls.addWidget(QLabel(_("Period")))
             controls.addWidget(self.preset)
-            controls.addWidget(QLabel("From"))
+            controls.addWidget(QLabel(_("From")))
             controls.addWidget(self.start)
-            controls.addWidget(QLabel("To"))
+            controls.addWidget(QLabel(_("To")))
         else:
-            controls.addWidget(QLabel("As of"))
+            controls.addWidget(QLabel(_("As of")))
         controls.addWidget(self.as_of)
 
         self.target = QComboBox()
         self.target.addItem(
-            f"{base.code} (book currency)" if base else "Book currency", ""
+            _("{code} (book currency)", code=base.code) if base else _("Book currency"),
+            "",
         )
         for c in currencies:
             if base is None or c.id != base.id:
@@ -238,20 +240,20 @@ class ReportWindow(QMainWindow):
                     c.code + (f" — {c.name}" if c.name and c.name != c.code else ""),
                     str(c.id),
                 )
-        controls.addWidget(QLabel("Report in"))
+        controls.addWidget(QLabel(_("Report in")))
         controls.addWidget(self.target)
 
-        self.closed = QCheckBox("Include closed accounts")
-        self.empty = QCheckBox("Include empty positions")
-        self.strict = QCheckBox("Fail if anything cannot be valued")
-        self.strict.setToolTip("Off: list it below and leave it out of the totals.")
+        self.closed = QCheckBox(_("Include closed accounts"))
+        self.empty = QCheckBox(_("Include empty positions"))
+        self.strict = QCheckBox(_("Fail if anything cannot be valued"))
+        self.strict.setToolTip(_("Off: list it below and leave it out of the totals."))
         if kind == "holdings":
             controls.addWidget(self.empty)
         else:
             controls.addWidget(self.closed)
         controls.addWidget(self.strict)
         controls.addStretch()
-        self.export_button = QPushButton("Export CSV")
+        self.export_button = QPushButton(_("Export CSV"))
         self.export_button.clicked.connect(self.export_csv)
         controls.addWidget(self.export_button)
 
@@ -260,18 +262,22 @@ class ReportWindow(QMainWindow):
         if kind == "holdings":
             self.tree.setHeaderLabels(
                 [
-                    "Position",
-                    "Commodity",
-                    "Quantity",
-                    "Price",
-                    "Cost",
-                    "Market value",
-                    "Gain",
+                    _("Position"),
+                    _("Commodity"),
+                    _("Quantity"),
+                    _("Price"),
+                    _("Cost"),
+                    _("Market value"),
+                    _("Gain"),
                 ]
             )
         else:
             self.tree.setHeaderLabels(
-                ["Account", "Own", "Amount" if kind == "income-statement" else "Balance"]
+                [
+                    _("Account"),
+                    _("Own"),
+                    _("Amount") if kind == "income-statement" else _("Balance"),
+                ]
             )
         self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.tree.setAlternatingRowColors(True)
@@ -341,9 +347,9 @@ class ReportWindow(QMainWindow):
         options = self.options()
         start = _pydate(self.start.date())
         if self.kind == "income-statement" and start > (options.as_of or self.today):
-            self.status.setText("The period ends before it starts.")
+            self.status.setText(_(_("The period ends before it starts.")))
             return
-        self.status.setText("Loading…")
+        self.status.setText(_("Loading…"))
         self._loading = True
         kind, client, book_id = self.kind, self.client, self.book_id
 
@@ -376,7 +382,13 @@ class ReportWindow(QMainWindow):
         else:
             self._show_rows(report)
         self._show_provenance(report)
-        self.status.setText(f"{TITLES[self.kind]} in {report.target}")
+        self.status.setText(
+            _(
+                "{report} in {currency}",
+                report=_(TITLES[self.kind]),
+                currency=report.target,
+            )
+        )
 
     # -- rendering -------------------------------------------------------------------
     def _show_rows(self, report: BalanceSheetOut | IncomeStatementOut) -> None:
@@ -414,9 +426,9 @@ class ReportWindow(QMainWindow):
         self.tree.expandAll()
         if isinstance(report, BalanceSheetOut):
             self.totals.setText(
-                f"Total assets <b>{format_amount(report.assets)} {report.target}</b> &nbsp;·&nbsp; "
-                f"Total liabilities <b>{format_amount(report.liabilities_owed)} {report.target}</b> &nbsp;·&nbsp; "
-                f"Net worth <b>{format_amount(report.net_worth)} {report.target}</b>"
+                f"{_('Total assets')} <b>{format_amount(report.assets)} {report.target}</b> &nbsp;·&nbsp; "
+                f"{_('Total liabilities')} <b>{format_amount(report.liabilities_owed)} {report.target}</b> &nbsp;·&nbsp; "
+                f"{_('Net worth')} <b>{format_amount(report.net_worth)} {report.target}</b>"
             )
         else:
             rate = ""
@@ -424,11 +436,11 @@ class ReportWindow(QMainWindow):
                 pct = (
                     report.savings_rate.num * 1000 + report.savings_rate.den // 2
                 ) // report.savings_rate.den
-                rate = f" &nbsp;·&nbsp; Savings rate <b>{pct / 10:.1f}&nbsp;%</b>"
+                rate = f" &nbsp;·&nbsp; {_('Savings rate')} <b>{pct / 10:.1f}&nbsp;%</b>"
             self.totals.setText(
-                f"Income <b>{format_amount(report.income_earned)} {report.target}</b> &nbsp;·&nbsp; "
-                f"Expenses <b>{format_amount(report.expenses)} {report.target}</b> &nbsp;·&nbsp; "
-                f"Net <b>{format_amount(report.net)} {report.target}</b>{rate}"
+                f"{_('Income')} <b>{format_amount(report.income_earned)} {report.target}</b> &nbsp;·&nbsp; "
+                f"{_('Expenses')} <b>{format_amount(report.expenses)} {report.target}</b> &nbsp;·&nbsp; "
+                f"{_('Net')} <b>{format_amount(report.net)} {report.target}</b>{rate}"
             )
 
     def _show_holdings(self, report: HoldingsOut) -> None:
@@ -453,8 +465,8 @@ class ReportWindow(QMainWindow):
             item.setData(0, Qt.ItemDataRole.UserRole, str(p.account_id))
             self.tree.addTopLevelItem(item)
         self.totals.setText(
-            f"Total value <b>{format_amount(report.total_value)} {report.target}</b> &nbsp;·&nbsp; "
-            f"Total cost <b>{format_amount(report.total_cost)} {report.target}</b>"
+            f"{_('Total value')} <b>{format_amount(report.total_value)} {report.target}</b> &nbsp;·&nbsp; "
+            f"{_('Total cost')} <b>{format_amount(report.total_cost)} {report.target}</b>"
         )
 
     def _show_provenance(
@@ -463,7 +475,7 @@ class ReportWindow(QMainWindow):
         lines: list[str] = []
         conversions: list[ConversionOut] = getattr(report, "conversions", [])
         if conversions:
-            lines.append("<b>Rates used</b>")
+            lines.append(f"<b>{_('Rates used')}</b>")
             for c in conversions:
                 path = " → ".join(c.path)
                 lines.append(
@@ -473,8 +485,8 @@ class ReportWindow(QMainWindow):
         unpriced: list[str] = getattr(report, "unpriced", [])
         if unpriced:
             lines.append(
-                f"<b style='color:#b45309'>Could not be valued and left out:</b> {', '.join(unpriced)}"
-                " — add a price, or turn strict mode on to make this an error."
+                f"<b style='color:#b45309'>{_('Could not be valued and left out:')}</b> {', '.join(unpriced)}"
+                f" — {_('add a price, or turn strict mode on to make this an error.')}"
             )
         self.provenance.setText("<br>".join(lines))
 
@@ -490,15 +502,17 @@ class ReportWindow(QMainWindow):
         if self.report is None:
             return
         suffix = _pydate(self.as_of.date()).isoformat()
-        path, _ = self.choose_path(f"{self.kind}-{suffix}.csv")
+        path, _filter = self.choose_path(f"{self.kind}-{suffix}.csv")
         if path:
             with open(path, "w", encoding="utf-8", newline="") as handle:
                 handle.write(self.csv_text())
-            self.status.setText(f"Saved {path}")
+            self.status.setText(_("Saved {path}", path=path))
 
     def choose_path(self, suggested: str) -> tuple[str, str]:
         """A hook a test can replace."""
-        return QFileDialog.getSaveFileName(self, "Export CSV", suggested, "CSV (*.csv)")
+        return QFileDialog.getSaveFileName(
+            self, _("Export CSV"), suggested, "CSV (*.csv)"
+        )
 
 
 def replace_sign(amount: AmountOut) -> AmountOut:

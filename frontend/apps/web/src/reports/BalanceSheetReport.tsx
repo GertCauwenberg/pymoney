@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { rowsToCsv, sectionRows, today } from "@pymoney/core";
 import type { BalanceSheetQuery } from "@pymoney/core";
 import { useAccounts, useBalanceSheet, useCommodities } from "@pymoney/core/hooks";
@@ -19,6 +20,7 @@ const DEFAULTS = {
 };
 
 export function BalanceSheetReport() {
+  const t = useT();
   const { bookId, baseCurrencyId } = useBookContext();
   const [params, update] = useReportParams(DEFAULTS);
   const asOf = params.as_of || today();
@@ -46,7 +48,7 @@ export function BalanceSheetReport() {
     <article className="report-page">
       <header className="report-page__header">
         <div>
-          <h1>Balance sheet</h1>
+          <h1>{t("Balance sheet")}</h1>
           <p className="muted">
             As of {asOf}
             {report.data && ` · in ${report.data.target}`}
@@ -60,7 +62,7 @@ export function BalanceSheetReport() {
       </header>
 
       <form className="toolbar" onSubmit={(e) => e.preventDefault()}>
-        <DateField label="As of" value={asOf} onChange={(as_of) => update({ as_of })} />
+        <DateField label={t("As of")} value={asOf} onChange={(as_of) => update({ as_of })} />
         <CurrencyField
           currencies={currencies.data}
           value={params.target}
@@ -68,10 +70,10 @@ export function BalanceSheetReport() {
           onChange={(target) => update({ target })}
         />
         <div className="toolbar__toggles">
-          <Toggle label="Include closed accounts" checked={params.closed} onChange={(closed) => update({ closed })} />
+          <Toggle label={t("Include closed accounts")} checked={params.closed} onChange={(closed) => update({ closed })} />
           <Toggle
-            label="Fail if anything cannot be valued"
-            hint="Off: list it below and leave it out of the totals."
+            label={t("Fail if anything cannot be valued")}
+            hint={t("Off: list it below and leave it out of the totals.")}
             checked={params.strict}
             onChange={(strict) => update({ strict })}
           />
@@ -88,14 +90,14 @@ export function BalanceSheetReport() {
             sections={sections}
             emptyMessage={
               accounts.data?.length === 0
-                ? "This book has no accounts yet. An owner creates them under Accounts and posts from an account's register -- or, coming from KMyMoney, imports the .kmy file from the books page, which makes a new book with everything in it."
+                ? t("This book has no accounts yet. An owner creates them under Accounts and posts from an account's register -- or, coming from KMyMoney, imports the .kmy file from the books page, which makes a new book with everything in it.")
                 : undefined
             }
             linkFor={(row) => `../accounts/${row.account_id}?end=${asOf}`}
             totals={[
-              { label: "Total assets", amount: report.data.assets },
-              { label: "Total liabilities", amount: report.data.liabilities_owed },
-              { label: "Net worth", amount: report.data.net_worth, emphasis: true },
+              { label: t("Total assets"), amount: report.data.assets },
+              { label: t("Total liabilities"), amount: report.data.liabilities_owed },
+              { label: t("Net worth"), amount: report.data.net_worth, emphasis: true },
             ]}
           />
           <ValuationPanel conversions={report.data.conversions} unpriced={report.data.unpriced} target={report.data.target} />

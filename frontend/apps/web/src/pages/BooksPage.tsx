@@ -1,15 +1,18 @@
+import { useT } from "@pymoney/core/hooks";
 import type { Book } from "@pymoney/core";
 import { useBooks, useDeleteAccount, useLogout, useSession } from "@pymoney/core/hooks";
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
+import { LanguageSwitch } from "../components/LanguageSwitch";
 import { Field } from "../components/fields";
 import { Loading } from "../components/Loading";
 import { ImportBookForm } from "./ImportBookForm";
 import { NewBookForm } from "./NewBookForm";
 
 export function BooksPage() {
+  const t = useT();
   const books = useBooks();
   const session = useSession();
   const logout = useLogout();
@@ -17,7 +20,7 @@ export function BooksPage() {
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
 
-  if (books.isPending) return <Loading label="Loading your books…" />;
+  if (books.isPending) return <Loading label={t("Loading your books…")} />;
   if (books.isError) {
     return (
       <main className="page page--narrow">
@@ -39,28 +42,27 @@ export function BooksPage() {
   return (
     <main className="page page--narrow">
       <header className="topbar">
-        <h1 className="brand">PyMoney</h1>
+        <h1 className="brand">{t("PyMoney")}</h1>
         <div className="topbar__user">
+          <LanguageSwitch />
           {session.data?.display_name || session.data?.email}
           <button type="button" className="btn btn--small" onClick={() => logout.mutate()}>
-            Log out
+            {t("Log out")}
           </button>
         </div>
       </header>
 
       {none ? (
         <>
-          <h2>Welcome</h2>
+          <h2>{t("Welcome")}</h2>
           <p>
-            You are logged in as <strong>{session.data?.email}</strong> but have no books yet. Create one
-            below — or, if someone else already keeps the books, ask them to share with this email address
-            under <em>Sharing</em> in their book; it will then appear here.
+            {t("You are logged in as")} <strong>{session.data?.email}</strong> {t("but have no books yet. Create one below — or, if someone else already keeps the books, ask them to share with this email address under")} <em>{t("Sharing")}</em> {t("in their book; it will then appear here.")}
           </p>
           <NewBookForm first />
           <p className="muted">
             Coming from KMyMoney?{" "}
             <button type="button" className="btn btn--link" onClick={() => setImporting(true)}>
-              Import your .kmy file
+              {t("Import your .kmy file")}
             </button>{" "}
             and the book is made for you.
           </p>
@@ -68,16 +70,16 @@ export function BooksPage() {
       ) : (
         <>
           <div className="page-heading">
-            <h2>Your books</h2>
+            <h2>{t("Your books")}</h2>
             <span className="actions actions--inline">
               {!creating && (
                 <button type="button" className="btn" onClick={() => setCreating(true)}>
-                  New book
+                  {t("New book")}
                 </button>
               )}
               {!importing && (
                 <button type="button" className="btn" onClick={() => setImporting(true)}>
-                  Import from KMyMoney
+                  {t("Import from KMyMoney")}
                 </button>
               )}
             </span>
@@ -111,6 +113,7 @@ export function BooksPage() {
  * points at what to do about it.
  */
 function DeleteAccount({ books }: { books: readonly Book[] }) {
+  const t = useT();
   const del = useDeleteAccount();
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -123,35 +126,33 @@ function DeleteAccount({ books }: { books: readonly Book[] }) {
 
   return (
     <section className="card danger account-deletion" aria-labelledby="delete-account-heading">
-      <h2 id="delete-account-heading">Delete my account</h2>
+      <h2 id="delete-account-heading">{t("Delete my account")}</h2>
       {owned.length > 0 ? (
         <p className="muted">
           You own {owned.length === 1 ? "a book" : `${owned.length} books`} ({owned.map((b) => b.name).join(", ")}). Delete{" "}
-          {owned.length === 1 ? "it" : "them"} or make someone else the owner under <em>Sharing</em> first; an account that
-          owns a book cannot be deleted.
+          {owned.length === 1 ? "it" : "them"} or make someone else the owner under <em>{t("Sharing")}</em> {t("first; an account that owns a book cannot be deleted.")}
         </p>
       ) : (
         <p className="muted">
-          Removes your login and your access to the books shared with you. The books themselves stay with their
-          owners. There is no undo.
+          {t("Removes your login and your access to the books shared with you. The books themselves stay with their owners. There is no undo.")}
         </p>
       )}
       {!open ? (
         <button type="button" className="btn btn--danger" disabled={owned.length > 0} onClick={() => setOpen(true)}>
-          Delete my account…
+          {t("Delete my account…")}
         </button>
       ) : (
         <form onSubmit={submit}>
-          {del.error && <ErrorBanner error={del.error} title="Could not delete the account" />}
-          <Field label="Your password, to confirm">
+          {del.error && <ErrorBanner error={del.error} title={t("Could not delete the account")} />}
+          <Field label={t("Your password, to confirm")}>
             <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
           <div className="actions">
             <button type="submit" className="btn btn--danger" disabled={del.isPending || !password}>
-              {del.isPending ? "…" : "Delete my account, irreversibly"}
+              {del.isPending ? "…" : t("Delete my account, irreversibly")}
             </button>
             <button type="button" className="btn" onClick={() => setOpen(false)} disabled={del.isPending}>
-              Keep it
+              {t("Keep it")}
             </button>
           </div>
         </form>

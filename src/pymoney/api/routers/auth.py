@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import Engine, func, select, update
 
 from ...core.ids import new_id
+from ...i18n import translate
 from ...store import identity, write_transaction
 from ..deps import CurrentUser, get_engine, get_mailer, get_settings_dep
 from ..mail import Mailer, Message
@@ -35,6 +36,7 @@ from ..schemas import (
     DeleteMeIn,
     EmailIn,
     LoginIn,
+    MePatch,
     PendingOut,
     RegisterIn,
     ResetPasswordIn,
@@ -114,6 +116,7 @@ def _session_out(
     user_id,
     email,
     display_name,
+    locale: str = "en",
 ) -> SessionOut:
     token, csrf, expires = _start_session(
         engine,
@@ -123,7 +126,7 @@ def _session_out(
         response=response,
     )
     return SessionOut(
-        user=UserOut(id=user_id, email=email, display_name=display_name),
+        user=UserOut(id=user_id, email=email, display_name=display_name, locale=locale),
         csrf_token=csrf,
         token=token,
         expires_at=expires,
@@ -186,33 +189,49 @@ def _consume_token(engine: Engine, token: str, kind: str):
     return user
 
 
-def _send_activation(mailer: Mailer, settings: Settings, email: str, token: str) -> None:
+def _send_activation(
+    mailer: Mailer, settings: Settings, email: str, token: str, locale: str
+) -> None:
     link = f"{settings.public_url.rstrip('/')}/activate?token={token}"
+    t = lambda key, **p: translate(key, locale, **p)  # noqa: E731
     mailer.send(
         Message(
             to=email,
-            subject="Activate your PyMoney account",
+            subject=t("Activate your PyMoney account"),
             body=(
-                "Someone -- we hope you -- registered this address with PyMoney.\n\n"
-                f"To activate the account, open this link within {settings.activation_hours} hours:\n\n"
-                f"    {link}\n\n"
-                "If that was not you, do nothing: the account will be deleted automatically."
+                t("Someone -- we hope you -- registered this address with PyMoney.")
+                + "\n\n"
+                + t(
+                    "To activate the account, open this link within {hours} hours:",
+                    hours=settings.activation_hours,
+                )
+                + f"\n\n    {link}\n\n"
+                + t(
+                    "If that was not you, do nothing: the account will be deleted automatically."
+                )
             ),
         )
     )
 
 
-def _send_reset(mailer: Mailer, settings: Settings, email: str, token: str) -> None:
+def _send_reset(
+    mailer: Mailer, settings: Settings, email: str, token: str, locale: str
+) -> None:
     link = f"{settings.public_url.rstrip('/')}/reset-password?token={token}"
+    t = lambda key, **p: translate(key, locale, **p)  # noqa: E731
     mailer.send(
         Message(
             to=email,
-            subject="Reset your PyMoney password",
+            subject=t("Reset your PyMoney password"),
             body=(
-                "A password reset was requested for this PyMoney account.\n\n"
-                f"To choose a new password, open this link within {settings.reset_hours} hours:\n\n"
-                f"    {link}\n\n"
-                "If that was not you, do nothing; your password is unchanged."
+                t("A password reset was requested for this PyMoney account.")
+                + "\n\n"
+                + t(
+                    "To choose a new password, open this link within {hours} hours:",
+                    hours=settings.reset_hours,
+                )
+                + f"\n\n    {link}\n\n"
+                + t("If that was not you, do nothing; your password is unchanged.")
             ),
         )
     )
@@ -287,13 +306,14 @@ def register(
                 password_params=stored.params,
                 active=True,
                 activated_at=None if settings.require_activation else now,
+                locale=body.locale,
                 created_at=now,
                 updated_at=now,
             )
         )
     if settings.require_activation:
         token = _issue_token(engine, user_id, "activate", settings.activation_hours)
-        _send_activation(mailer, settings, email, token)
+        _send_activation(mailer, settings, email, token, body.locale)
         response.status_code = status.HTTP_202_ACCEPTED
         return PendingOut(email=email)
     return _session_out(
@@ -342,6 +362,7 @@ def activate(
         user_id=user.id,
         email=user.email,
         display_name=user.display_name,
+        locale=user.locale,
     )
 
 
@@ -362,7 +383,10 @@ def resend_activation(
     with engine.connect() as conn:
         user = conn.execute(
             select(
-                identity.users.c.id, identity.users.c.email, identity.users.c.activated_at
+                identity.users.c.id,
+                identity.users.c.email,
+                identity.users.c.activated_at,
+                identity.users.c.locale,
             ).where(identity.users.c.email_key == email.casefold())
         ).one_or_none()
     if user is not None and user.activated_at is None:
@@ -371,6 +395,7 @@ def resend_activation(
             settings,
             user.email,
             _issue_token(engine, user.id, "activate", settings.activation_hours),
+            user.locale,
         )
     return PendingOut(email=email)
 
@@ -422,6 +447,7 @@ def login(
         user_id=row.id,
         email=row.email,
         display_name=row.display_name,
+        locale=row.locale,
     )
 
 
@@ -444,7 +470,38 @@ def logout(
 
 @router.get("/me", response_model=UserOut, summary="The current user")
 def me(actor: CurrentUser) -> UserOut:
-    return UserOut(id=actor.user_id, email=actor.subject, display_name=actor.display_name)
+    return UserOut(
+        id=actor.user_id,
+        email=actor.subject,
+        display_name=actor.display_name,
+        locale=actor.locale,
+    )
+
+
+@router.patch(
+    "/me", response_model=UserOut, summary="Change your display name or language"
+)
+def patch_me(
+    body: MePatch,
+    actor: CurrentUser,
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> UserOut:
+    """The language is stored with the account: every client of this user, and
+    the emails the server sends, follow it."""
+    fields = body.model_dump(exclude_unset=True, exclude_none=True)
+    if fields:
+        with write_transaction(engine) as conn:
+            conn.execute(
+                update(identity.users)
+                .where(identity.users.c.id == actor.user_id)
+                .values(**fields, updated_at=_now())
+            )
+    return UserOut(
+        id=actor.user_id,
+        email=actor.subject,
+        display_name=fields.get("display_name", actor.display_name),
+        locale=fields.get("locale", actor.locale),
+    )
 
 
 # -- forgotten passwords ---------------------------------------------------------------------
@@ -469,6 +526,7 @@ def forgot_password(
                 identity.users.c.email,
                 identity.users.c.activated_at,
                 identity.users.c.active,
+                identity.users.c.locale,
             ).where(identity.users.c.email_key == email.casefold())
         ).one_or_none()
     if user is not None and user.activated_at is not None and user.active:
@@ -477,6 +535,7 @@ def forgot_password(
             settings,
             user.email,
             _issue_token(engine, user.id, "reset", settings.reset_hours),
+            user.locale,
         )
     return PendingOut(email=email)
 
@@ -524,6 +583,7 @@ def reset_password(
         user_id=user.id,
         email=user.email,
         display_name=user.display_name,
+        locale=user.locale,
     )
 
 

@@ -76,6 +76,9 @@ USER root
 COPY pyproject.toml README.md alembic.ini ./
 COPY src ./src
 COPY tests ./tests
+COPY scripts ./scripts
+COPY frontend/apps/web/src ./frontend/apps/web/src
+COPY frontend/packages/core ./frontend/packages/core
 # The shipped API contract; tests/test_api_sync.py checks the code still
 # matches it (resolved as <repo>/docs/openapi.json relative to tests/).
 COPY docs/openapi.json ./docs/openapi.json

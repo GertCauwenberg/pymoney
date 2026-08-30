@@ -1546,6 +1546,42 @@
         "title": "LoginIn",
         "type": "object"
       },
+      "MePatch": {
+        "additionalProperties": false,
+        "description": "What a user may change about themselves.",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "enum": [
+                  "en",
+                  "nl"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          }
+        },
+        "title": "MePatch",
+        "type": "object"
+      },
       "MergeAccountsIn": {
         "additionalProperties": false,
         "properties": {
@@ -2285,6 +2321,16 @@
             "maxLength": 255,
             "minLength": 3,
             "title": "Email",
+            "type": "string"
+          },
+          "locale": {
+            "default": "en",
+            "description": "Language for the account and its emails.",
+            "enum": [
+              "en",
+              "nl"
+            ],
+            "title": "Locale",
             "type": "string"
           },
           "password": {
@@ -3237,6 +3283,12 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "locale": {
+            "default": "en",
+            "description": "The language the user chose: 'en' or 'nl'.",
+            "title": "Locale",
+            "type": "string"
           }
         },
         "required": [
@@ -3597,6 +3649,85 @@
           }
         },
         "summary": "The current user",
+        "tags": [
+          "auth"
+        ]
+      },
+      "patch": {
+        "description": "The language is stored with the account: every client of this user, and\nthe emails the server sends, follow it.",
+        "operationId": "patch_me_auth_me_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Change your display name or language",
         "tags": [
           "auth"
         ]

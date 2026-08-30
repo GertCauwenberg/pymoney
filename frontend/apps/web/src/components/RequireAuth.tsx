@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { useSession } from "@pymoney/core/hooks";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
@@ -6,14 +7,15 @@ import { Loading } from "./Loading";
 
 /** Gate: renders children for a logged-in user, otherwise sends to /login. */
 export function RequireAuth() {
+  const t = useT();
   const session = useSession();
   const location = useLocation();
 
-  if (session.isPending) return <Loading label="Checking your session…" />;
+  if (session.isPending) return <Loading label={t("Checking your session…")} />;
   if (session.isError) {
     return (
       <main className="page page--narrow">
-        <ErrorBanner error={session.error} title="Cannot reach the server" onRetry={() => void session.refetch()} />
+        <ErrorBanner error={session.error} title={t("Cannot reach the server")} onRetry={() => void session.refetch()} />
       </main>
     );
   }

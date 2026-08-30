@@ -98,7 +98,12 @@ export interface paths {
         readonly delete: operations["delete_me_auth_me_delete"];
         readonly options?: never;
         readonly head?: never;
-        readonly patch?: never;
+        /**
+         * Change your display name or language
+         * @description The language is stored with the account: every client of this user, and
+         *     the emails the server sends, follow it.
+         */
+        readonly patch: operations["patch_me_auth_me_patch"];
         readonly trace?: never;
     };
     readonly "/auth/register": {
@@ -1466,6 +1471,16 @@ export interface components {
             /** Password */
             readonly password: string;
         };
+        /**
+         * MePatch
+         * @description What a user may change about themselves.
+         */
+        readonly MePatch: {
+            /** Display Name */
+            readonly display_name?: string | null;
+            /** Locale */
+            readonly locale?: ("en" | "nl") | null;
+        };
         /** MergeAccountsIn */
         readonly MergeAccountsIn: {
             /**
@@ -1785,6 +1800,13 @@ export interface components {
             readonly display_name: string;
             /** Email */
             readonly email: string;
+            /**
+             * Locale
+             * @description Language for the account and its emails.
+             * @default en
+             * @enum {string}
+             */
+            readonly locale: "en" | "nl";
             /** Password */
             readonly password: string;
         };
@@ -2164,6 +2186,12 @@ export interface components {
              * Format: uuid
              */
             readonly id: string;
+            /**
+             * Locale
+             * @description The language the user chose: 'en' or 'nl'.
+             * @default en
+             */
+            readonly locale: string;
         };
     };
     responses: never;
@@ -2510,6 +2538,68 @@ export interface operations {
                 content?: never;
             };
             /** @description You still own a book: delete it or hand it to another owner first. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly patch_me_auth_me_patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MePatch"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["UserOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
             readonly 409: {
                 headers: {
                     readonly [name: string]: unknown;

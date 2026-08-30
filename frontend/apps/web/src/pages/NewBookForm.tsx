@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { useCreateBook } from "@pymoney/core/hooks";
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
@@ -24,6 +25,7 @@ const CURRENCIES: { code: string; name: string; symbol: string; scale: number }[
 const OTHER = "__other__";
 
 export function NewBookForm({ onDone, first = false }: { onDone?: () => void; first?: boolean }) {
+  const t = useT();
   const create = useCreateBook();
   const navigate = useNavigate();
   const [name, setName] = useState(first ? "Household" : "");
@@ -63,32 +65,31 @@ export function NewBookForm({ onDone, first = false }: { onDone?: () => void; fi
     <form className="card" onSubmit={submit}>
       <h2>{first ? "Create your first book" : "New book"}</h2>
       <p className="muted">
-        A book is one set of accounts — a household, a club, a small business. Everything in it is
-        kept in its base currency; other currencies and securities can be added later.
+        {t("A book is one set of accounts — a household, a club, a small business. Everything in it is kept in its base currency; other currencies and securities can be added later.")}
       </p>
-      {create.error && <ErrorBanner error={create.error} title="Could not create the book" />}
-      <Field label="Name">
+      {create.error && <ErrorBanner error={create.error} title={t("Could not create the book")} />}
+      <Field label={t("Name")}>
         <input type="text" required maxLength={255} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       </Field>
-      <Field label="Base currency">
+      <Field label={t("Base currency")}>
         <select value={choice} onChange={(e) => setChoice(e.target.value)}>
           {CURRENCIES.map((c) => (
             <option key={c.code} value={c.code}>
               {c.code} — {c.name}
             </option>
           ))}
-          <option value={OTHER}>Other…</option>
+          <option value={OTHER}>{t("Other…")}</option>
         </select>
       </Field>
       {custom && (
         <div className="field-row">
-          <Field label="Code" hint="ISO 4217, e.g. INR">
+          <Field label={t("Code")} hint={t("ISO 4217, e.g. INR")}>
             <input type="text" required minLength={1} maxLength={32} value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
-          <Field label="Name">
+          <Field label={t("Name")}>
             <input type="text" value={currencyName} onChange={(e) => setCurrencyName(e.target.value)} />
           </Field>
-          <Field label="Decimal places" hint="2 for most; 0 for JPY; 3 for KWD">
+          <Field label={t("Decimal places")} hint={t("2 for most; 0 for JPY; 3 for KWD")}>
             <input type="number" min={0} max={12} value={scale} onChange={(e) => setScale(Number(e.target.value))} />
           </Field>
         </div>
@@ -99,7 +100,7 @@ export function NewBookForm({ onDone, first = false }: { onDone?: () => void; fi
         </button>
         {onDone && (
           <button type="button" className="btn btn--link" onClick={onDone}>
-            Cancel
+            {t("Cancel")}
           </button>
         )}
       </div>

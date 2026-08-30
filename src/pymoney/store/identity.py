@@ -61,6 +61,9 @@ users = Table(
     # Null until the address has been proven by following the activation link.
     # A never-activated account is purged after a grace period.
     Column("activated_at", UTC, nullable=True),
+    # The language the user wants: the web app, the desktop and the emails
+    # follow it. A short code ("en", "nl"); see pymoney.i18n.
+    Column("locale", String(8), nullable=False, server_default="en"),
     Column("created_at", UTC, nullable=False),
     Column("updated_at", UTC, nullable=False),
     UniqueConstraint("email_key", name="uq_users_email_key"),

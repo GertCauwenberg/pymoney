@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { displayOwnValue, hasChildren, leafName, visibleRows } from "@pymoney/core";
 import type { AccountClass, Amount, ReportRow, Section } from "@pymoney/core";
 import { useState } from "react";
@@ -25,6 +26,7 @@ export function ReportTable({
   linkFor?: (row: ReportRow) => string;
   emptyMessage?: string | undefined;
 }) {
+  const t = useT();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 
   const toggle = (id: string) =>
@@ -36,16 +38,16 @@ export function ReportTable({
     });
 
   if (sections.length === 0) {
-    return <p className="empty">{emptyMessage ?? "Nothing to show for these settings."}</p>;
+    return <p className="empty">{emptyMessage ?? t("Nothing to show for these settings.")}</p>;
   }
 
   return (
     <table className="report">
       <thead>
         <tr>
-          <th scope="col">Account</th>
+          <th scope="col">{t("Account")}</th>
           <th scope="col" className="num">
-            Own
+            {t("Own")}
           </th>
           <th scope="col" className="num">
             {valueHeader}
@@ -58,7 +60,7 @@ export function ReportTable({
           {section.rows.filter((r) => r.depth === 0).length !== 1 && (
             <tr className="report__section">
               <th scope="rowgroup" colSpan={2}>
-                {section.label}
+                {t(section.label)}
               </th>
               <td className="num">
                 <Money amount={section.total} strong />
@@ -79,13 +81,13 @@ export function ReportTable({
       ))}
       {totals && totals.length > 0 && (
         <tfoot>
-          {totals.map((t) => (
-            <tr key={t.label} className={t.emphasis ? "report__total report__total--emphasis" : "report__total"}>
+          {totals.map((row) => (
+            <tr key={row.label} className={row.emphasis ? "report__total report__total--emphasis" : "report__total"}>
               <th scope="row" colSpan={2}>
-                {t.label}
+                {row.label}
               </th>
               <td className="num">
-                <Money amount={t.amount} strong={t.emphasis ?? false} withCommodity />
+                <Money amount={row.amount} strong={row.emphasis ?? false} withCommodity />
               </td>
             </tr>
           ))}
@@ -108,6 +110,7 @@ function Row({
   onToggle: (id: string) => void;
   href?: string | undefined;
 }) {
+  const t = useT();
   const parent = hasChildren(row);
   return (
     <tr className={`report__row depth-${Math.min(row.depth, 6)}${parent ? " report__row--parent" : ""}`}>
@@ -118,7 +121,7 @@ function Row({
               type="button"
               className="disclosure"
               aria-expanded={!collapsed}
-              aria-label={`${collapsed ? "Expand" : "Collapse"} ${row.path}`}
+              aria-label={`${collapsed ? t("Expand") : t("Collapse")} ${row.path}`}
               onClick={() => onToggle(row.account_id)}
             >
               {collapsed ? "▸" : "▾"}

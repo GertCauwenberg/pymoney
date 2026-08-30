@@ -8,7 +8,7 @@ COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := help
 .PHONY: help install fmt lint types test test-ci test-all test-postgres \
-        test-thorough cov check bench bench-scaling bench-import openapi \
+        test-thorough cov check bench bench-scaling bench-import openapi i18n i18n-check \
         serve migrate \
         migration clean clean-all \
         up down logs db-shell image image-test compose-config \
@@ -70,6 +70,12 @@ bench-import:  ## How long does a KMyMoney migration take?
 
 openapi:  ## Regenerate docs/openapi.json (the shipped contract)
 	$(BIN)/python scripts/openapi.py
+
+i18n:  ## Copy the Dutch catalogue into the frontend and report untranslated strings
+	$(BIN)/python scripts/i18n.py
+
+i18n-check:  ## Fail if any string in the code lacks a Dutch translation (CI runs this)
+	$(BIN)/python scripts/i18n.py --check
 
 serve:  ## Run the API locally (http://127.0.0.1:8000/docs)
 	PYMONEY_DATABASE_URL=$${PYMONEY_DATABASE_URL:-sqlite+pysqlite:///pymoney.sqlite} \

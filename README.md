@@ -583,6 +583,27 @@ line is for cron and one-off backfills **when the server is not running**
 against the same database, since the server's caches assume they are the only
 writer.
 
+## Languages
+
+The web app, the desktop app and the server's emails are available in English
+and Dutch. One catalogue serves all three: `src/pymoney/i18n/nl.json`, keyed by
+the English source string (so code reads as English and English needs no
+catalogue), copied into the frontend by `scripts/i18n.py` the way
+`docs/openapi.json` is. `make i18n-check` -- and CI -- fails when a string the
+code asks for (`t("…")` in the web app, `_("…")` in the desktop,
+`translate("…")` on the server) has no Dutch translation, or the catalogue has
+a stale key, or the frontend's copy is behind. Placeholders (`Delete {name}?`)
+are substituted after the lookup, so a translator can move them.
+
+The language is **stored with the user** (`users.locale`, `PATCH /auth/me`,
+and a `locale` on registration so the activation email is already right).
+Before login the web app uses this browser's last choice or the browser's
+language; once the user is known, the account's setting wins and any change is
+saved to it -- so the desktop and the web app agree. Numbers follow the locale
+too (`1.234,56` in Dutch), through `Intl` on the web and the locale-aware
+formatter on the desktop. Adding a language is a new JSON file beside `nl.json`
+plus its code in `pymoney.i18n.SUPPORTED` and the frontend's `LOCALES`.
+
 ## The desktop app
 
 ```bash

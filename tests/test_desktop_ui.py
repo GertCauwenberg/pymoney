@@ -426,3 +426,45 @@ def test_login_dialog_fields(qtbot):
     assert dialog.url.text() == "http://x" and dialog.email.text() == "a@b"
     assert not dialog.offline.isChecked()
     assert default_replica_path().name == "replica.sqlite"
+
+
+def test_the_desktop_speaks_dutch_when_told(qtbot, api: Client, tmp_path):
+    from pymoney.desktop.i18n import set_locale
+    from pymoney.desktop.ui.login_dialog import LoginDialog
+
+    api.register(EMAIL)
+    api.make_book("Taal")
+    api.logout()
+    client = OfflineClient(InProcessTransport(api.http), tmp_path / "nl.sqlite")
+    client.login(EMAIL, PASSWORD)
+    try:
+        set_locale("nl")
+        dialog = LoginDialog()
+        qtbot.addWidget(dialog)
+        assert dialog.windowTitle() == "PyMoney — aanmelden"
+        assert dialog.offline.text() == "Een lokale kopie bewaren en offline werken"
+        assert dialog.chosen_locale() == "nl"
+        # Switching the combo relabels the dialog at once.
+        dialog.language.setCurrentIndex(dialog.language.findData("en"))
+        assert dialog.windowTitle() == "PyMoney — log in"
+        set_locale("nl")
+        win = MainWindow(client, executor=SyncExecutor(), sync_every_ms=0)
+        qtbot.addWidget(win)
+        assert win.new_button.text() == "Nieuwe transactie"
+        assert [a.text() for a in win.report_actions] == [
+            "&Balans…",
+            "&Resultatenrekening…",
+            "&Posities…",
+        ]
+        win.load()
+        assert (
+            "lokale kopie" in win.status_label.text()
+            and "alles verstuurd" in win.status_label.text()
+        )
+        # The choice is stored with the account for every other client.
+        assert client.set_locale("nl").locale == "nl"
+        api.login(EMAIL)
+        assert api.get("/auth/me").json()["locale"] == "nl"
+    finally:
+        set_locale("en")
+        client.close()

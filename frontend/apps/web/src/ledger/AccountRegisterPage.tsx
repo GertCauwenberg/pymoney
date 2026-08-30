@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { formatAmount, naturalSign } from "@pymoney/core";
 import type { Account, Amount, RegisterRow } from "@pymoney/core";
 import { useAccount, useAccounts, useCommodities, useLedger, usePayees } from "@pymoney/core/hooks";
@@ -26,6 +27,7 @@ const DEFAULTS = { start: "", end: "", children: false };
  * the figure that was clicked on there.
  */
 export function AccountRegisterPage() {
+  const t = useT();
   const { bookId, baseCurrencyId, role } = useBookContext();
   const { accountId = "" } = useParams();
   const [params, update] = useReportParams(DEFAULTS);
@@ -97,12 +99,12 @@ export function AccountRegisterPage() {
         <div className="actions">
           {canPost && !adding && (
             <button type="button" className="btn btn--primary" onClick={() => setAdding(true)}>
-              New transaction
+              {t("New transaction")}
             </button>
           )}
           {role === "owner" && (
             <Link to={`../accounts?edit=${accountId}`} className="btn">
-              Edit account
+              {t("Edit account")}
             </Link>
           )}
           <ReportActions csv={csv} filename={`register-${account.data?.name ?? accountId}.csv`} />
@@ -123,13 +125,13 @@ export function AccountRegisterPage() {
       )}
 
       <form className="toolbar" onSubmit={(e) => e.preventDefault()}>
-        <DateField label="From" value={params.start} max={params.end || undefined} onChange={(start) => update({ start })} allowEmpty />
-        <DateField label="To" value={params.end} min={params.start || undefined} onChange={(end) => update({ end })} allowEmpty />
+        <DateField label={t("From")} value={params.start} max={params.end || undefined} onChange={(start) => update({ start })} allowEmpty />
+        <DateField label={t("To")} value={params.end} min={params.start || undefined} onChange={(end) => update({ end })} allowEmpty />
         <div className="toolbar__toggles">
-          <Toggle label="Include sub-accounts" checked={params.children} onChange={(children) => update({ children })} />
+          <Toggle label={t("Include sub-accounts")} checked={params.children} onChange={(children) => update({ children })} />
           {(params.start || params.end) && (
             <button type="button" className="btn btn--link" onClick={() => update({ start: "", end: "" })}>
-              Show all dates
+              {t("Show all dates")}
             </button>
           )}
         </div>
@@ -137,7 +139,7 @@ export function AccountRegisterPage() {
 
       {!validWindow && (
         <div className="banner banner--warning" role="alert">
-          The period ends before it starts.
+          {t("The period ends before it starts.")}
         </div>
       )}
       {ledger.isError && <ErrorBanner error={ledger.error} onRetry={() => void ledger.refetch()} />}
@@ -148,22 +150,22 @@ export function AccountRegisterPage() {
           <table className="report register">
             <thead>
               <tr>
-                <th scope="col">Date</th>
+                <th scope="col">{t("Date")}</th>
                 <th scope="col" className="register__num">
-                  No.
+                  {t("No.")}
                 </th>
-                <th scope="col">Payee / Memo</th>
-                {showChildren && <th scope="col">Account</th>}
-                <th scope="col" className="register__mark" title="Reconciliation">
+                <th scope="col">{t("Payee / Memo")}</th>
+                {showChildren && <th scope="col">{t("Account")}</th>}
+                <th scope="col" className="register__mark" title={t("Reconciliation")}>
                   R
                 </th>
                 {showValue && (
                   <th scope="col" className="num">
-                    Value
+                    {t("Value")}
                   </th>
                 )}
                 <th scope="col" className="num">
-                  Amount
+                  {t("Amount")}
                 </th>
                 <th
                   scope="col"
@@ -174,7 +176,7 @@ export function AccountRegisterPage() {
                       : undefined
                   }
                 >
-                  {translated ? "Balance ≈" : "Balance"}
+                  {translated ? "Balance ≈" : t("Balance")}
                 </th>
               </tr>
             </thead>
@@ -184,7 +186,7 @@ export function AccountRegisterPage() {
                   <td>{params.start || "—"}</td>
                   <td />
                   <td className="muted" colSpan={showChildren ? 2 : 1}>
-                    Opening balance
+                    {t("Opening balance")}
                   </td>
                   <td />
                   {showValue && <td />}
@@ -247,7 +249,7 @@ export function AccountRegisterPage() {
               <tfoot>
                 <tr className="report__total report__total--emphasis">
                   <th scope="row" colSpan={5 + (showChildren ? 1 : 0) + (showValue ? 1 : 0)}>
-                    {params.end ? `Balance on ${params.end}` : "Balance"}
+                    {params.end ? `Balance on ${params.end}` : t("Balance")}
                   </th>
                   <td className="num">
                     <Money amount={sign(totals.closing)} strong withCommodity />
@@ -285,7 +287,7 @@ export function AccountRegisterPage() {
                 onClick={() => void ledger.fetchNextPage()}
                 disabled={ledger.isFetchingNextPage}
               >
-                {ledger.isFetchingNextPage ? "Loading…" : "Load more"}
+                {ledger.isFetchingNextPage ? t("Loading…") : t("Load more")}
               </button>
               <span className="muted">
                 {rows.length} shown · closing balance{" "}
@@ -306,6 +308,7 @@ function Breadcrumbs({
   account: Account | undefined;
   accountsById: Map<string, Account>;
 }) {
+  const t = useT();
   if (!account) return <p className="breadcrumbs muted">&nbsp;</p>;
   const chain: Account[] = [];
   let cursor = account.parent_id ? accountsById.get(account.parent_id) : undefined;
@@ -315,7 +318,7 @@ function Breadcrumbs({
   }
   return (
     <p className="breadcrumbs muted">
-      <Link to="../reports/balance-sheet">Reports</Link>
+      <Link to="../reports/balance-sheet">{t("Reports")}</Link>
       {chain.map((a) => (
         <span key={a.id}>
           {" › "}

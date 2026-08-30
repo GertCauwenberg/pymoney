@@ -492,3 +492,12 @@ export function useImportKmymoney() {
     },
   });
 }
+
+export function useUpdateMe() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { display_name?: string; locale?: string }) => api.patchMe(body),
+    onSuccess: (user) => qc.setQueryData(keys.session, user),
+  });
+}

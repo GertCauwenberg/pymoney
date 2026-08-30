@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import type { Account, AccountClass, AccountType, Commodity } from "@pymoney/core";
 import { useAccounts, useChangeAccount, useCommodities } from "@pymoney/core/hooks";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -82,6 +83,7 @@ function descendantIds(accounts: readonly Account[], rootId: string): Set<string
  * report the household shares -- the server answers 403 to anyone else.
  */
 export function AccountsPage() {
+  const t = useT();
   const { bookId, baseCurrencyId, role } = useBookContext();
   const accounts = useAccounts(bookId, { include_closed: true });
   const commodities = useCommodities(bookId);
@@ -109,20 +111,20 @@ export function AccountsPage() {
       <header className="report-page__header">
         <div>
           <p className="breadcrumbs muted">
-            <Link to="../reports/balance-sheet">Reports</Link> › Accounts
+            <Link to="../reports/balance-sheet">{t("Reports")}</Link> › Accounts
           </p>
-          <h1>Accounts</h1>
+          <h1>{t("Accounts")}</h1>
           <p className="muted">
             {owner
-              ? "The chart of accounts. Changes here reshape every report, so only owners may make them."
-              : "The chart of accounts. Only the book's owners can change it."}
+              ? t("The chart of accounts. Changes here reshape every report, so only owners may make them.")
+              : t("The chart of accounts. Only the book's owners can change it.")}
           </p>
         </div>
         <div className="actions">
-          <Toggle label="Show closed" checked={showClosed} onChange={setShowClosed} />
+          <Toggle label={t("Show closed")} checked={showClosed} onChange={setShowClosed} />
           {owner && !creating && (
             <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
-              New account
+              {t("New account")}
             </button>
           )}
         </div>
@@ -155,10 +157,10 @@ export function AccountsPage() {
         <table className="report accounts">
           <thead>
             <tr>
-              <th scope="col">Account</th>
-              <th scope="col">Type</th>
-              <th scope="col">Commodity</th>
-              <th scope="col">Notes</th>
+              <th scope="col">{t("Account")}</th>
+              <th scope="col">{t("Type")}</th>
+              <th scope="col">{t("Commodity")}</th>
+              <th scope="col">{t("Notes")}</th>
               {owner && <th scope="col" />}
             </tr>
           </thead>
@@ -202,6 +204,7 @@ function AccountRow({
   bookId: string;
   onEdit: () => void;
 }) {
+  const t = useT();
   const change = useChangeAccount(bookId);
   const [confirming, setConfirming] = useState(false);
   const flags = [account.placeholder && "placeholder", account.closed && "closed"].filter(Boolean).join(", ");
@@ -221,7 +224,7 @@ function AccountRow({
       <td className="muted">{account.description}</td>
       {owner && (
         <td className="num">
-          {change.error && <ErrorBanner error={change.error} title="Could not delete" />}
+          {change.error && <ErrorBanner error={change.error} title={t("Could not delete")} />}
           {confirming ? (
             <span className="actions actions--inline">
               <span className="muted">Delete {account.name}?</span>
@@ -231,25 +234,25 @@ function AccountRow({
                 disabled={change.isPending}
                 onClick={() => change.mutate({ kind: "delete", accountId: account.id }, { onSettled: () => setConfirming(false) })}
               >
-                Yes, delete
+                {t("Yes, delete")}
               </button>
               <button type="button" className="btn btn--small" onClick={() => setConfirming(false)}>
-                No
+                {t("No")}
               </button>
             </span>
           ) : (
             <span className="actions actions--inline">
               <button type="button" className="btn btn--small" onClick={onEdit} aria-label={`Edit ${account.name}`}>
-                Edit
+                {t("Edit")}
               </button>
               <button
                 type="button"
                 className="btn btn--small btn--danger"
                 onClick={() => setConfirming(true)}
                 aria-label={`Delete ${account.name}`}
-                title="Only an account with no postings and no sub-accounts can be deleted; merge or move them first."
+                title={t("Only an account with no postings and no sub-accounts can be deleted; merge or move them first.")}
               >
-                Delete
+                {t("Delete")}
               </button>
             </span>
           )}
@@ -279,6 +282,7 @@ function AccountEditor({
   existing?: Account;
   onDone: () => void;
 }) {
+  const t = useT();
   const change = useChangeAccount(bookId);
   const [name, setName] = useState(existing?.name ?? "");
   const [type, setType] = useState<AccountType>(existing?.type ?? "CHECKING");
@@ -363,30 +367,30 @@ function AccountEditor({
   };
 
   return (
-    <form className="card account-editor" onSubmit={(e) => void submit(e)} aria-label={existing ? `Edit ${existing.name}` : "New account"}>
-      <h2>{existing ? `Edit ${existing.path}` : "New account"}</h2>
-      {error !== null && <ErrorBanner error={error} title="Could not save" />}
+    <form className="card account-editor" onSubmit={(e) => void submit(e)} aria-label={existing ? `Edit ${existing.name}` : t("New account")}>
+      <h2>{existing ? `Edit ${existing.path}` : t("New account")}</h2>
+      {error !== null && <ErrorBanner error={error} title={t("Could not save")} />}
       <div className="field-row">
-        <Field label="Name" hint={clash ? `${clash.path} already exists here.` : "No colons: they separate the path."}>
+        <Field label={t("Name")} hint={clash ? `${clash.path} already exists here.` : "No colons: they separate the path."}>
           <input type="text" required value={name} onChange={(e) => setName(e.target.value.replace(/:/g, ""))} />
         </Field>
         <Field
-          label="Type"
-          hint={existing ? "The type cannot be changed once the account exists." : "Decides which tree the account belongs to."}
+          label={t("Type")}
+          hint={existing ? t("The type cannot be changed once the account exists.") : t("Decides which tree the account belongs to.")}
         >
           <select value={type} disabled={!!existing} onChange={(e) => setType(e.target.value as AccountType)}>
             {TYPES.map((g) => (
               <optgroup key={g.cls} label={g.label}>
-                {g.types.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
+                {g.types.map((ty) => (
+                  <option key={ty.id} value={ty.id}>
+                    {t(ty.label)}
                   </option>
                 ))}
               </optgroup>
             ))}
           </select>
         </Field>
-        <Field label="Parent" hint={`Only ${TYPES.find((g) => g.cls === cls)!.label.toLowerCase()} accounts can be the parent.`}>
+        <Field label={t("Parent")} hint={t("Only {class} accounts can be the parent.", { class: t(TYPES.find((g) => g.cls === cls)!.label).toLowerCase() })}>
           <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
             <option value="">— top level —</option>
             {parents.map((a) => (
@@ -397,7 +401,7 @@ function AccountEditor({
           </select>
         </Field>
         <Field
-          label="Commodity"
+          label={t("Commodity")}
           hint={existing ? "Fixed once the account exists; create a new account to hold something else." : undefined}
         >
           <select value={commodityId} disabled={!!existing} onChange={(e) => setCommodityId(e.target.value)}>
@@ -411,42 +415,42 @@ function AccountEditor({
         </Field>
       </div>
       <div className="field-row">
-        <Field label="Description">
+        <Field label={t("Description")}>
           <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        <Field label="Code" hint="Account number or chart code">
+        <Field label={t("Code")} hint={t("Account number or chart code")}>
           <input type="text" value={code} onChange={(e) => setCode(e.target.value)} />
         </Field>
-        <Field label="Institution">
+        <Field label={t("Institution")}>
           <input type="text" value={institution} onChange={(e) => setInstitution(e.target.value)} />
         </Field>
-        <Field label="IBAN">
+        <Field label={t("IBAN")}>
           <input type="text" value={iban} onChange={(e) => setIban(e.target.value)} />
         </Field>
       </div>
-      <Field label="Notes">
+      <Field label={t("Notes")}>
         <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
       <div className="toolbar__toggles">
         <Toggle
-          label="Placeholder"
-          hint="Groups sub-accounts and takes no postings of its own."
+          label={t("Placeholder")}
+          hint={t("Groups sub-accounts and takes no postings of its own.")}
           checked={placeholder}
           onChange={setPlaceholder}
         />
         {existing && (
-          <Toggle label="Closed" hint="A closed account keeps its history but rejects new postings." checked={closed} onChange={setClosed} />
+          <Toggle label={t("Closed")} hint={t("A closed account keeps its history but rejects new postings.")} checked={closed} onChange={setClosed} />
         )}
       </div>
       {existing && parentId && byId.get(parentId)?.id !== existing.parent_id && (
-        <p className="muted">Moving keeps every posting; only the path changes.</p>
+        <p className="muted">{t("Moving keeps every posting; only the path changes.")}</p>
       )}
       <div className="actions">
         <button type="submit" className="btn btn--primary" disabled={change.isPending || !name.trim() || !!clash}>
-          {change.isPending ? "…" : existing ? "Save" : "Create account"}
+          {change.isPending ? "…" : existing ? t("Save") : t("Create account")}
         </button>
         <button type="button" className="btn" onClick={onDone} disabled={change.isPending}>
-          Cancel
+          {t("Cancel")}
         </button>
       </div>
     </form>

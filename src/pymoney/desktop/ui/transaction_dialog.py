@@ -31,6 +31,7 @@ from ..drafts import (
     minor_to_text,
     problems,
 )
+from ..i18n import _
 
 __all__ = ["TransactionDialog"]
 
@@ -55,7 +56,7 @@ class TransactionDialog(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Edit transaction" if existing else "New transaction")
+        self.setWindowTitle(_("Edit transaction") if existing else _("New transaction"))
         self.setMinimumWidth(720)
         self._accounts = {a.id: a for a in accounts}
         self._postable = sorted(
@@ -79,35 +80,35 @@ class TransactionDialog(QDialog):
         self.date = QDateEdit(QDate.fromString(draft.date, "yyyy-MM-dd"))
         self.date.setCalendarPopup(True)
         self.date.setDisplayFormat("yyyy-MM-dd")
-        form.addRow("Date", self.date)
+        form.addRow(_("Date"), self.date)
         self.payee = QComboBox()
         self.payee.addItem("—", None)
         for p in self._payees:
             # Ids travel as strings: QComboBox.findData compares QVariants, and
             # a Python UUID object does not match itself through one.
             self.payee.addItem(p.name, str(p.id))
-        self.payee.addItem("New payee…", NEW_PAYEE)
+        self.payee.addItem(_("New payee…"), NEW_PAYEE)
         if draft.payee_id is not None:
             index = self.payee.findData(str(draft.payee_id))
             if index >= 0:
                 self.payee.setCurrentIndex(index)
-        form.addRow("Payee", self.payee)
+        form.addRow(_("Payee"), self.payee)
         self.new_payee = QLineEdit()
-        self.new_payee.setPlaceholderText("Name of the new payee")
+        self.new_payee.setPlaceholderText(_("Name of the new payee"))
         self.new_payee.setVisible(False)
         form.addRow("", self.new_payee)
         self.payee.currentIndexChanged.connect(
             lambda _: self.new_payee.setVisible(self.payee.currentData() == NEW_PAYEE)
         )
         self.memo = QLineEdit(draft.memo)
-        form.addRow("Memo", self.memo)
+        form.addRow(_("Memo"), self.memo)
         self.number = QLineEdit(draft.number)
-        self.number.setPlaceholderText("Cheque or reference")
-        form.addRow("Number", self.number)
+        self.number.setPlaceholderText(_("Cheque or reference"))
+        form.addRow(_("Number"), self.number)
 
         self.legs = QTableWidget(0, 4)
         self.legs.setHorizontalHeaderLabels(
-            ["Account", "Leg memo", "Quantity", f"Amount ({currency.code})"]
+            [_("Account"), _("Leg memo"), _("Quantity"), f"Amount ({currency.code})"]
         )
         self.legs.horizontalHeader().setStretchLastSection(False)
         self.legs.setColumnWidth(0, 280)
@@ -116,9 +117,9 @@ class TransactionDialog(QDialog):
             self._add_leg(leg)
 
         buttons = QHBoxLayout()
-        add = QPushButton("Add leg")
+        add = QPushButton(_("Add leg"))
         add.clicked.connect(lambda: self._add_leg(LegDraft()))
-        remove = QPushButton("Remove leg")
+        remove = QPushButton(_("Remove leg"))
         remove.clicked.connect(self._remove_leg)
         self.footer = QLabel()
         buttons.addWidget(add)
@@ -127,7 +128,11 @@ class TransactionDialog(QDialog):
         buttons.addWidget(self.footer)
 
         hint = QLabel(
-            "Money into an account is positive, out of it negative. Leave one amount blank and it takes whatever balances the entry."
+            _(
+                _(
+                    "Money into an account is positive, out of it negative. Leave one amount blank and it takes whatever balances the entry."
+                )
+            )
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: gray")
@@ -136,7 +141,7 @@ class TransactionDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
-            "Save" if existing else "Post"
+            _("Save") if existing else _("Post")
         )
         self.buttons.accepted.connect(self._accept)
         self.buttons.rejected.connect(self.reject)
@@ -155,7 +160,7 @@ class TransactionDialog(QDialog):
         row = self.legs.rowCount()
         self.legs.insertRow(row)
         combo = QComboBox()
-        combo.addItem("Choose an account…", None)
+        combo.addItem(_("Choose an account…"), None)
         if (
             leg.account_id in self._accounts
             and self._accounts[leg.account_id] not in self._postable
@@ -222,21 +227,27 @@ class TransactionDialog(QDialog):
         factor = self._currency.minor_unit_factor
         if blank:
             self.footer.setText(
-                f"blank leg gets {minor_to_text(-total, factor)} {self._currency.code}"
+                _(
+                    "blank leg gets {amount}",
+                    amount=f"{minor_to_text(-total, factor)} {self._currency.code}",
+                )
             )
         elif total == 0:
-            self.footer.setText("balanced")
+            self.footer.setText(_("balanced"))
         else:
             self.footer.setText(
-                f"off by {minor_to_text(total, factor)} {self._currency.code}"
+                _(
+                    "off by {amount}",
+                    amount=f"{minor_to_text(total, factor)} {self._currency.code}",
+                )
             )
 
     def _accept(self) -> None:
         draft = self.draft()
         found = problems(draft, self._accounts, self._currency)
         if self.payee.currentData() == NEW_PAYEE and not draft.new_payee:
-            found.append("Give the new payee a name.")
+            found.append(_("Give the new payee a name."))
         if found:
-            QMessageBox.warning(self, "Not yet", "\n".join(found))
+            QMessageBox.warning(self, _("Not yet"), "\n".join(found))
             return
         self.accept()

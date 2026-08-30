@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { isIsoDate } from "@pymoney/core";
 import type { Commodity } from "@pymoney/core";
 import { cloneElement, isValidElement, useEffect, useId, useState, type ReactElement, type ReactNode } from "react";
@@ -71,24 +72,25 @@ export function DateField({
 }
 
 export function CurrencyField({
-  label = "Report in",
+  label,
   currencies,
   value,
   baseCurrencyId,
   onChange,
 }: {
-  label?: string;
+  label?: string | undefined;
   currencies: readonly Commodity[] | undefined;
   /** A commodity id, or "" for the book's own currency. */
   value: string;
   baseCurrencyId: string | null | undefined;
   onChange: (id: string) => void;
 }) {
+  const t = useT();
   const base = currencies?.find((c) => c.id === baseCurrencyId);
   return (
-    <Field label={label}>
+    <Field label={label ?? t("Report in")}>
       <select value={value} onChange={(e) => onChange(e.target.value)} disabled={!currencies}>
-        <option value="">{base ? `${base.code} (book currency)` : "Book currency"}</option>
+        <option value="">{base ? t("{code} (book currency)", { code: base.code }) : t("Book currency")}</option>
         {currencies
           ?.filter((c) => c.id !== baseCurrencyId)
           .map((c) => (

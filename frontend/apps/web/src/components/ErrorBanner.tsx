@@ -1,21 +1,22 @@
+import { useT } from "@pymoney/core/hooks";
 import { ApiError } from "@pymoney/core";
 
-export function describeError(error: unknown): { title: string; detail: string } {
+export function describeError(error: unknown, t: (key: string) => string = (k) => k): { title: string; detail: string } {
   if (error instanceof ApiError) {
     const kind =
       error.status === 422
-        ? "The report could not be produced"
+        ? t("The report could not be produced")
         : error.status === 404
-          ? "Not found"
+          ? t("Not found")
           : error.status === 403
-            ? "Not allowed"
+            ? t("Not allowed")
             : error.status >= 500
-              ? "Server error"
-              : "Request failed";
+              ? t("Server error")
+              : t("Request failed");
     return { title: kind, detail: `${error.message} (${error.type}, HTTP ${error.status})` };
   }
-  if (error instanceof Error) return { title: "Something went wrong", detail: error.message };
-  return { title: "Something went wrong", detail: String(error) };
+  if (error instanceof Error) return { title: t("Something went wrong"), detail: error.message };
+  return { title: t("Something went wrong"), detail: String(error) };
 }
 
 export function ErrorBanner({
@@ -27,13 +28,14 @@ export function ErrorBanner({
   title?: string;
   onRetry?: () => void;
 }) {
-  const described = describeError(error);
+  const t = useT();
+  const described = describeError(error, t);
   return (
     <div className="banner banner--error" role="alert">
       <strong>{title ?? described.title}.</strong> <span>{described.detail}</span>
       {onRetry && (
         <button type="button" className="btn btn--small" onClick={onRetry}>
-          Retry
+          {t("Retry")}
         </button>
       )}
     </div>

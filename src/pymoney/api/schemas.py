@@ -1047,6 +1047,9 @@ class RegisterIn(In):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=12, max_length=1024)
     display_name: str = ""
+    locale: Literal["en", "nl"] = Field(
+        default="en", description="Language for the account and its emails."
+    )
 
 
 class LoginIn(In):
@@ -1082,6 +1085,16 @@ class UserOut(Out):
     id: UUID
     email: str
     display_name: str
+    locale: str = Field(
+        default="en", description="The language the user chose: 'en' or 'nl'."
+    )
+
+
+class MePatch(In):
+    """What a user may change about themselves."""
+
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+    locale: Literal["en", "nl"] | None = None
 
 
 class SessionOut(Out):

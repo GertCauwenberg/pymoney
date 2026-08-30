@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { formatRate } from "@pymoney/core";
 import type { Split } from "@pymoney/core";
 import { useAccounts, useCommodities, useDeleteTransaction, usePayees, useTransaction } from "@pymoney/core/hooks";
@@ -22,6 +23,7 @@ const CAN_WRITE = new Set(["editor", "owner"]);
  * and a detail view is the one place not to hide it behind natural signs.
  */
 export function TransactionPage() {
+  const tr = useT();
   const { bookId, role } = useBookContext();
   const { transactionId = "" } = useParams();
   const tx = useTransaction(bookId, transactionId);
@@ -36,7 +38,7 @@ export function TransactionPage() {
   const accountsById = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.id, a])), [accounts.data]);
   const payeesById = useMemo(() => new Map((payees.data ?? []).map((p) => [p.id, p.name])), [payees.data]);
 
-  if (tx.isPending) return <Loading label="Loading the transaction…" />;
+  if (tx.isPending) return <Loading label={tr("Loading the transaction…")} />;
   if (tx.isError) {
     return (
       <article className="report-page">
@@ -63,9 +65,9 @@ export function TransactionPage() {
       <header className="report-page__header">
         <div>
           <p className="breadcrumbs muted">
-            <Link to="../reports/balance-sheet">Reports</Link> › Transaction
+            <Link to="../reports/balance-sheet">{tr("Reports")}</Link> › Transaction
           </p>
-          <h1>{payee ?? (t.memo || "Transaction")}</h1>
+          <h1>{payee ?? (t.memo || tr("Transaction"))}</h1>
           <p className="muted">
             {t.date}
             {t.number && ` · no. ${t.number}`}
@@ -81,32 +83,32 @@ export function TransactionPage() {
           {canWrite && !editing && (
             <>
               <button type="button" className="btn btn--primary" disabled={t.locked} title={lockedHint} onClick={() => setEditing(true)}>
-                Edit
+                {tr("Edit")}
               </button>
               {confirming ? (
                 <span className="actions actions--inline">
-                  <span className="muted">Delete this transaction?</span>
+                  <span className="muted">{tr("Delete this transaction?")}</span>
                   <button type="button" className="btn btn--small btn--danger" disabled={remove.isPending} onClick={onDelete}>
-                    Yes, delete
+                    {tr("Yes, delete")}
                   </button>
                   <button type="button" className="btn btn--small" onClick={() => setConfirming(false)}>
-                    No
+                    {tr("No")}
                   </button>
                 </span>
               ) : (
                 <button type="button" className="btn btn--danger" disabled={t.locked} title={lockedHint} onClick={() => setConfirming(true)}>
-                  Delete
+                  {tr("Delete")}
                 </button>
               )}
             </>
           )}
           <button type="button" className="btn" onClick={() => window.print()}>
-            Print
+            {tr("Print")}
           </button>
         </div>
       </header>
 
-      {remove.error && <ErrorBanner error={remove.error} title="Could not delete" />}
+      {remove.error && <ErrorBanner error={remove.error} title={tr("Could not delete")} />}
 
       {editing && accounts.data && payees.data && commodities.data && txCurrency && (
         <TransactionForm
@@ -123,68 +125,68 @@ export function TransactionPage() {
 
       <dl className="facts">
         <div>
-          <dt>Date</dt>
+          <dt>{tr("Date")}</dt>
           <dd>{t.date}</dd>
         </div>
         <div>
-          <dt>Payee</dt>
+          <dt>{tr("Payee")}</dt>
           <dd>{payee ?? <span className="muted">—</span>}</dd>
         </div>
         <div>
-          <dt>Memo</dt>
+          <dt>{tr("Memo")}</dt>
           <dd>{t.memo || <span className="muted">—</span>}</dd>
         </div>
         <div>
-          <dt>Number</dt>
+          <dt>{tr("Number")}</dt>
           <dd>{t.number || <span className="muted">—</span>}</dd>
         </div>
         <div>
-          <dt>Currency</dt>
+          <dt>{tr("Currency")}</dt>
           <dd>{t.currency}</dd>
         </div>
         <div>
-          <dt>Reconciliation</dt>
+          <dt>{tr("Reconciliation")}</dt>
           <dd>
             <ReconcileMark state={t.reconcile_state} /> {t.reconcile_state.toLowerCase().replace("_", " ")}
           </dd>
         </div>
         {t.entered_at && (
           <div>
-            <dt>Entered</dt>
+            <dt>{tr("Entered")}</dt>
             <dd>{new Date(t.entered_at).toLocaleString()}</dd>
           </div>
         )}
         {t.imported_id && (
           <div>
-            <dt>Imported as</dt>
+            <dt>{tr("Imported as")}</dt>
             <dd>
               <code>{t.imported_id}</code>
             </dd>
           </div>
         )}
         <div>
-          <dt>Revision</dt>
+          <dt>{tr("Revision")}</dt>
           <dd>{t.revision}</dd>
         </div>
       </dl>
 
-      <h2>Splits</h2>
+      <h2>{tr("Splits")}</h2>
       <table className="report splits">
         <thead>
           <tr>
-            <th scope="col">Account</th>
-            <th scope="col">Memo</th>
-            <th scope="col" className="register__mark" title="Reconciliation">
+            <th scope="col">{tr("Account")}</th>
+            <th scope="col">{tr("Memo")}</th>
+            <th scope="col" className="register__mark" title={tr("Reconciliation")}>
               R
             </th>
             <th scope="col" className="num">
-              Quantity
+              {tr("Quantity")}
             </th>
             <th scope="col" className="num">
-              Price
+              {tr("Price")}
             </th>
             <th scope="col" className="num">
-              Value
+              {tr("Value")}
             </th>
           </tr>
         </thead>
@@ -196,7 +198,7 @@ export function TransactionPage() {
         <tfoot>
           <tr className="report__total">
             <th scope="row" colSpan={5}>
-              {sum === 0 ? "Balanced" : "Out of balance by"}
+              {sum === 0 ? tr("Balanced") : tr("Out of balance by")}
             </th>
             <td className="num">
               {currency && <Money amount={{ ...currency, minor: sum, text: String(sum) }} strong withCommodity />}

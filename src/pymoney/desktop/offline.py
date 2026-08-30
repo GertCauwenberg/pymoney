@@ -293,6 +293,22 @@ class OfflineClient(LedgerClient):
         self._kv_set("user", user.model_dump_json())
         return user
 
+    def set_locale(self, locale: str) -> UserOut | None:
+        cached = self._kv_get("user")
+        if cached:
+            user = UserOut.model_validate_json(cached).model_copy(
+                update={"locale": locale}
+            )
+            self._kv_set("user", user.model_dump_json())
+        try:
+            user = UserOut.model_validate(
+                self._call("PATCH", "/auth/me", {"locale": locale})
+            )
+        except OfflineError:
+            return None
+        self._kv_set("user", user.model_dump_json())
+        return user
+
     # ======================================================================
     # books
     # ======================================================================

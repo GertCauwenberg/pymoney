@@ -1,5 +1,7 @@
+import { useT } from "@pymoney/core/hooks";
 /** Export and print. The CSV is built by the core, so every client agrees. */
 export function ReportActions({ csv, filename }: { csv: (() => string) | null; filename: string }) {
+  const t = useT();
   const download = () => {
     if (!csv) return;
     const blob = new Blob([csv()], { type: "text/csv;charset=utf-8" });
@@ -13,10 +15,10 @@ export function ReportActions({ csv, filename }: { csv: (() => string) | null; f
   return (
     <div className="actions">
       <button type="button" className="btn" onClick={download} disabled={!csv}>
-        Export CSV
+        {t("Export CSV")}
       </button>
       <button type="button" className="btn" onClick={() => window.print()}>
-        Print
+        {t("Print")}
       </button>
     </div>
   );

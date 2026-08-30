@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { formatRate, isIsoDate, today } from "@pymoney/core";
 import type { Commodity, Price, QuoteRun } from "@pymoney/core";
 import {
@@ -26,6 +27,7 @@ const DEFAULTS = { commodity: "" };
  * right figure, not deleting the wrong one (though that works too).
  */
 export function PricesPage() {
+  const t = useT();
   const { bookId, baseCurrencyId, role } = useBookContext();
   const [params, update] = useReportParams(DEFAULTS);
   const commodities = useCommodities(bookId);
@@ -63,18 +65,17 @@ export function PricesPage() {
       <header className="report-page__header">
         <div>
           <p className="breadcrumbs muted">
-            <Link to="../reports/balance-sheet">Reports</Link> › Prices
+            <Link to="../reports/balance-sheet">{t("Reports")}</Link> › Prices
           </p>
-          <h1>Prices</h1>
+          <h1>{t("Prices")}</h1>
           <p className="muted">
-            Exchange rates and security prices, each with its source and the moment it became known. A price you enter
-            wins over a fetched quote for the same day.
+            {t("Exchange rates and security prices, each with its source and the moment it became known. A price you enter wins over a fetched quote for the same day.")}
           </p>
         </div>
         <div className="actions">
           {canWrite && !adding && (
             <button type="button" className="btn btn--primary" onClick={() => setAdding(true)}>
-              Add price
+              {t("Add price")}
             </button>
           )}
         </div>
@@ -82,10 +83,10 @@ export function PricesPage() {
 
       {canWrite && (
         <section className="card quotes">
-          <h2>Fetching</h2>
+          <h2>{t("Fetching")}</h2>
           {fetchable.length === 0 ? (
             <p className="muted">
-              No commodity has a quote source yet. Set one in <Link to="../commodities">Commodities</Link> (
+              {t("No commodity has a quote source yet. Set one in")} <Link to="../commodities">{t("Commodities")}</Link> (
               {providers.data?.map((p) => p.name).join(", ") || "…"}) and the server will fetch prices on its schedule.
             </p>
           ) : (
@@ -95,16 +96,16 @@ export function PricesPage() {
             </p>
           )}
           <div className="field-row quotes__controls">
-            <Field label="Backfill from" hint="Leave empty for what is new since the last fetch.">
+            <Field label={t("Backfill from")} hint={t("Leave empty for what is new since the last fetch.")}>
               <input type="date" value={backfillFrom} max={today()} onChange={(e) => setBackfillFrom(e.target.value)} />
             </Field>
             <div className="actions">
               <button type="button" className="btn" disabled={fetchQuotes.isPending || fetchable.length === 0} onClick={fetchNow}>
-                {fetchQuotes.isPending ? "Fetching…" : backfillFrom ? "Backfill" : "Fetch now"}
+                {fetchQuotes.isPending ? t("Fetching…") : backfillFrom ? t("Backfill") : t("Fetch now")}
               </button>
             </div>
           </div>
-          {fetchQuotes.error && <ErrorBanner error={fetchQuotes.error} title="Could not fetch" />}
+          {fetchQuotes.error && <ErrorBanner error={fetchQuotes.error} title={t("Could not fetch")} />}
           {run && <RunReport run={run} fresh={fetchQuotes.data === run} />}
         </section>
       )}
@@ -114,9 +115,9 @@ export function PricesPage() {
       )}
 
       <form className="toolbar" onSubmit={(e) => e.preventDefault()}>
-        <Field label="Commodity">
+        <Field label={t("Commodity")}>
           <select value={params.commodity} onChange={(e) => update({ commodity: e.target.value })}>
-            <option value="">All</option>
+            <option value="">{t("All")}</option>
             {(commodities.data ?? []).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.code}
@@ -133,13 +134,13 @@ export function PricesPage() {
           <table className="report prices">
             <thead>
               <tr>
-                <th scope="col">Date</th>
-                <th scope="col">Pair</th>
+                <th scope="col">{t("Date")}</th>
+                <th scope="col">{t("Pair")}</th>
                 <th scope="col" className="num">
-                  Rate
+                  {t("Rate")}
                 </th>
-                <th scope="col">Source</th>
-                <th scope="col">Known since</th>
+                <th scope="col">{t("Source")}</th>
+                <th scope="col">{t("Known since")}</th>
                 {canWrite && <th scope="col" />}
               </tr>
             </thead>
@@ -147,7 +148,7 @@ export function PricesPage() {
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={canWrite ? 6 : 5} className="empty">
-                    No prices yet.
+                    {t("No prices yet.")}
                   </td>
                 </tr>
               )}
@@ -167,7 +168,7 @@ export function PricesPage() {
                   if (params.commodity && pricesAsQuote.hasNextPage) void pricesAsQuote.fetchNextPage();
                 }}
               >
-                Load more
+                {t("Load more")}
               </button>
             </div>
           )}
@@ -178,9 +179,10 @@ export function PricesPage() {
 }
 
 function RunReport({ run, fresh }: { run: QuoteRun; fresh: boolean }) {
+  const t = useT();
   return (
     <div className={`banner ${run.ok ? "banner--info" : "banner--warning"} quotes__report`} role="status">
-      <strong>{fresh ? "Just now" : `Last run ${new Date(run.started_at).toLocaleString()}`}.</strong> {run.summary.split(";")[0]}
+      <strong>{fresh ? t("Just now") : `Last run ${new Date(run.started_at).toLocaleString()}`}.</strong> {run.summary.split(";")[0]}
       {run.problems.length > 0 && (
         <ul className="quotes__problems">
           {run.problems.map((p) => (
@@ -195,6 +197,7 @@ function RunReport({ run, fresh }: { run: QuoteRun; fresh: boolean }) {
 }
 
 function PriceRow({ price, bookId, canWrite }: { price: Price; bookId: string; canWrite: boolean }) {
+  const t = useT();
   const change = useChangePrice(bookId);
   const [confirming, setConfirming] = useState(false);
   return (
@@ -210,7 +213,7 @@ function PriceRow({ price, bookId, canWrite }: { price: Price; bookId: string; c
       <td className="muted">{new Date(price.as_of).toLocaleString()}</td>
       {canWrite && (
         <td className="num">
-          {change.error && <ErrorBanner error={change.error} title="Could not delete" />}
+          {change.error && <ErrorBanner error={change.error} title={t("Could not delete")} />}
           {confirming ? (
             <span className="actions actions--inline">
               <button
@@ -219,10 +222,10 @@ function PriceRow({ price, bookId, canWrite }: { price: Price; bookId: string; c
                 disabled={change.isPending}
                 onClick={() => change.mutate({ kind: "delete", priceId: price.id }, { onSettled: () => setConfirming(false) })}
               >
-                Yes, delete
+                {t("Yes, delete")}
               </button>
               <button type="button" className="btn btn--small" onClick={() => setConfirming(false)}>
-                No
+                {t("No")}
               </button>
             </span>
           ) : (
@@ -232,7 +235,7 @@ function PriceRow({ price, bookId, canWrite }: { price: Price; bookId: string; c
               aria-label={`Delete ${price.base}/${price.quote} ${price.effective_date} ${price.source}`}
               onClick={() => setConfirming(true)}
             >
-              Delete
+              {t("Delete")}
             </button>
           )}
         </td>
@@ -254,6 +257,7 @@ function PriceForm({
   baseCurrencyId: string | null;
   onDone: () => void;
 }) {
+  const t = useT();
   const change = useChangePrice(bookId);
   const others = commodities.filter((c) => c.id !== baseCurrencyId);
   const [baseId, setBaseId] = useState(others[0]?.id ?? "");
@@ -274,11 +278,11 @@ function PriceForm({
   };
 
   return (
-    <form className="card account-editor" onSubmit={submit} aria-label="Add price">
-      <h2>Add price</h2>
-      {change.error && <ErrorBanner error={change.error} title="Could not save" />}
+    <form className="card account-editor" onSubmit={submit} aria-label={t("Add price")}>
+      <h2>{t("Add price")}</h2>
+      {change.error && <ErrorBanner error={change.error} title={t("Could not save")} />}
       <div className="field-row">
-        <Field label="Commodity" hint="What is being priced">
+        <Field label={t("Commodity")} hint={t("What is being priced")}>
           <select value={baseId} onChange={(e) => setBaseId(e.target.value)}>
             {commodities.map((c) => (
               <option key={c.id} value={c.id}>
@@ -287,7 +291,7 @@ function PriceForm({
             ))}
           </select>
         </Field>
-        <Field label="In" hint={base && quote ? `1 ${base.code} = … ${quote.code}` : undefined}>
+        <Field label={t("In")} hint={base && quote ? `1 ${base.code} = … ${quote.code}` : undefined}>
           <select value={quoteId} onChange={(e) => setQuoteId(e.target.value)}>
             {commodities.map((c) => (
               <option key={c.id} value={c.id}>
@@ -296,24 +300,24 @@ function PriceForm({
             ))}
           </select>
         </Field>
-        <Field label="Rate" hint="A decimal, or an exact ratio like 10/9. Never rounded.">
+        <Field label={t("Rate")} hint={t("A decimal, or an exact ratio like 10/9. Never rounded.")}>
           <input type="text" inputMode="decimal" required value={rate} onChange={(e) => setRate(e.target.value)} className="input--amount" />
         </Field>
-        <Field label="Date">
+        <Field label={t("Date")}>
           <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
       </div>
       {baseId && baseId === quoteId && (
         <p className="field__error" role="alert">
-          A price relates two different commodities.
+          {t("A price relates two different commodities.")}
         </p>
       )}
       <div className="actions">
         <button type="submit" className="btn btn--primary" disabled={change.isPending || !valid}>
-          {change.isPending ? "…" : "Add price"}
+          {change.isPending ? "…" : t("Add price")}
         </button>
         <button type="button" className="btn" onClick={onDone} disabled={change.isPending}>
-          Cancel
+          {t("Cancel")}
         </button>
       </div>
     </form>

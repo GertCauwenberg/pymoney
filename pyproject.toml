@@ -67,6 +67,8 @@ where = ["src"]
 # The Mako template is needed by `alembic revision`, so it has to ship: an
 # installed PyMoney must be able to generate migrations, not just apply them.
 "pymoney.store.migrations" = ["script.py.mako"]
+# The translation catalogues ship with the package.
+"pymoney.i18n" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

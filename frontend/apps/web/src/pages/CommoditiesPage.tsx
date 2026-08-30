@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { decimalsOf } from "@pymoney/core";
 import type { Account, Commodity, CommodityKind } from "@pymoney/core";
 import { useAccounts, useChangeCommodity, useCommodities, useQuoteProviders } from "@pymoney/core/hooks";
@@ -34,6 +35,7 @@ function usage(accounts: readonly Account[] | undefined): Map<string, number> {
  * to delete a commodity that an account or a price still uses.
  */
 export function CommoditiesPage() {
+  const t = useT();
   const { bookId, baseCurrencyId, role } = useBookContext();
   const commodities = useCommodities(bookId);
   const accounts = useAccounts(bookId, { include_closed: true });
@@ -56,18 +58,17 @@ export function CommoditiesPage() {
       <header className="report-page__header">
         <div>
           <p className="breadcrumbs muted">
-            <Link to="../reports/balance-sheet">Reports</Link> › Commodities
+            <Link to="../reports/balance-sheet">{t("Reports")}</Link> › Commodities
           </p>
-          <h1>Commodities</h1>
+          <h1>{t("Commodities")}</h1>
           <p className="muted">
-            Currencies and securities. The number of minor units per unit is fixed when a commodity is created; the
-            rest can change at any time.
+            {t("Currencies and securities. The number of minor units per unit is fixed when a commodity is created; the rest can change at any time.")}
           </p>
         </div>
         <div className="actions">
           {canWrite && !creating && (
             <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
-              New commodity
+              {t("New commodity")}
             </button>
           )}
         </div>
@@ -85,20 +86,20 @@ export function CommoditiesPage() {
         <table className="report commodities">
           <thead>
             <tr>
-              <th scope="col">Code</th>
-              <th scope="col">Name</th>
-              <th scope="col">Kind</th>
-              <th scope="col">Symbol</th>
+              <th scope="col">{t("Code")}</th>
+              <th scope="col">{t("Name")}</th>
+              <th scope="col">{t("Kind")}</th>
+              <th scope="col">{t("Symbol")}</th>
               <th scope="col" className="num">
-                Decimals
+                {t("Decimals")}
               </th>
               <th scope="col" className="num">
-                Minor units
+                {t("Minor units")}
               </th>
-              <th scope="col">ISIN</th>
-              <th scope="col">Quotes</th>
+              <th scope="col">{t("ISIN")}</th>
+              <th scope="col">{t("Quotes")}</th>
               <th scope="col" className="num">
-                Accounts
+                {t("Accounts")}
               </th>
               {canWrite && <th scope="col" />}
             </tr>
@@ -137,9 +138,10 @@ function CommodityRow({
   bookId: string;
   onEdit: () => void;
 }) {
+  const t = useT();
   const change = useChangeCommodity(bookId);
   const [confirming, setConfirming] = useState(false);
-  const blocked = isBase ? "The book's base currency cannot be deleted." : accounts > 0 ? `Used by ${accounts} account(s).` : undefined;
+  const blocked = isBase ? t("The book's base currency cannot be deleted.") : accounts > 0 ? `Used by ${accounts} account(s).` : undefined;
   return (
     <tr>
       <td>
@@ -158,7 +160,7 @@ function CommodityRow({
       <td className="num">{accounts}</td>
       {canWrite && (
         <td className="num">
-          {change.error && <ErrorBanner error={change.error} title="Could not delete" />}
+          {change.error && <ErrorBanner error={change.error} title={t("Could not delete")} />}
           {confirming ? (
             <span className="actions actions--inline">
               <span className="muted">Delete {commodity.code}?</span>
@@ -168,16 +170,16 @@ function CommodityRow({
                 disabled={change.isPending}
                 onClick={() => change.mutate({ kind: "delete", commodityId: commodity.id }, { onSettled: () => setConfirming(false) })}
               >
-                Yes, delete
+                {t("Yes, delete")}
               </button>
               <button type="button" className="btn btn--small" onClick={() => setConfirming(false)}>
-                No
+                {t("No")}
               </button>
             </span>
           ) : (
             <span className="actions actions--inline">
               <button type="button" className="btn btn--small" onClick={onEdit} aria-label={`Edit ${commodity.code}`}>
-                Edit
+                {t("Edit")}
               </button>
               <button
                 type="button"
@@ -187,7 +189,7 @@ function CommodityRow({
                 onClick={() => setConfirming(true)}
                 aria-label={`Delete ${commodity.code}`}
               >
-                Delete
+                {t("Delete")}
               </button>
             </span>
           )}
@@ -198,6 +200,7 @@ function CommodityRow({
 }
 
 function CommodityEditor({ bookId, existing, onDone }: { bookId: string; existing?: Commodity; onDone: () => void }) {
+  const t = useT();
   const change = useChangeCommodity(bookId);
   const providers = useQuoteProviders();
   const [code, setCode] = useState(existing?.code ?? "");
@@ -266,32 +269,32 @@ function CommodityEditor({ bookId, existing, onDone }: { bookId: string; existin
   };
 
   return (
-    <form className="card account-editor" onSubmit={(e) => void submit(e)} aria-label={existing ? `Edit ${existing.code}` : "New commodity"}>
-      <h2>{existing ? `Edit ${existing.code}` : "New commodity"}</h2>
-      {error !== null && <ErrorBanner error={error} title="Could not save" />}
+    <form className="card account-editor" onSubmit={(e) => void submit(e)} aria-label={existing ? `Edit ${existing.code}` : t("New commodity")}>
+      <h2>{existing ? `Edit ${existing.code}` : t("New commodity")}</h2>
+      {error !== null && <ErrorBanner error={error} title={t("Could not save")} />}
       <div className="field-row">
-        <Field label="Code" hint="ISO 4217 for a currency, the ticker for a security. Unique in the book.">
+        <Field label={t("Code")} hint={t("ISO 4217 for a currency, the ticker for a security. Unique in the book.")}>
           <input type="text" required maxLength={32} value={code} onChange={(e) => setCode(e.target.value)} className="input--short" />
         </Field>
-        <Field label="Name">
+        <Field label={t("Name")}>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field label="Kind" hint={existing ? "Fixed once the commodity exists." : undefined}>
+        <Field label={t("Kind")} hint={existing ? t("Fixed once the commodity exists.") : undefined}>
           <select value={kind} disabled={!!existing} onChange={(e) => onKind(e.target.value as CommodityKind)}>
             {KINDS.map((k) => (
               <option key={k.id} value={k.id}>
-                {k.label}
+                {t(k.label)}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="Symbol" hint="Shown instead of the code, e.g. €">
+        <Field label={t("Symbol")} hint={t("Shown instead of the code, e.g. €")}>
           <input type="text" maxLength={16} value={symbol} onChange={(e) => setSymbol(e.target.value)} className="input--short" />
         </Field>
       </div>
       <div className="field-row">
         <Field
-          label="Smallest unit (decimals)"
+          label={t("Smallest unit (decimals)")}
           hint={
             existing
               ? "Fixed for life: every booked amount is a count of this unit."
@@ -309,21 +312,21 @@ function CommodityEditor({ bookId, existing, onDone }: { bookId: string; existin
             className="input--short"
           />
         </Field>
-        <Field label="Display decimals" hint="Blank: the same as the smallest unit.">
+        <Field label={t("Display decimals")} hint={t("Blank: the same as the smallest unit.")}>
           <input type="number" min={0} max={12} value={precision} onChange={(e) => setPrecision(e.target.value)} className="input--short" />
         </Field>
-        <Field label="ISIN">
+        <Field label={t("ISIN")}>
           <input type="text" maxLength={32} value={isin} onChange={(e) => setIsin(e.target.value)} />
         </Field>
         <Field
-          label="Quote source"
+          label={t("Quote source")}
           hint={
             providers.data?.find((p) => p.name === quoteSource)?.description ??
             "Where the server fetches prices from, on its schedule. Manual: you enter them."
           }
         >
           <select value={quoteSource} onChange={(e) => setQuoteSource(e.target.value)} disabled={providers.isPending}>
-            <option value="">Manual (no fetching)</option>
+            <option value="">{t("Manual (no fetching)")}</option>
             {providers.data?.map((p) => (
               <option key={p.name} value={p.name}>
                 {p.name}
@@ -338,10 +341,10 @@ function CommodityEditor({ bookId, existing, onDone }: { bookId: string; existin
       </div>
       <div className="actions">
         <button type="submit" className="btn btn--primary" disabled={change.isPending || !code.trim()}>
-          {change.isPending ? "…" : existing ? "Save" : "Create commodity"}
+          {change.isPending ? "…" : existing ? t("Save") : t("Create commodity")}
         </button>
         <button type="button" className="btn" onClick={onDone} disabled={change.isPending}>
-          Cancel
+          {t("Cancel")}
         </button>
       </div>
     </form>

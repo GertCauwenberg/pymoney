@@ -8,7 +8,9 @@ from pathlib import Path
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication, QDialog
 
+from ...i18n import normalise_locale
 from ..client import ApiError, LedgerClient, OfflineError
+from ..i18n import set_locale
 from ..offline import OfflineClient
 from ..remote import RemoteClient
 from ..transport import UrllibTransport
@@ -35,14 +37,18 @@ def main(argv: list[str] | None = None) -> int:
     url = str(settings.value("server", "http://127.0.0.1:8000"))
     email = str(settings.value("email", ""))
     offline = bool(settings.value("offline", True, type=bool))
+    # This machine's last choice, until the account says otherwise.
+    set_locale(normalise_locale(str(settings.value("locale", ""))))
 
     # A local copy may already hold a session: try it before asking.
     client: LedgerClient | None = None
     if offline:
         candidate = connect(url, offline=True)
         try:
-            if candidate.me() is not None:
+            user = candidate.me()
+            if user is not None:
                 client = candidate
+                set_locale(normalise_locale(user.locale))
         except (ApiError, OfflineError):
             pass
         if client is None:
@@ -59,8 +65,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         candidate = connect(url, offline=offline)
         try:
-            candidate.login(email, dialog.password.text())
+            user = candidate.login(email, dialog.password.text())
             client = candidate
+            # The language chosen on the dialog is the user's choice: store it with
+            # the account, so the web app and other devices follow.
+            if dialog.chosen_locale() != user.locale:
+                candidate.set_locale(dialog.chosen_locale())
+            set_locale(dialog.chosen_locale())
         except (ApiError, OfflineError) as exc:
             candidate.close()
             dialog.error.setText(str(exc))
@@ -84,6 +95,9 @@ def main(argv: list[str] | None = None) -> int:
     settings.setValue("server", url)
     settings.setValue("email", email)
     settings.setValue("offline", offline)
+    from ..i18n import current_locale
+
+    settings.setValue("locale", current_locale())
 
     window = MainWindow(client)
     window.logout_button.clicked.connect(lambda: (client.logout(), app.quit()))

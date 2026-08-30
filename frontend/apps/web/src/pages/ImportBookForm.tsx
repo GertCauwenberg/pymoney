@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import type { ImportResult } from "@pymoney/core";
 import { useImportKmymoney } from "@pymoney/core/hooks";
 import { useState, type FormEvent } from "react";
@@ -13,6 +14,7 @@ import { Field, Toggle } from "../components/fields";
  * register at a time.
  */
 export function ImportBookForm({ onDone }: { onDone?: () => void }) {
+  const t = useT();
   const importBook = useImportKmymoney();
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
@@ -28,15 +30,13 @@ export function ImportBookForm({ onDone }: { onDone?: () => void }) {
   if (importBook.isSuccess) return <ImportReport result={importBook.data} onDone={onDone} />;
 
   return (
-    <form className="card" onSubmit={submit} aria-label="Import from KMyMoney">
-      <h2>Import from KMyMoney</h2>
+    <form className="card" onSubmit={submit} aria-label={t("Import from KMyMoney")}>
+      <h2>{t("Import from KMyMoney")}</h2>
       <p className="muted">
-        Upload a <code>.kmy</code> file (gzipped or plain XML). The server creates a new book from it, with you as
-        its owner, and checks that every balance matches what KMyMoney showed. Scheduled transactions, budgets and
-        reports are not imported; the report below says exactly what was left out.
+        {t("Upload a")} <code>.kmy</code> {t("file (gzipped or plain XML). The server creates a new book from it, with you as its owner, and checks that every balance matches what KMyMoney showed. Scheduled transactions, budgets and reports are not imported; the report below says exactly what was left out.")}
       </p>
-      {importBook.error && <ErrorBanner error={importBook.error} title="Could not import" />}
-      <Field label="File">
+      {importBook.error && <ErrorBanner error={importBook.error} title={t("Could not import")} />}
+      <Field label={t("File")}>
         <input
           type="file"
           accept=".kmy,.xml,.gz,application/octet-stream"
@@ -47,25 +47,25 @@ export function ImportBookForm({ onDone }: { onDone?: () => void }) {
           }}
         />
       </Field>
-      <Field label="Book name">
+      <Field label={t("Book name")}>
         <input type="text" maxLength={255} value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
       <div className="toolbar__toggles">
         <Toggle
-          label="Post rounding corrections"
-          hint="KMyMoney keeps exact fractions; PyMoney books whole cents. Where they differ, a correcting entry makes every balance match."
+          label={t("Post rounding corrections")}
+          hint={t("KMyMoney keeps exact fractions; PyMoney books whole cents. Where they differ, a correcting entry makes every balance match.")}
           checked={rounding}
           onChange={setRounding}
         />
-        <Toggle label="Import the price history" checked={prices} onChange={setPrices} />
+        <Toggle label={t("Import the price history")} checked={prices} onChange={setPrices} />
       </div>
       <div className="actions">
         <button type="submit" className="btn btn--primary" disabled={!file || importBook.isPending}>
-          {importBook.isPending ? "Importing…" : "Import"}
+          {importBook.isPending ? t("Importing…") : t("Import")}
         </button>
         {onDone && (
           <button type="button" className="btn btn--link" onClick={onDone} disabled={importBook.isPending}>
-            Cancel
+            {t("Cancel")}
           </button>
         )}
       </div>
@@ -74,11 +74,12 @@ export function ImportBookForm({ onDone }: { onDone?: () => void }) {
 }
 
 function ImportReport({ result, onDone }: { result: ImportResult; onDone?: (() => void) | undefined }) {
+  const t = useT();
   const errors = result.problems.filter((p) => p.level === "ERROR");
   const warnings = result.problems.filter((p) => p.level === "WARNING");
   return (
-    <section className="card" aria-label="Import report">
-      <h2>{result.ok ? "Imported" : "Imported, with errors"}</h2>
+    <section className="card" aria-label={t("Import report")}>
+      <h2>{result.ok ? t("Imported") : t("Imported, with errors")}</h2>
       <p>
         <strong>{result.book.name}</strong> is ready:{" "}
         {Object.entries(result.imported)
@@ -137,7 +138,7 @@ function ImportReport({ result, onDone }: { result: ImportResult; onDone?: (() =
         </Link>
         {onDone && (
           <button type="button" className="btn btn--link" onClick={onDone}>
-            Close
+            {t("Close")}
           </button>
         )}
       </div>

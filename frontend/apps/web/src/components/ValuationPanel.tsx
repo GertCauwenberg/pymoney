@@ -1,3 +1,4 @@
+import { useT } from "@pymoney/core/hooks";
 import { formatRate } from "@pymoney/core";
 import type { Conversion } from "@pymoney/core";
 
@@ -14,6 +15,7 @@ export function ValuationPanel({
   unpriced: readonly string[];
   target: string;
 }) {
+  const t = useT();
   if (conversions.length === 0 && unpriced.length === 0) return null;
   return (
     <section className="valuation">
@@ -30,13 +32,13 @@ export function ValuationPanel({
           <table className="report report--compact">
             <thead>
               <tr>
-                <th scope="col">From</th>
-                <th scope="col">To</th>
+                <th scope="col">{t("From")}</th>
+                <th scope="col">{t("To")}</th>
                 <th scope="col" className="num">
-                  Rate
+                  {t("Rate")}
                 </th>
-                <th scope="col">Via</th>
-                <th scope="col">Sources</th>
+                <th scope="col">{t("Via")}</th>
+                <th scope="col">{t("Sources")}</th>
               </tr>
             </thead>
             <tbody>
