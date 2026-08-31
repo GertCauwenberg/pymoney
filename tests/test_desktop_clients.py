@@ -409,6 +409,69 @@ class TestOffline:
         assert client.sync().queued == 0
         client.close()
 
+    def test_an_expired_session_keeps_the_queue(self, server, tmp_path):
+        """A 401 on replay is about the session, not the queued work.
+
+        The replay must stop, the outbox must survive, and logging in again
+        must drain it -- losing a train ride's entries because the token aged
+        out in the meantime would be silent data loss.
+        """
+        api, book_id, checking, food = server
+        client, transport = make_client("offline", api.http, tmp_path)
+        client.login(EMAIL, PASSWORD)
+        client.accounts(book_id)
+        transport.plugged = False
+        client.post_transaction(book_id, txn(checking, food))
+        client.post_transaction(book_id, txn(checking, food, value="-3.00"))
+        assert client.status().queued == 2
+
+        # The session dies while the client is offline (revoked, expired, ...).
+        transport.token = "expired"
+        transport.plugged = True
+        status = client.sync()  # must not raise
+        assert status.queued == 2
+        assert status.rejections == ()
+        assert "log in" in (status.last_error or "")
+        # The stored session is forgotten, so the UI asks for credentials.
+        assert client.me() is None
+
+        client.login(EMAIL, PASSWORD)
+        status = client.sync()
+        assert status.queued == 0 and status.rejections == ()
+        api.login(EMAIL)
+        listed = api.get(f"/books/{book_id}/transactions").json()["items"]
+        assert {t["memo"] for t in listed} == {"Lunch"} and len(listed) == 2
+        client.close()
+
+    def test_a_throttled_or_forbidden_replay_keeps_the_queue(self, server, tmp_path):
+        """403 and 429 do not judge the command either: stop, keep, retry later."""
+        api, book_id, checking, food = server
+        client, transport = make_client("offline", api.http, tmp_path)
+        client.login(EMAIL, PASSWORD)
+        client.accounts(book_id)
+        transport.plugged = False
+        client.post_transaction(book_id, txn(checking, food))
+
+        real, calls = client._transport, []
+        for code, detail in ((429, "slow down"), (403, "you are a viewer here")):
+
+            def refusing(method, path, body, headers, _code=code, _detail=detail):
+                calls.append((method, path))
+                return _code, {}, {"detail": _detail}
+
+            client._transport = refusing
+            transport.plugged = True
+            status = client.sync()  # must not raise
+            assert status.queued == 1
+            assert status.rejections == ()
+            assert str(code) in (status.last_error or "")
+            # Still logged in: only a 401 forgets the session.
+            assert client._kv_get("token") is not None
+
+        client._transport = real
+        assert client.sync().queued == 0
+        client.close()
+
 
 def test_new_ids_are_client_chosen_and_stable(server, tmp_path):
     """The replica's row and the server's are the same row."""

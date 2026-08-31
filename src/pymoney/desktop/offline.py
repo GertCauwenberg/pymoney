@@ -19,13 +19,18 @@ checked and the same errors come back -- an unbalanced entry is refused in the
 living room, not on the train back. Ids are chosen here (UUIDv7), so the
 server's row and the local one are one row when the command is replayed.
 
-**Replay** sends the outbox in order. A 2xx removes the entry. A 4xx is a
-*rejection*: the server, which is authoritative, disagrees with what the replica
-accepted -- typically because someone else changed the book in between. The
-entry is removed, recorded for the user to see, and the replica is rebuilt from
-the server, after which the remaining outbox entries are applied to it again so
-the screen keeps showing what is still pending. Nothing is merged, ever. A 5xx
-or no connection stops the replay; the entry stays and is tried next time.
+**Replay** sends the outbox in order. A 2xx removes the entry. A 4xx that
+judges *the command itself* (unbalanced, conflict, gone) is a *rejection*: the
+server, which is authoritative, disagrees with what the replica accepted --
+typically because someone else changed the book in between. The entry is
+removed, recorded for the user to see, and the replica is rebuilt from the
+server, after which the remaining outbox entries are applied to it again so the
+screen keeps showing what is still pending. Nothing is merged, ever. A status
+that says nothing about the command -- no connection, a 5xx, 429, 403, or a 401
+from an expired session -- stops the replay and the outbox stays: work queued
+on a train must survive the session dying before the train arrives. A 401
+additionally forgets the stored credentials, so the UI asks for a login and the
+queue drains on the first sync after it.
 
 **Pull** follows every replay: ``GET /changes`` from the watermark, applied
 batch by batch. A pull cannot disturb a pending local write: the server knows
@@ -127,6 +132,16 @@ outbox = Table(
     Column("queued_at", String(40), nullable=False),
     Column("summary", Text, nullable=False),
 )
+
+
+_TRY_AGAIN_LATER = frozenset({403, 408, 425, 429})
+"""Statuses that, like a 5xx, do not judge the queued command itself.
+
+403: the caller's grant, which may be mid-change -- dropping the work because a
+role was revoked for an afternoon would destroy it for good. 408/425/429: the
+server asked us to come back later. In every case the entry stays queued and
+``status()`` says why nothing is moving.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -677,7 +692,15 @@ class OfflineClient(LedgerClient):
         ]
 
     def _replay(self) -> set[UUID]:
-        """Send the outbox in order. Returns the books whose replica must be rebuilt."""
+        """Send the outbox in order. Returns the books whose replica must be rebuilt.
+
+        Only a status that judges *the command itself* (unbalanced, conflict,
+        gone) is a rejection: the entry is removed, recorded for the user, and
+        the replica rebuilt. A status about the *caller* or the *moment* -- not
+        logged in, not allowed right now, throttled, server down -- says nothing
+        about the command, so the replay stops and the outbox stays; discarding
+        a queued write because a session expired would be silent data loss.
+        """
         rebuild: set[UUID] = set()
         for entry in self.queued():
             try:
@@ -694,10 +717,20 @@ class OfflineClient(LedgerClient):
             if 200 <= status < 300:
                 self._dequeue(entry.id)
                 continue
-            if status >= 500:
+            if status == 401:
+                # The session is gone, not the work. Forget the credentials --
+                # exactly what me() does on a 401 -- so the UI asks for a login;
+                # the queue survives and drains on the first sync afterwards.
+                self._token_sink(None)
+                self._kv_set("token", None)
+                self._kv_set("user", None)
                 self._last_error = (
-                    f"server error {status} replaying {entry.summary}; will retry"
+                    "the session has expired; log in again to send "
+                    f"{len(self.queued())} pending change(s)"
                 )
+                break
+            if status >= 500 or status in _TRY_AGAIN_LATER:
+                self._last_error = f"{status} replaying {entry.summary}; will retry"
                 break
             try:
                 raise_for_problem(status, payload)
@@ -744,6 +777,10 @@ class OfflineClient(LedgerClient):
             self._last_error = "not logged in"
             return self.status()
         rebuild = self._replay()
+        if not self._kv_get("token"):
+            # The replay hit a 401 and forgot the session; the pull would only
+            # hit it again. The queue is intact and status() says what to do.
+            return self.status()
         if self._online:
             try:
                 books = self.books()
@@ -781,6 +818,15 @@ class OfflineClient(LedgerClient):
                 self._last_error = None
             except OfflineError:
                 pass
+            except ApiError as exc:
+                # The server answered and said no -- to the *pull*, not to any
+                # queued command. sync() is a background activity: it reports
+                # through status(), it does not throw at whoever scheduled it.
+                self._last_error = str(exc)
+                if exc.status == 401:
+                    self._token_sink(None)
+                    self._kv_set("token", None)
+                    self._kv_set("user", None)
         return self.status()
 
     def status(self) -> ConnectionStatus:

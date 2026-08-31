@@ -56,6 +56,9 @@ export default defineConfig({
       cwd: root,
       reuseExistingServer: false,
       timeout: 60_000,
+      // Show the servers' own output in the log. Without this, a server that
+      // fails to come up leaves nothing but "Timed out waiting 60000ms".
+      stdout: "pipe",
       env: {
         ...process.env,
         PYMONEY_DATABASE_URL: `sqlite+pysqlite:///${database}`,
