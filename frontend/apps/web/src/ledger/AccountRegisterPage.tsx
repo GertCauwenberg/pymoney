@@ -1,7 +1,7 @@
 import { useT } from "@pymoney/core/hooks";
 import { formatAmount, naturalSign } from "@pymoney/core";
-import type { Account, Amount, RegisterRow } from "@pymoney/core";
-import { useAccount, useAccounts, useCommodities, useLedger, usePayees } from "@pymoney/core/hooks";
+import type { Account, Amount, ReconcileState, RegisterRow } from "@pymoney/core";
+import { useAccount, useAccounts, useCommodities, useLedger, usePayees, useReconcileAccount } from "@pymoney/core/hooks";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -9,7 +9,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { Loading } from "../components/Loading";
 import { Money } from "../components/Money";
 import { ReportActions } from "../components/ReportActions";
-import { DateField, Toggle } from "../components/fields";
+import { DateField, Field, Toggle } from "../components/fields";
 import { useBookContext, useReportParams } from "../reports/useReportParams";
 import { ReconcileMark } from "./ReconcileMark";
 import { TransactionForm } from "./TransactionForm";
@@ -32,6 +32,10 @@ export function AccountRegisterPage() {
   const { accountId = "" } = useParams();
   const [params, update] = useReportParams(DEFAULTS);
   const [adding, setAdding] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
+  const [statementDate, setStatementDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [targetState, setTargetState] = useState<ReconcileState>("RECONCILED");
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
 
   const account = useAccount(bookId, accountId);
   const accounts = useAccounts(bookId, { include_closed: true });
@@ -50,6 +54,7 @@ export function AccountRegisterPage() {
   );
   const validWindow = !params.start || !params.end || params.start <= params.end;
   const ledger = useLedger(bookId, accountId, query, validWindow);
+  const reconcile = useReconcileAccount(bookId, accountId);
 
   const accountsById = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.id, a])), [accounts.data]);
   const payeesById = useMemo(() => new Map((payees.data ?? []).map((p) => [p.id, p.name])), [payees.data]);
@@ -65,6 +70,30 @@ export function AccountRegisterPage() {
   // commodity than the account's (a USD wallet paid from a EUR account).
   const showValue = rows.some((r) => r.value.commodity_id !== r.quantity.commodity_id);
   const showChildren = params.children || rows.some((r) => r.account_id !== accountId);
+  // Only this account's own splits can go on this account's statement, and a
+  // frozen one is already beyond changing.
+  const markable = (r: RegisterRow) => r.account_id === accountId && r.reconcile_state !== "FROZEN";
+  const startReconciling = () => {
+    // What the bank has seen is the natural starting selection.
+    setSelected(new Set(rows.filter((r) => markable(r) && r.reconcile_state === "CLEARED").map((r) => r.split_id)));
+    setTargetState("RECONCILED");
+    reconcile.reset();
+    setReconciling(true);
+  };
+  const toggle = (splitId: string, on: boolean) =>
+    setSelected((old) => {
+      const next = new Set(old);
+      if (on) next.add(splitId);
+      else next.delete(splitId);
+      return next;
+    });
+  const selectedRows = rows.filter((r) => selected.has(r.split_id));
+  const selectedSum = selectedRows.reduce((acc, r) => acc + BigInt(r.quantity.minor), 0n);
+  const applyReconcile = () =>
+    reconcile.mutate(
+      { split_ids: [...selected], state: targetState, statement_date: statementDate },
+      { onSuccess: () => setReconciling(false) },
+    );
 
   if (account.isError) {
     return (
@@ -102,6 +131,11 @@ export function AccountRegisterPage() {
               {t("New transaction")}
             </button>
           )}
+          {canWrite && !reconciling && account.data && !account.data.placeholder && (
+            <button type="button" className="btn" onClick={startReconciling}>
+              {t("Reconcile")}
+            </button>
+          )}
           {role === "owner" && (
             <Link to={`../accounts?edit=${accountId}`} className="btn">
               {t("Edit account")}
@@ -136,6 +170,53 @@ export function AccountRegisterPage() {
           )}
         </div>
       </form>
+
+      {reconciling && (
+        <form
+          className="card reconcile-bar"
+          aria-label={t("Reconcile against a statement")}
+          onSubmit={(e) => {
+            e.preventDefault();
+            applyReconcile();
+          }}
+        >
+          <h2>{t("Reconcile against a statement")}</h2>
+          <p className="muted">
+            {t("Tick every entry that is on the statement, then mark them all at once. Cleared entries are pre-ticked.")}
+          </p>
+          {reconcile.error && <ErrorBanner error={reconcile.error} title={t("Could not reconcile")} />}
+          <div className="toolbar">
+            <DateField label={t("Statement date")} value={statementDate} onChange={setStatementDate} />
+            <Field label={t("Mark as")}>
+              <select value={targetState} onChange={(e) => setTargetState(e.target.value as ReconcileState)}>
+                <option value="CLEARED">{t("Cleared")}</option>
+                <option value="RECONCILED">{t("Reconciled")}</option>
+                {/* Irreversible, so only an owner may -- and the server checks. */}
+                {role === "owner" && <option value="FROZEN">{t("Frozen")}</option>}
+              </select>
+            </Field>
+            <span className="reconcile-bar__sum">
+              {t("{n} selected, totalling", { n: selected.size })}{" "}
+              {selectedRows[0] ? (
+                <Money amount={sign({ ...selectedRows[0].quantity, minor: Number(selectedSum) }) as Amount} strong />
+              ) : (
+                <span className="muted">—</span>
+              )}
+            </span>
+            <div className="actions">
+              <button type="submit" className="btn btn--primary" disabled={selected.size === 0 || reconcile.isPending}>
+                {reconcile.isPending ? "…" : t("Mark them")}
+              </button>
+              <button type="button" className="btn" onClick={() => setReconciling(false)}>
+                {t("Cancel")}
+              </button>
+            </div>
+          </div>
+          {targetState === "FROZEN" && (
+            <p className="banner banner--warning">{t("Frozen is final: these entries can never be edited or deleted again.")}</p>
+          )}
+        </form>
+      )}
 
       {!validWindow && (
         <div className="banner banner--warning" role="alert">
@@ -229,7 +310,16 @@ export function AccountRegisterPage() {
                     </td>
                   )}
                   <td className="register__mark">
-                    <ReconcileMark state={row.reconcile_state} />
+                    {reconciling && markable(row) ? (
+                      <input
+                        type="checkbox"
+                        aria-label={t("On the statement")}
+                        checked={selected.has(row.split_id)}
+                        onChange={(e) => toggle(row.split_id, e.target.checked)}
+                      />
+                    ) : (
+                      <ReconcileMark state={row.reconcile_state} />
+                    )}
                   </td>
                   {showValue && (
                     <td className="num">

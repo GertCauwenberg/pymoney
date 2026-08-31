@@ -446,3 +446,91 @@ describe("the chart of accounts", () => {
     expect(screen.queryByRole("form")).toBeNull();
   });
 });
+
+describe("reconciling", () => {
+  const registerRow = (i: number, state: string) => ({
+    transaction_id: `t${i}`,
+    split_id: `s${i}`,
+    date: `2026-02-0${i}`,
+    memo: `entry ${i}`,
+    payee_id: null,
+    account_id: "chk",
+    quantity: eur(-1000 * i),
+    value: eur(-1000 * i),
+    reconcile_state: state,
+    number: "",
+    running_balance: eur(-1000 * i),
+  });
+  const registerReads: Record<string, Handler> = {
+    ...reads,
+    "GET /books/b1/accounts/chk/register": () => ({
+      body: {
+        items: [registerRow(1, "CLEARED"), registerRow(2, "NOT_RECONCILED"), registerRow(3, "FROZEN")],
+        has_more: false,
+        next_cursor: null,
+        totals: { opening: eur(0), closing: eur(-6000) },
+      },
+    }),
+  };
+
+  it("marks a ticked batch against a statement, cleared rows pre-ticked", async () => {
+    const user = userEvent.setup();
+    const { fetch, calls } = server({
+      ...registerReads,
+      "POST /books/b1/accounts/chk/reconcile": () => ({ body: undefined }),
+    });
+    mount(fetch, "/books/b1/accounts/chk", "editor");
+    await user.click(await screen.findByRole("button", { name: "Reconcile" }));
+
+    const bar = screen.getByRole("form", { name: "Reconcile against a statement" });
+    // The cleared row starts ticked; the frozen one offers no checkbox at all.
+    const boxes = screen.getAllByRole("checkbox", { name: "On the statement" });
+    expect(boxes).toHaveLength(2);
+    expect(boxes[0]).toBeChecked();
+    expect(boxes[1]).not.toBeChecked();
+    expect(within(bar).getByText(/1 selected/)).toBeInTheDocument();
+    // Editors cannot freeze: the option is the server's refusal, so it is not offered.
+    expect(within(bar).queryByRole("option", { name: "Frozen" })).toBeNull();
+
+    await user.click(boxes[1]!);
+    expect(within(bar).getByText(/2 selected/)).toBeInTheDocument();
+    await user.click(within(bar).getByRole("button", { name: "Mark them" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path.endsWith("/reconcile"))).toBe(true));
+    const sent = calls.find((c) => c.method === "POST" && c.path.endsWith("/reconcile"))!.body as {
+      split_ids: string[];
+      state: string;
+      statement_date: string;
+    };
+    expect(sent.split_ids.sort()).toEqual(["s1", "s2"]);
+    expect(sent.state).toBe("RECONCILED");
+    expect(sent.statement_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("owners may choose Frozen, behind a warning", async () => {
+    const user = userEvent.setup();
+    const { fetch } = server(registerReads);
+    mount(fetch, "/books/b1/accounts/chk", "owner");
+    await user.click(await screen.findByRole("button", { name: "Reconcile" }));
+    const bar = screen.getByRole("form", { name: "Reconcile against a statement" });
+    await user.selectOptions(within(bar).getByLabelText("Mark as"), "FROZEN");
+    expect(within(bar).getByText(/Frozen is final/)).toBeInTheDocument();
+  });
+
+  it("changes one split's state from the transaction page", async () => {
+    const user = userEvent.setup();
+    const { fetch, calls } = server({
+      ...reads,
+      "POST /books/b1/transactions/t1/splits/s1/reconcile": ({ body }) => ({ body: transaction() }),
+    });
+    mount(fetch, "/books/b1/transactions/t1", "editor");
+    const selects = await screen.findAllByRole("combobox", { name: "Reconciliation state" });
+    expect(selects).toHaveLength(2);
+    // Editors are not offered Frozen here either.
+    expect(within(selects[0]!).queryByRole("option", { name: "Frozen" })).toBeNull();
+    await user.selectOptions(selects[0]!, "RECONCILED");
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith("/splits/s1/reconcile"))).toBe(true));
+    const sent = calls.find((c) => c.path.endsWith("/splits/s1/reconcile"))!.body as { state: string; on: string | null };
+    expect(sent.state).toBe("RECONCILED");
+    expect(sent.on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});

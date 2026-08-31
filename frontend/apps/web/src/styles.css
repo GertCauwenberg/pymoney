@@ -750,3 +750,17 @@ button:focus-visible {
   font-size: 0.8rem;
   margin: 0.5rem 0;
 }
+
+/* --- reconciling against a statement ------------------------------------- */
+.reconcile-bar .toolbar {
+  align-items: end;
+  margin: 0;
+}
+.reconcile-bar__sum {
+  align-self: center;
+  margin-inline: auto 0.5rem;
+}
+.reconcile-select {
+  font-size: 0.85em;
+  max-width: 9rem;
+}

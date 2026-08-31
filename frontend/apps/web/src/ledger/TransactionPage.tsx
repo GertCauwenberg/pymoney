@@ -1,7 +1,7 @@
 import { useT } from "@pymoney/core/hooks";
 import { formatRate } from "@pymoney/core";
-import type { Split } from "@pymoney/core";
-import { useAccounts, useCommodities, useDeleteTransaction, usePayees, useTransaction } from "@pymoney/core/hooks";
+import type { ReconcileState, Split } from "@pymoney/core";
+import { useAccounts, useCommodities, useDeleteTransaction, usePayees, useSetSplitState, useTransaction } from "@pymoney/core/hooks";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -31,6 +31,7 @@ export function TransactionPage() {
   const payees = usePayees(bookId);
   const commodities = useCommodities(bookId);
   const remove = useDeleteTransaction(bookId);
+  const mark = useSetSplitState(bookId);
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -109,6 +110,7 @@ export function TransactionPage() {
       </header>
 
       {remove.error && <ErrorBanner error={remove.error} title={tr("Could not delete")} />}
+      {mark.error && <ErrorBanner error={mark.error} title={tr("Could not change the reconciliation state")} />}
 
       {editing && accounts.data && payees.data && commodities.data && txCurrency && (
         <TransactionForm
@@ -192,7 +194,26 @@ export function TransactionPage() {
         </thead>
         <tbody>
           {t.splits.map((s) => (
-            <SplitRow key={s.id} split={s} accountPath={accountsById.get(s.account_id)?.path} />
+            <SplitRow
+              key={s.id}
+              split={s}
+              accountPath={accountsById.get(s.account_id)?.path}
+              onMark={
+                canWrite
+                  ? (state) =>
+                      mark.mutate({
+                        transactionId: t.id,
+                        splitId: s.id,
+                        body: {
+                          state,
+                          on: state === "NOT_RECONCILED" ? null : new Date().toISOString().slice(0, 10),
+                        },
+                      })
+                  : undefined
+              }
+              canFreeze={role === "owner"}
+              busy={mark.isPending}
+            />
           ))}
         </tbody>
         <tfoot>
@@ -210,9 +231,23 @@ export function TransactionPage() {
   );
 }
 
-function SplitRow({ split, accountPath }: { split: Split; accountPath: string | undefined }) {
+function SplitRow({
+  split,
+  accountPath,
+  onMark,
+  canFreeze,
+  busy,
+}: {
+  split: Split;
+  accountPath: string | undefined;
+  onMark?: ((state: ReconcileState) => void) | undefined;
+  canFreeze?: boolean;
+  busy?: boolean;
+}) {
+  const tr = useT();
   const foreign = split.quantity.commodity_id !== split.value.commodity_id;
   const price = split.price ?? split.implied_price;
+  const frozen = split.reconcile_state === "FROZEN";
   return (
     <tr>
       <td>
@@ -223,7 +258,23 @@ function SplitRow({ split, accountPath }: { split: Split; accountPath: string | 
       </td>
       <td className="muted">{split.memo}</td>
       <td className="register__mark">
-        <ReconcileMark state={split.reconcile_state} />
+        {onMark && !frozen ? (
+          <select
+            className="reconcile-select"
+            aria-label={tr("Reconciliation state")}
+            value={split.reconcile_state}
+            disabled={busy}
+            onChange={(e) => onMark(e.target.value as ReconcileState)}
+          >
+            <option value="NOT_RECONCILED">{tr("Not reconciled")}</option>
+            <option value="CLEARED">{tr("Cleared")}</option>
+            <option value="RECONCILED">{tr("Reconciled")}</option>
+            {/* Irreversible, so only offered to an owner -- and the server checks. */}
+            {canFreeze && <option value="FROZEN">{tr("Frozen")}</option>}
+          </select>
+        ) : (
+          <ReconcileMark state={split.reconcile_state} />
+        )}
         {split.reconcile_date && <span className="muted"> {split.reconcile_date}</span>}
       </td>
       <td className="num">{foreign ? <Money amount={split.quantity} withCommodity /> : <span className="muted">—</span>}</td>

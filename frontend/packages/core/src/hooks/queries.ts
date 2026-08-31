@@ -19,8 +19,10 @@ import type {
   PriceIn,
   PricesQuery,
   QuoteFetchIn,
+  ReconcileIn,
   RegisterIn,
   RegisterQuery,
+  SetSplitStateIn,
   TransactionIn,
   TransactionUpdateIn,
   User,
@@ -396,6 +398,32 @@ export function useDeleteTransaction(bookId: string) {
   const invalidate = useInvalidateBook(bookId);
   return useMutation({
     mutationFn: (transactionId: string) => api.deleteTransaction(bookId, transactionId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetSplitState(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: ({
+      transactionId,
+      splitId,
+      body,
+    }: {
+      transactionId: string;
+      splitId: string;
+      body: SetSplitStateIn;
+    }) => api.setSplitState(bookId, transactionId, splitId, body),
+    onSuccess: invalidate,
+  });
+}
+
+export function useReconcileAccount(bookId: string, accountId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: (body: ReconcileIn) => api.reconcileAccount(bookId, accountId, body),
     onSuccess: invalidate,
   });
 }

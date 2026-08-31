@@ -35,6 +35,8 @@ import type {
   LoginIn,
   Payee,
   PayeeIn,
+  ReconcileIn,
+  SetSplitStateIn,
   PayeesQuery,
   Pending,
   Price,
@@ -490,6 +492,27 @@ export class ApiClient {
 
   deleteTransaction(bookId: string, transactionId: string): Promise<void> {
     return this.delete(`/books/${bookId}/transactions/${transactionId}`);
+  }
+
+  /**
+   * Move one split to another reconciliation state. RECONCILED can be walked
+   * back; FROZEN cannot, and the server only accepts it from an owner.
+   */
+  setSplitState(
+    bookId: string,
+    transactionId: string,
+    splitId: string,
+    body: SetSplitStateIn,
+  ): Promise<Transaction> {
+    return this.post<Transaction>(
+      `/books/${bookId}/transactions/${transactionId}/splits/${splitId}/reconcile`,
+      body,
+    );
+  }
+
+  /** Mark a batch of splits against one statement: one request, one revision. */
+  reconcileAccount(bookId: string, accountId: string, body: ReconcileIn): Promise<void> {
+    return this.post<void>(`/books/${bookId}/accounts/${accountId}/reconcile`, body);
   }
 
   // -- prices and quotes ---------------------------------------------------
