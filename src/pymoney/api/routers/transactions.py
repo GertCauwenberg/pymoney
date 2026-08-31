@@ -12,18 +12,29 @@ transaction must not exist even transiently.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import Engine
 
 from ...core import commands as cmd
 from ...core.commands import UNSET
 from ...core.posting import LegSpec
-from ..deps import IdempotencyKey, ReadableBook, WritableBook
+from ..deps import (
+    CurrentUser,
+    IdempotencyKey,
+    ReadableBook,
+    WritableBook,
+    get_engine,
+    role_on,
+)
 from ..schemas import (
     LegIn,
     ReconcileIn,
+    ReconcileStateName,
     RegisterPage,
     SetSplitStateIn,
     TransactionIn,
@@ -36,6 +47,51 @@ from ..views import register_page
 from ._shared import cursor_key, decode_cursor, encode_cursor, page_size, set_revision
 
 router = APIRouter(prefix="/books/{book_id}", tags=["transactions"])
+
+# Starlette renamed this status constant; 422 is the number either way.
+UNPROCESSABLE = 422
+
+FROZEN_RESPONSES: dict[int | str, dict[str, Any]] = {
+    403: {
+        "description": (
+            "Only an owner may mark a split FROZEN: it can never be undone, and "
+            "the transaction can never again be edited or deleted by anyone."
+        )
+    },
+}
+
+
+def _guard_frozen(
+    states: Iterable[ReconcileStateName],
+    book_id: UUID,
+    actor: CurrentUser,
+    engine: Engine,
+    *,
+    posting: bool = False,
+) -> None:
+    """FROZEN is the one reconciliation state with no way back (decision #11),
+    so it is not an editor's to set: an editor -- or a buggy client -- would be
+    able to make a transaction that nobody, owner included, can ever touch
+    again. Closing a period is the owner's call, and it is done to transactions
+    that exist: a new posting arrives no more than RECONCILED."""
+    if ReconcileStateName.FROZEN not in set(states):
+        return
+    if posting:
+        raise HTTPException(
+            status_code=UNPROCESSABLE,
+            detail=(
+                "a transaction cannot be posted FROZEN; post it, then freeze it "
+                "through the reconcile endpoints"
+            ),
+        )
+    if role_on(engine, book_id, actor.subject) != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "marking a split FROZEN is irreversible and needs owner on the "
+                "book; an editor may go as far as RECONCILED"
+            ),
+        )
 
 
 def _legs(legs: list[LegIn]) -> tuple[LegSpec, ...]:
@@ -112,7 +168,12 @@ def post_transaction(
     book: WritableBook,
     response: Response,
     key: IdempotencyKey,
+    actor: CurrentUser,
+    engine: Annotated[Engine, Depends(get_engine)],
 ) -> TransactionOut:
+    _guard_frozen(
+        (leg.reconcile_state for leg in body.legs), book.id, actor, engine, posting=True
+    )
     result = book.execute(
         cmd.PostTransaction(
             date=body.date,
@@ -148,6 +209,7 @@ def get_transaction(
     "/transactions/{transaction_id}",
     response_model=TransactionOut,
     summary="Update a transaction",
+    responses=FROZEN_RESPONSES,
 )
 def update_transaction(
     transaction_id: UUID,
@@ -155,7 +217,11 @@ def update_transaction(
     book: WritableBook,
     response: Response,
     key: IdempotencyKey,
+    actor: CurrentUser,
+    engine: Annotated[Engine, Depends(get_engine)],
 ) -> TransactionOut:
+    if body.legs is not None:
+        _guard_frozen((leg.reconcile_state for leg in body.legs), book.id, actor, engine)
     fields = body.model_dump(exclude_unset=True)
     result = book.execute(
         cmd.UpdateTransaction(
@@ -190,6 +256,7 @@ def delete_transaction(
     "/transactions/{transaction_id}/splits/{split_id}/reconcile",
     response_model=TransactionOut,
     summary="Set one split's reconciliation state",
+    responses=FROZEN_RESPONSES,
 )
 def set_split_state(
     transaction_id: UUID,
@@ -198,7 +265,10 @@ def set_split_state(
     book: WritableBook,
     response: Response,
     key: IdempotencyKey,
+    actor: CurrentUser,
+    engine: Annotated[Engine, Depends(get_engine)],
 ) -> TransactionOut:
+    _guard_frozen((body.state,), book.id, actor, engine)
     result = book.execute(
         cmd.SetSplitReconcileState(
             transaction_id=transaction_id,
@@ -216,14 +286,18 @@ def set_split_state(
     "/accounts/{account_id}/reconcile",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Reconcile a batch of splits against a statement",
+    responses=FROZEN_RESPONSES,
 )
 def reconcile_account(
     account_id: UUID,
     body: ReconcileIn,
     book: WritableBook,
     key: IdempotencyKey,
+    actor: CurrentUser,
+    engine: Annotated[Engine, Depends(get_engine)],
 ) -> None:
     """One statement, one revision, whatever the number of splits."""
+    _guard_frozen((body.state,), book.id, actor, engine)
     book.execute(
         cmd.ReconcileAccount(
             account_id=account_id,

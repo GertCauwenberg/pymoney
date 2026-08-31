@@ -540,13 +540,67 @@ class TestBookAccess:
         }
         assert grants["guest@example.invalid"] == "editor"
 
-    def test_the_last_owner_cannot_be_revoked(self, api: Client):
-        """A book with no owner could never be administered again."""
+    def test_the_last_owner_cannot_be_revoked_or_demoted(self, api: Client):
+        """A book with no owner could never be administered again -- and a
+        PUT to a lower role orphans it exactly as a DELETE would."""
         api.register("owner@example.invalid")
         book_id = api.make_book()
         response = api.delete(f"/books/{book_id}/grants/owner@example.invalid")
         assert response.status_code == 409
-        assert "last owner" in response.json()["detail"]
+        assert "only owner" in response.json()["detail"]
+        for role in ("viewer", "editor"):
+            response = api.put(
+                f"/books/{book_id}/grants",
+                json={"subject": "Owner@Example.invalid", "role": role},
+            )
+            assert response.status_code == 409, role
+        # Still the owner, so still able to administer.
+        assert api.get(f"/books/{book_id}/grants").status_code == 200
+        # With a second owner, stepping down is allowed.
+        api.put(
+            f"/books/{book_id}/grants",
+            json={"subject": "co@example.invalid", "role": "owner"},
+        )
+        response = api.put(
+            f"/books/{book_id}/grants",
+            json={"subject": "owner@example.invalid", "role": "viewer"},
+        )
+        assert response.status_code == 200
+        assert api.get(f"/books/{book_id}/grants").status_code == 403
+
+    def test_grants_match_logins_whatever_the_capitalisation(self, api: Client):
+        """Logins are case-insensitive; grants must be too, or the Sharing page
+        silently gives nobody anything."""
+        api.register("Alice@Example.org")
+        book_id = api.make_book()
+        response = api.put(
+            f"/books/{book_id}/grants",
+            json={"subject": " Bob@Example.org ", "role": "editor"},
+        )
+        assert response.status_code == 200
+        assert response.json()["subject"] == "bob@example.org"
+        assert [g["subject"] for g in api.get(f"/books/{book_id}/grants").json()] == [
+            "alice@example.org",
+            "bob@example.org",
+        ]
+        api.logout()
+        api.register("bob@example.org")
+        assert [b["id"] for b in api.get("/books").json()] == [book_id]
+        assert api.get(f"/books/{book_id}").json()["role"] == "editor"
+        # The user still sees their address as they wrote it.
+        api.logout()
+        api.login("alice@example.org")
+        assert api.get("/auth/me").json()["email"] == "Alice@Example.org"
+        # Revoking by any spelling works, and is refused for an opaque subject
+        # only when spelled exactly.
+        assert api.delete(f"/books/{book_id}/grants/BOB@example.org").status_code == 204
+        api.put(
+            f"/books/{book_id}/grants", json={"subject": "OIDC|AbC", "role": "viewer"}
+        )
+        assert [g["subject"] for g in api.get(f"/books/{book_id}/grants").json()] == [
+            "OIDC|AbC",
+            "alice@example.org",
+        ]
 
     def test_an_unknown_book_is_404(self, user: Client):
         from pymoney.core import new_id

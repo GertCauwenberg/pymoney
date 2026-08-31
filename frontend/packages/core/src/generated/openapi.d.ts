@@ -3819,7 +3819,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            /** @description Only an owner may mark a split FROZEN: it can never be undone, and the transaction can never again be edited or deleted by anyone. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -5936,7 +5936,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            /** @description Only an owner may mark a split FROZEN: it can never be undone, and the transaction can never again be edited or deleted by anyone. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -6003,7 +6003,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            /** @description Only an owner may mark a split FROZEN: it can never be undone, and the transaction can never again be edited or deleted by anyone. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;

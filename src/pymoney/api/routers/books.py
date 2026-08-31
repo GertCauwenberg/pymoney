@@ -15,7 +15,8 @@ from sqlalchemy import Engine, select
 from ...core.commodity import Commodity
 from ...store import identity, write_transaction
 from ...store.admin import delete_book as delete_book_rows
-from ...store.grants import grant
+from ...store.grants import LastOwnerError, grant, revoke
+from ...store.identity import normalize_subject
 from ..deps import (
     CurrentUser,
     OwnedBook,
@@ -165,14 +166,20 @@ def put_grant(
     engine: Annotated[Engine, Depends(get_engine)],
 ) -> GrantOut:
     del book
-    subject = body.subject.strip()
+    subject = normalize_subject(body.subject)
     if not subject:
         raise HTTPException(
             status_code=UNPROCESSABLE,
             detail="subject must not be empty",
         )
-    with write_transaction(engine) as conn:
-        grant(conn, book_id, subject, body.role)
+    try:
+        with write_transaction(engine) as conn:
+            grant(conn, book_id, subject, body.role)
+    except LastOwnerError as exc:
+        # Demoting the only owner orphans the book as surely as revoking them.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
     return GrantOut(book_id=book_id, subject=subject, role=body.role)
 
 
@@ -189,31 +196,15 @@ def delete_grant(
     engine: Annotated[Engine, Depends(get_engine)],
 ) -> None:
 
-    del book
-    with write_transaction(engine) as conn:
-        owners = (
-            conn.execute(
-                select(identity.book_grants.c.subject).where(
-                    identity.book_grants.c.book_id == book_id,
-                    identity.book_grants.c.role == "owner",
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if subject in owners and len(owners) == 1:
-            # A book with no owner can never be administered again.
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="this is the last owner; grant another owner first",
-            )
-        conn.execute(
-            identity.book_grants.delete().where(
-                identity.book_grants.c.book_id == book_id,
-                identity.book_grants.c.subject == subject,
-            )
-        )
-    del actor
+    del book, actor
+    try:
+        with write_transaction(engine) as conn:
+            revoke(conn, book_id, subject)
+    except LastOwnerError as exc:
+        # A book with no owner can never be administered again.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
 
 
 __all__ = ["router"]

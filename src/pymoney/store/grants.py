@@ -25,9 +25,39 @@ from sqlalchemy import Connection, Engine, select
 
 from . import identity, schema
 from .engine import DEFAULT_URL_ENV, create_engine
-from .identity import ROLES
+from .identity import ROLES, normalize_subject
 
-__all__ = ["grant", "grants_for", "main", "revoke"]
+__all__ = ["LastOwnerError", "grant", "grants_for", "main", "owners_of", "revoke"]
+
+
+class LastOwnerError(Exception):
+    """The change would leave the book with no owner.
+
+    A book without an owner can never again be shared, renamed or deleted by
+    anyone, so the last owner cannot be demoted or revoked: make someone else
+    an owner first. Raised from the one place grants are written, so the API,
+    the command line and any script get the same refusal.
+    """
+
+
+def owners_of(conn: Connection, book_id: UUID) -> list[str]:
+    return list(
+        conn.execute(
+            select(identity.book_grants.c.subject).where(
+                identity.book_grants.c.book_id == book_id,
+                identity.book_grants.c.role == "owner",
+            )
+        ).scalars()
+    )
+
+
+def _refuse_if_last_owner(conn: Connection, book_id: UUID, subject: str) -> None:
+    owners = owners_of(conn, book_id)
+    if owners == [subject]:
+        raise LastOwnerError(
+            f"{subject} is the only owner of this book; make someone else an "
+            f"owner before demoting or removing them"
+        )
 
 
 def grant(conn: Connection, book_id: UUID, subject: str, role: str) -> None:
@@ -35,10 +65,12 @@ def grant(conn: Connection, book_id: UUID, subject: str, role: str) -> None:
 
     Runs on the caller's connection so it can share a transaction with whatever
     else has to happen atomically -- creating the book, for one.
+
+    :raises LastOwnerError: if this would demote the book's only owner.
     """
     if role not in ROLES:
         raise ValueError(f"role must be one of {', '.join(ROLES)}, not {role!r}")
-    subject = subject.strip()
+    subject = normalize_subject(subject)
     if not subject:
         raise ValueError("subject must not be empty")
     existing = conn.execute(
@@ -47,6 +79,8 @@ def grant(conn: Connection, book_id: UUID, subject: str, role: str) -> None:
             identity.book_grants.c.subject == subject,
         )
     ).scalar_one_or_none()
+    if existing == "owner" and role != "owner":
+        _refuse_if_last_owner(conn, book_id, subject)
     if existing is None:
         conn.execute(
             identity.book_grants.insert().values(
@@ -68,6 +102,12 @@ def grant(conn: Connection, book_id: UUID, subject: str, role: str) -> None:
 
 
 def revoke(conn: Connection, book_id: UUID, subject: str) -> bool:
+    """Remove ``subject``'s grant; True if there was one.
+
+    :raises LastOwnerError: if ``subject`` is the book's only owner.
+    """
+    subject = normalize_subject(subject)
+    _refuse_if_last_owner(conn, book_id, subject)
     result = conn.execute(
         identity.book_grants.delete().where(
             identity.book_grants.c.book_id == book_id,
@@ -147,6 +187,9 @@ def main(argv: list[str] | None = None) -> int:
                     print("(no grants: nobody can see this book)")
                 for subject, role in rows:
                     print(f"{subject}: {role}")
+    except LastOwnerError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     finally:
         engine.dispose()
     return 0

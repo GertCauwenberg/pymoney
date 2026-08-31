@@ -38,9 +38,31 @@ from sqlalchemy import (
 from .schema import NAME, UTC, metadata
 from .types import Uuid
 
-__all__ = ["ROLES", "TOKEN_KINDS", "book_grants", "sessions", "user_tokens", "users"]
+__all__ = [
+    "ROLES",
+    "TOKEN_KINDS",
+    "book_grants",
+    "normalize_subject",
+    "sessions",
+    "user_tokens",
+    "users",
+]
 
 TOKEN_KINDS = ("activate", "reset")
+
+
+def normalize_subject(subject: str) -> str:
+    """The one spelling of a grant subject, so a grant and a login agree.
+
+    An email address is matched the way ``users.email_key`` is: stripped and
+    casefolded, because ``Bob@Example.org`` logs in as ``bob@example.org`` and
+    a grant typed the first way must reach him. Anything without an ``@`` is
+    taken to be an opaque identifier -- an OIDC ``sub`` claim, later -- and is
+    left exactly as written, since for those case is significant.
+    """
+    subject = subject.strip()
+    return subject.casefold() if "@" in subject else subject
+
 
 # Ordered weakest to strongest, so a check is a comparison.
 ROLES = ("viewer", "editor", "owner")

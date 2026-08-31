@@ -5586,7 +5586,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+            "description": "Only an owner may mark a split FROZEN: it can never be undone, and the transaction can never again be edited or deleted by anyone."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -9462,7 +9462,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+            "description": "Only an owner may mark a split FROZEN: it can never be undone, and the transaction can never again be edited or deleted by anyone."
           },
           "404": {
             "description": "No such book, or no grant on it."
@@ -9588,7 +9588,7 @@
             "description": "Not authenticated."
           },
           "403": {
-            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+            "description": "Only an owner may mark a split FROZEN: it can never be undone, and the transaction can never again be edited or deleted by anyone."
           },
           "404": {
             "description": "No such book, or no grant on it."

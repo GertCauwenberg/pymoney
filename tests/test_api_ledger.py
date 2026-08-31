@@ -544,6 +544,79 @@ class TestTransactions:
         ).json()
         assert all(r["reconcile_state"] == "RECONCILED" for r in again["items"])
 
+    def test_freezing_is_the_owners_and_never_a_new_postings(self, ledger: Ledger):
+        """FROZEN has no way back, so an editor cannot set it -- by any of the
+        four routes -- and nobody posts a transaction already frozen."""
+        owner = ledger.client
+        frozen_leg = [
+            {
+                "account_id": ledger.checking,
+                "value": "-10.00",
+                "reconcile_state": "FROZEN",
+            },
+            {"account_id": ledger.groceries},
+        ]
+        response = owner.post_transaction("2026-02-01", frozen_leg)
+        assert response.status_code == 422
+        assert "post it, then freeze" in response.json()["detail"]
+
+        posted = owner.post_transaction(
+            "2026-02-01",
+            [
+                {"account_id": ledger.checking, "value": "-10.00"},
+                {"account_id": ledger.groceries},
+            ],
+        ).json()
+        split = posted["splits"][0]["id"]
+        base = f"/books/{ledger.book_id}"
+        owner.put(
+            f"{base}/grants", json={"subject": "ed@example.invalid", "role": "editor"}
+        )
+        owner.logout()
+        editor = ledger.client
+        editor.register("ed@example.invalid")
+        attempts = (
+            editor.post(
+                f"{base}/transactions/{posted['id']}/splits/{split}/reconcile",
+                json={"state": "FROZEN", "on": "2026-02-28"},
+            ),
+            editor.post(
+                f"{base}/accounts/{ledger.checking}/reconcile",
+                json={
+                    "split_ids": [split],
+                    "state": "FROZEN",
+                    "statement_date": "2026-02-28",
+                },
+            ),
+            editor.patch(
+                f"{base}/transactions/{posted['id']}", json={"legs": frozen_leg}
+            ),
+        )
+        for response in attempts:
+            assert response.status_code == 403, response.text
+            assert "owner" in response.json()["detail"]
+        # Editors still reconcile; RECONCILED can be walked back.
+        response = editor.post(
+            f"{base}/transactions/{posted['id']}/splits/{split}/reconcile",
+            json={"state": "RECONCILED", "on": "2026-02-28"},
+        )
+        assert response.status_code == 200
+        # Nothing was frozen; the owner can still delete it.
+        editor.logout()
+        owner.login("owner@example.invalid")
+        current = owner.get(f"{base}/transactions/{posted['id']}").json()
+        assert {s["reconcile_state"] for s in current["splits"]} == {
+            "RECONCILED",
+            "NOT_RECONCILED",
+        }
+        # And the owner may freeze, after which it is final for everyone.
+        response = owner.post(
+            f"{base}/transactions/{posted['id']}/splits/{split}/reconcile",
+            json={"state": "FROZEN", "on": "2026-02-28"},
+        )
+        assert response.status_code == 200
+        assert owner.delete(f"{base}/transactions/{posted['id']}").status_code == 409
+
     def test_delete(self, ledger: Ledger):
         posted = ledger.client.post_transaction(
             "2026-02-01",

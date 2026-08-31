@@ -512,7 +512,7 @@ def logout(
 def me(actor: CurrentUser) -> UserOut:
     return UserOut(
         id=actor.user_id,
-        email=actor.subject,
+        email=actor.email,
         display_name=actor.display_name,
         locale=actor.locale,
     )
@@ -538,7 +538,7 @@ def patch_me(
             )
     return UserOut(
         id=actor.user_id,
-        email=actor.subject,
+        email=actor.email,
         display_name=fields.get("display_name", actor.display_name),
         locale=fields.get("locale", actor.locale),
     )

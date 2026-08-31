@@ -31,6 +31,7 @@ from sqlalchemy import Engine, select, update
 from ..core.book import Book
 from ..quotes import QuoteService
 from ..store import identity, write_transaction
+from ..store.identity import normalize_subject
 from .mail import Mailer
 from .registry import BookRegistry
 from .security import hash_token, idempotency_key_to_uuid
@@ -89,7 +90,10 @@ class Actor:
 
     user_id: UUID
     subject: str
-    """The identity grants are keyed on: the email locally, or an OIDC subject."""
+    """The identity grants are keyed on: the normalised email locally (see
+    :func:`pymoney.store.identity.normalize_subject`), or an OIDC subject."""
+    email: str
+    """The address as the user wrote it, for showing back to them."""
     display_name: str
     session_id: UUID
     via_cookie: bool
@@ -190,7 +194,8 @@ def current_actor(
 
     return Actor(
         user_id=row.user_id,
-        subject=row.email,
+        subject=normalize_subject(row.email),
+        email=row.email,
         display_name=row.display_name,
         session_id=row.id,
         via_cookie=via_cookie,
@@ -205,6 +210,7 @@ CurrentUser = Annotated[Actor, Depends(current_actor)]
 # what they may do
 # ==========================================================================
 def role_on(engine: Engine, book_id: UUID, subject: str) -> str | None:
+    subject = normalize_subject(subject)
     with engine.connect() as conn:
         return conn.execute(
             select(identity.book_grants.c.role).where(
@@ -215,6 +221,7 @@ def role_on(engine: Engine, book_id: UUID, subject: str) -> str | None:
 
 
 def readable_books(engine: Engine, subject: str) -> dict[UUID, str]:
+    subject = normalize_subject(subject)
     with engine.connect() as conn:
         rows = conn.execute(
             select(identity.book_grants.c.book_id, identity.book_grants.c.role).where(

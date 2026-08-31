@@ -379,11 +379,17 @@ alongside each hash; session tokens are stored only as a SHA-256 digest, so a
 leaked database yields no live sessions.
 
 Per-book grants are `viewer` / `editor` / `owner`: a viewer reads, an editor
-also posts and edits transactions and adds payees, an owner also changes the
-chart of accounts (which reshapes every report the household shares), renames
-the book and manages sharing. They are keyed on a *subject string*
+also posts and edits transactions, reconciles them (up to `RECONCILED`, which can
+be walked back) and adds payees, an owner also changes the chart of accounts
+(which reshapes every report the household shares), marks splits `FROZEN` (which
+cannot be walked back, so it is nobody else's to do, and is never accepted on a
+new posting), renames the book and manages sharing. They are keyed on a *subject string*
 rather than a user id — which is what lets OIDC slot in later and map a token's
-`sub` claim onto the same grants. A book you hold no grant on is a 404, not a
+`sub` claim onto the same grants. An email subject is normalised the way logins
+are (stripped, casefolded), so `Bob@Example.org` and `bob@example.org` are one
+person; anything without an `@` is opaque and matched exactly. A book always
+keeps at least one owner: the last one can be neither revoked nor demoted, by the
+API or the command line, until another owner exists. A book you hold no grant on is a 404, not a
 403: whether it exists is itself information.
 
 ### Accounts: getting in, getting out
