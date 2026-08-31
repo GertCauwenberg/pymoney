@@ -29,6 +29,7 @@ from ..store import create_engine, create_schema
 from .errors import install_error_handlers
 from .mail import Mailer, mailer_from_settings
 from .maintenance import MaintenanceScheduler
+from .ratelimit import AuthThrottle
 from .registry import BookRegistry
 from .routers import (
     accounts,
@@ -263,6 +264,10 @@ def create_app(
     app.state.quote_scheduler = None
     app.state.mailer = mailer
     app.state.maintenance = None
+    # Counters live for the life of the process, like the book registry: set
+    # once here, not per lifespan, so a restart is the only thing that resets
+    # them.
+    app.state.throttle = AuthThrottle(settings)
 
     install_error_handlers(app)
 

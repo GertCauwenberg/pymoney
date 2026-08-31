@@ -3395,6 +3395,9 @@
           },
           "422": {
             "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          },
+          "429": {
+            "description": "Too many attempts from this client or against this address; `Retry-After` says when to try again."
           }
         },
         "summary": "Email a password-reset link",
@@ -3441,6 +3444,9 @@
           },
           "422": {
             "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          },
+          "429": {
+            "description": "Too many attempts from this client or against this address; `Retry-After` says when to try again."
           }
         },
         "summary": "Log in",
@@ -3735,7 +3741,7 @@
     },
     "/auth/register": {
       "post": {
-        "description": "With activation required (the default), the account exists but cannot\nlog in until the emailed link is followed; the answer is 202 and no session.\nOtherwise the session starts at once (201).",
+        "description": "With activation required (the default), the account exists but cannot\nlog in until the emailed link is followed; the answer is 202 and no session.\nOtherwise the session starts at once (201).\n\nRegistering an address that is pending activation does not replace the\npending account -- that would let anyone reset a stranger's password and\ndisplay name before they have followed their link -- it sends the\nactivation link again, to the same 202. Choose the password on activation\nday; if it is forgotten in between, activate first and reset it after.",
         "operationId": "register_auth_register_post",
         "requestBody": {
           "content": {
@@ -3790,6 +3796,9 @@
           },
           "422": {
             "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          },
+          "429": {
+            "description": "Too many attempts from this client or against this address; `Retry-After` says when to try again."
           }
         },
         "summary": "Create an account",
@@ -3837,6 +3846,9 @@
           },
           "422": {
             "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          },
+          "429": {
+            "description": "Too many attempts from this client or against this address; `Retry-After` says when to try again."
           }
         },
         "summary": "Send the activation link again",

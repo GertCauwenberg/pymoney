@@ -71,15 +71,34 @@ def hash_password(password: str) -> PasswordHash:
     )
 
 
+# A fixed, meaningless record to verify against when there is no real one. It
+# makes "no such user" cost exactly one scrypt derivation, the same as "wrong
+# password", so the response time does not say which addresses are registered.
+# The salt is constant and public on purpose: nothing is protected by it, the
+# comparison below is against a digest that can never match.
+_DECOY = PasswordHash(
+    digest=b"\x00" * 64,
+    salt=hashlib.sha256(b"pymoney decoy salt").digest(),
+    params=",".join(str(part) for part in SCRYPT_PARAMS),
+)
+
+
 def verify_password(password: str, stored: PasswordHash | None) -> bool:
-    """Constant-time check. ``None`` means "no password set", never "any password"."""
-    if stored is None or not stored.digest or not stored.salt:
-        return False
+    """Constant-time check. ``None`` means "no password set", never "any password".
+
+    Deliberately does the full derivation even when there is nothing to compare
+    against: an early ``return False`` for an unknown address would answer a
+    hundred times faster than a wrong password for a known one, and that
+    difference is a user-enumeration oracle.
+    """
+    record = stored
+    if record is None or not record.digest or not record.salt:
+        record = _DECOY
     try:
-        candidate = _derive(password, stored.salt, stored.parsed_params)
+        candidate = _derive(password, record.salt, record.parsed_params)
     except (ValueError, TypeError):
         return False
-    return hmac.compare_digest(candidate, stored.digest)
+    return record is not _DECOY and hmac.compare_digest(candidate, record.digest)
 
 
 def new_session_token() -> str:

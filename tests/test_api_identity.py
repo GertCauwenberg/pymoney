@@ -169,26 +169,58 @@ class TestActivation:
         )
         assert len(mailer.sent) == before
 
-    def test_registering_again_before_activating_starts_over(self, strict):
+    def test_registering_again_before_activating_resends_and_changes_nothing(
+        self, strict
+    ):
+        """Anyone can type a stranger's address. Until the link is followed the
+        pending row is not theirs to replace: the password and name stay as
+        first registered, and the owner gets a fresh link in the same mailbox."""
         client, mailer = strict
         client.http.post(
-            "/auth/register", json={"email": "new@example.invalid", "password": PASSWORD}
+            "/auth/register",
+            json={
+                "email": "new@example.invalid",
+                "password": PASSWORD,
+                "display_name": "The Owner",
+            },
         )
         again = client.http.post(
             "/auth/register",
-            json={"email": "New@example.invalid", "password": "another-password-1"},
+            json={
+                "email": "New@example.invalid",
+                "password": "an-impostors-password",
+                "display_name": "Impostor",
+            },
         )
-        assert again.status_code == 202
+        assert again.status_code == 202 and again.json()["email"] == "New@example.invalid"
+        assert [m.to for m in mailer.sent] == ["new@example.invalid"] * 2
+        # The first link is superseded, the second works; either way it is the
+        # original account that activates.
         assert (
             client.http.post(
-                "/auth/activate", json={"token": token_in(mailer.sent[1])}
+                "/auth/activate", json={"token": token_in(mailer.sent[0])}
             ).status_code
-            == 200
+            == 410
+        )
+        activated = client.http.post(
+            "/auth/activate", json={"token": token_in(mailer.sent[1])}
+        )
+        assert activated.status_code == 200
+        assert activated.json()["user"]["display_name"] == "The Owner"
+        assert (
+            client.http.post(
+                "/auth/login",
+                json={
+                    "email": "new@example.invalid",
+                    "password": "an-impostors-password",
+                },
+            ).status_code
+            == 401
         )
         assert (
             client.http.post(
                 "/auth/login",
-                json={"email": "new@example.invalid", "password": "another-password-1"},
+                json={"email": "new@example.invalid", "password": PASSWORD},
             ).status_code
             == 200
         )

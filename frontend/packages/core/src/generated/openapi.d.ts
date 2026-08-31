@@ -120,6 +120,12 @@ export interface paths {
          * @description With activation required (the default), the account exists but cannot
          *     log in until the emailed link is followed; the answer is 202 and no session.
          *     Otherwise the session starts at once (201).
+         *
+         *     Registering an address that is pending activation does not replace the
+         *     pending account -- that would let anyone reset a stranger's password and
+         *     display name before they have followed their link -- it sends the
+         *     activation link again, to the same 202. Choose the password on activation
+         *     day; if it is forgotten in between, activate first and reset it after.
          */
         readonly post: operations["register_auth_register_post"];
         readonly delete?: never;
@@ -2318,6 +2324,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Too many attempts from this client or against this address; `Retry-After` says when to try again. */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     readonly login_auth_login_post: {
@@ -2372,6 +2385,13 @@ export interface operations {
             };
             /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
             readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many attempts from this client or against this address; `Retry-After` says when to try again. */
+            readonly 429: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
@@ -2681,6 +2701,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Too many attempts from this client or against this address; `Retry-After` says when to try again. */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     readonly resend_activation_auth_resend_activation_post: {
@@ -2735,6 +2762,13 @@ export interface operations {
             };
             /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
             readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many attempts from this client or against this address; `Retry-After` says when to try again. */
+            readonly 429: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

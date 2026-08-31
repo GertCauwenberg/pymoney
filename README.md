@@ -396,7 +396,17 @@ A **forgotten password** is reset through an emailed link; using it ends every
 other session of the account. Both links are single use, short-lived, and stored
 only as digests -- like session tokens, a leaked database yields none of them.
 `/forgot-password` and `/resend-activation` answer 202 whether or not the address
-is registered; the email is the only channel that confirms anything.
+is registered; the email is the only channel that confirms anything. Registering
+an address that is still pending activation does not replace the pending account
+(anyone could type a stranger's address); it sends the activation link again.
+
+Everything a stranger can call is **throttled**: logins per client address and
+per account, and the three endpoints that send email per client address and per
+address written to (`PYMONEY_AUTH_RATE_*`, a 429 with `Retry-After` beyond the
+limit). An unknown address costs a login attempt the same scrypt derivation as a
+wrong password, so the response time does not say which addresses exist. Behind a
+reverse proxy set `PYMONEY_CLIENT_IP_HEADER=X-Forwarded-For`, or every user
+shares the proxy's bucket.
 
 Email goes through `PYMONEY_MAIL_BACKEND`: `console` (the default: the link is
 in the server log, which is fine for one person on a laptop and a startup

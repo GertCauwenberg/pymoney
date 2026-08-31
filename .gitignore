@@ -48,3 +48,4 @@ htmlcov/
 !tests/**/fixtures/*.sqlite
 transcripts/
 *.zip
+frontend/tmp_file*

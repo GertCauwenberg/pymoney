@@ -31,6 +31,7 @@ from ...i18n import translate
 from ...store import identity, write_transaction
 from ..deps import CurrentUser, get_engine, get_mailer, get_settings_dep
 from ..mail import Mailer, Message
+from ..ratelimit import THROTTLED_RESPONSE, Throttle
 from ..schemas import (
     ActivateIn,
     DeleteMeIn,
@@ -247,7 +248,8 @@ def _send_reset(
         202: {
             "description": "Created, pending activation: a link was emailed.",
             "model": PendingOut,
-        }
+        },
+        **THROTTLED_RESPONSE,
     },
 )
 def register(
@@ -257,10 +259,17 @@ def register(
     engine: Annotated[Engine, Depends(get_engine)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
     mailer: Annotated[Mailer, Depends(get_mailer)],
+    throttle: Throttle,
 ) -> SessionOut | PendingOut:
     """With activation required (the default), the account exists but cannot
     log in until the emailed link is followed; the answer is 202 and no session.
-    Otherwise the session starts at once (201)."""
+    Otherwise the session starts at once (201).
+
+    Registering an address that is pending activation does not replace the
+    pending account -- that would let anyone reset a stranger's password and
+    display name before they have followed their link -- it sends the
+    activation link again, to the same 202. Choose the password on activation
+    day; if it is forgotten in between, activate first and reset it after."""
     if not settings.allow_registration:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -272,6 +281,7 @@ def register(
             status_code=UNPROCESSABLE,
             detail="that does not look like an email address",
         )
+    throttle.check(request, settings, login=False, who=email)
     key = email.casefold()
     now = _now()
     stored = hash_password(body.password)
@@ -279,22 +289,40 @@ def register(
     display_name = body.display_name or email.split("@")[0]
     with write_transaction(engine) as conn:
         taken = conn.execute(
-            select(identity.users.c.id, identity.users.c.activated_at).where(
-                identity.users.c.email_key == key
-            )
+            select(
+                identity.users.c.id,
+                identity.users.c.email,
+                identity.users.c.activated_at,
+                identity.users.c.locale,
+            ).where(identity.users.c.email_key == key)
         ).one_or_none()
+        if taken is not None and (
+            taken.activated_at is not None or not settings.require_activation
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="that email address is already registered",
+            )
         if taken is not None:
-            if taken.activated_at is None and settings.require_activation:
-                # Registered before, never activated: let them try again rather
-                # than lock the address until the purge.
-                conn.execute(
-                    identity.users.delete().where(identity.users.c.id == taken.id)
-                )
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="that email address is already registered",
-                )
+            # Pending: the row, its password and its name stay as whoever
+            # registered first chose them; only the link is renewed. Proving
+            # ownership of the mailbox is what activation is for.
+            pending_id, pending_email, pending_locale = (
+                taken.id,
+                taken.email,
+                taken.locale,
+            )
+    if taken is not None:
+        _send_activation(
+            mailer,
+            settings,
+            pending_email,
+            _issue_token(engine, pending_id, "activate", settings.activation_hours),
+            pending_locale,
+        )
+        response.status_code = status.HTTP_202_ACCEPTED
+        return PendingOut(email=email)
+    with write_transaction(engine) as conn:
         conn.execute(
             identity.users.insert().values(
                 id=user_id,
@@ -371,15 +399,19 @@ def activate(
     status_code=status.HTTP_202_ACCEPTED,
     response_model=PendingOut,
     summary="Send the activation link again",
+    responses=THROTTLED_RESPONSE,
 )
 def resend_activation(
     body: EmailIn,
+    request: Request,
     engine: Annotated[Engine, Depends(get_engine)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
     mailer: Annotated[Mailer, Depends(get_mailer)],
+    throttle: Throttle,
 ) -> PendingOut:
     """Always 202: whether the address is registered is not revealed."""
     email = body.email.strip()
+    throttle.check(request, settings, login=False, who=email)
     with engine.connect() as conn:
         user = conn.execute(
             select(
@@ -401,14 +433,20 @@ def resend_activation(
 
 
 # -- login and logout ---------------------------------------------------------------------
-@router.post("/login", response_model=SessionOut, summary="Log in")
+@router.post(
+    "/login", response_model=SessionOut, summary="Log in", responses=THROTTLED_RESPONSE
+)
 def login(
     body: LoginIn,
     request: Request,
     response: Response,
     engine: Annotated[Engine, Depends(get_engine)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
+    throttle: Throttle,
 ) -> SessionOut:
+    # Before the lookup and the hash: the limit is on attempts, and the cost of
+    # an attempt is paid whether or not the address exists.
+    throttle.check(request, settings, login=True, who=body.email)
     with engine.connect() as conn:
         row = conn.execute(
             select(identity.users).where(
@@ -425,8 +463,10 @@ def login(
             params=row.password_params or "",
         )
     )
-    # Always verify, even when the user does not exist, so the response time does
-    # not reveal which addresses are registered.
+    # Always verify, even when the user does not exist: verify_password runs the
+    # full derivation against a decoy for a missing record, so an unknown
+    # address costs the same hundred milliseconds as a wrong password and the
+    # response time does not reveal which addresses are registered.
     ok = verify_password(body.password, stored)
     if row is None or not ok or not row.active:
         raise HTTPException(
@@ -510,15 +550,19 @@ def patch_me(
     status_code=status.HTTP_202_ACCEPTED,
     response_model=PendingOut,
     summary="Email a password-reset link",
+    responses=THROTTLED_RESPONSE,
 )
 def forgot_password(
     body: EmailIn,
+    request: Request,
     engine: Annotated[Engine, Depends(get_engine)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
     mailer: Annotated[Mailer, Depends(get_mailer)],
+    throttle: Throttle,
 ) -> PendingOut:
     """Always 202. A link is sent only to an activated account with that address."""
     email = body.email.strip()
+    throttle.check(request, settings, login=False, who=email)
     with engine.connect() as conn:
         user = conn.execute(
             select(

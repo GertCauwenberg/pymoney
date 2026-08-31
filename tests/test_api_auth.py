@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from pymoney.api.security import (
+    PasswordHash,
     hash_password,
     hash_token,
     idempotency_key_to_uuid,
@@ -35,6 +36,27 @@ class TestPasswordHashing:
     def test_no_password_is_not_any_password(self):
         assert not verify_password("", None)
         assert not verify_password("anything", None)
+
+    def test_a_missing_record_costs_a_full_derivation(self, monkeypatch):
+        """Otherwise "no such user" answers a hundred times faster than "wrong
+        password", and the response time enumerates the registered addresses."""
+        from pymoney.api import security
+
+        calls: list[bytes] = []
+        real = security._derive
+
+        def counting(password, salt, params):
+            calls.append(salt)
+            return real(password, salt, params)
+
+        stored = hash_password(PASSWORD)
+        monkeypatch.setattr(security, "_derive", counting)
+        assert verify_password(PASSWORD, stored)
+        assert not verify_password(PASSWORD, None)
+        assert not verify_password(PASSWORD, PasswordHash(b"", b"", stored.params))
+        assert len(calls) == 3
+        # The decoy is never a match, whatever the password.
+        assert not verify_password("", None)
 
     def test_the_parameters_travel_with_the_hash(self):
         """So they can be raised later without locking anyone out."""
@@ -168,6 +190,111 @@ class TestLogin:
         )
         assert response.status_code == 401
         assert response.json()["detail"] == "wrong email or password"
+
+    def test_attempts_against_one_account_are_throttled(self, api: Client):
+        """Five per minute per address, from anywhere; the sixth is a 429 with
+        Retry-After, and it does not extend the penalty. The limit is on
+        attempts, so the genuine password is refused too -- for a minute."""
+        api.register("a@example.invalid")
+        api.logout()
+        for _ in range(5):
+            response = api.http.post(
+                "/auth/login", json={"email": "A@example.invalid", "password": "wrong"}
+            )
+            assert response.status_code == 401
+        for _ in range(3):
+            response = api.http.post(
+                "/auth/login", json={"email": "a@example.invalid", "password": PASSWORD}
+            )
+            assert response.status_code == 429
+            assert int(response.headers["Retry-After"]) >= 1
+            assert "try again" in response.json()["detail"]
+        # Another account from the same client is still fine: 8 < 20.
+        api.register("b@example.invalid")
+        # Time passes; the bucket drains.
+        from time import monotonic
+
+        throttle = api.http.app.state.throttle
+        for limiter in (throttle.login_by_account, throttle.login_by_client):
+            limiter.now = lambda: monotonic() + 61
+        assert (
+            api.http.post(
+                "/auth/login", json={"email": "a@example.invalid", "password": PASSWORD}
+            ).status_code
+            == 200
+        )
+
+    def test_one_client_cannot_hammer_many_accounts(self, api: Client):
+        for n in range(20):
+            response = api.http.post(
+                "/auth/login", json={"email": f"u{n}@example.invalid", "password": "x"}
+            )
+            assert response.status_code == 401
+        assert (
+            api.http.post(
+                "/auth/login", json={"email": "u99@example.invalid", "password": "x"}
+            ).status_code
+            == 429
+        )
+
+    def test_the_proxy_header_is_only_trusted_when_configured(self, api: Client):
+        """A client may write X-Forwarded-For too; it must not pick its bucket."""
+        from pymoney.api.ratelimit import client_address
+
+        throttle = api.http.app.state.throttle
+        settings = api.http.app.state.settings
+        for n in range(20):
+            api.http.post(
+                "/auth/login",
+                json={"email": f"u{n}@example.invalid", "password": "x"},
+                headers={"X-Forwarded-For": f"10.0.0.{n}"},
+            )
+        assert (
+            api.http.post(
+                "/auth/login", json={"email": "u99@example.invalid", "password": "x"}
+            ).status_code
+            == 429
+        )
+        # Configured, the header names the client, and the proxy's own address
+        # is no longer the bucket.
+        settings.client_ip_header = "X-Forwarded-For"
+        assert (
+            api.http.post(
+                "/auth/login",
+                json={"email": "u99@example.invalid", "password": "x"},
+                headers={"X-Forwarded-For": "10.0.0.99, 192.168.0.1"},
+            ).status_code
+            == 401
+        )
+        del throttle, client_address
+
+    def test_mail_sending_endpoints_are_throttled_per_address(self, api: Client):
+        """Three emails a minute for one address, however it is capitalised."""
+        codes = [
+            api.http.post("/auth/forgot-password", json={"email": e}).status_code
+            for e in ("x@example.invalid", "X@example.invalid", " x@example.invalid ")
+        ]
+        assert codes == [202, 202, 202]
+        assert (
+            api.http.post(
+                "/auth/resend-activation", json={"email": "x@example.invalid"}
+            ).status_code
+            == 429
+        )
+        assert (
+            api.http.post(
+                "/auth/register",
+                json={"email": "x@example.invalid", "password": PASSWORD},
+            ).status_code
+            == 429
+        )
+        # Other addresses are unaffected.
+        assert (
+            api.http.post(
+                "/auth/forgot-password", json={"email": "y@example.invalid"}
+            ).status_code
+            == 202
+        )
 
     def test_logout_invalidates_the_session(self, api: Client):
         api.register("a@example.invalid")

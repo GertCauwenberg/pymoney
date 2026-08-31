@@ -69,6 +69,11 @@ export default defineConfig({
         // Activation on, as in production: every registration in these tests
         // goes through the emailed link (see helpers.register).
         PYMONEY_REQUIRE_ACTIVATION: "1",
+        // Every spec registers and logs in from this one address; the per-client
+        // auth throttle would trip halfway through the run. The per-address
+        // limits stay on, and the throttle has its own tests.
+        PYMONEY_AUTH_RATE_LOGIN_PER_CLIENT: "0",
+        PYMONEY_AUTH_RATE_MAIL_PER_CLIENT: "0",
         PYMONEY_MAIL_BACKEND: "file",
         PYMONEY_MAIL_FILE: mailbox,
         PYMONEY_PUBLIC_URL: `http://127.0.0.1:${webPort}`,

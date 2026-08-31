@@ -62,6 +62,20 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_starttls: bool = True
 
+    auth_rate_login_per_client: int = Field(default=20, ge=0)
+    """Login attempts per minute from one client address. 0 turns the limit off."""
+    auth_rate_login_per_account: int = Field(default=5, ge=0)
+    """Login attempts per minute against one email address, from anywhere."""
+    auth_rate_mail_per_client: int = Field(default=10, ge=0)
+    """Register / forgot-password / resend-activation requests per minute from one
+    client address: each one may send an email."""
+    auth_rate_mail_per_address: int = Field(default=3, ge=0)
+    """Emails per minute that may be triggered for one address, from anywhere."""
+    client_ip_header: str | None = None
+    """Header a trusted reverse proxy sets with the real client address
+    (``X-Forwarded-For``). Unset, the socket's peer is used -- which behind a
+    proxy is the proxy, so every user would share one rate-limit bucket."""
+
     cors_origins: list[str] = Field(default_factory=list)
     """Exact origins allowed to send credentialed requests. Never "*"."""
 
