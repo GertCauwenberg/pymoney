@@ -39,7 +39,9 @@ from ..core.book import Book
 from ..core.clock import Clock, SystemClock
 from ..core.commodity import Commodity
 from ..core.errors import NotFoundError
-from ..store import schema
+from ..store import schema, write_transaction
+from ..store.admin import delete_book
+from ..store.grants import grant
 from ..store.sql import SqlStore
 
 __all__ = ["BookRegistry"]
@@ -111,11 +113,19 @@ class BookRegistry:
         base_currency: Commodity | None,
         book_id: UUID | None = None,
         actor: str = "",
+        owner: str | None = None,
     ) -> Book:
         """Create a new book and keep it open.
 
         ``base_currency`` may be None for a book about to be filled by an
-        importer, which settles the currency from the file."""
+        importer, which settles the currency from the file.
+
+        ``owner`` is granted ``owner`` on the book in the same breath. A book
+        nobody holds a grant on is invisible to every user and can never be
+        deleted through the API, so the grant is not a step the caller takes
+        afterwards -- it is part of creating the book: if it cannot be written,
+        the book is removed again and the error propagates.
+        """
         from ..core.ids import new_id
 
         book_id = book_id or new_id()
@@ -134,7 +144,33 @@ class BookRegistry:
                 store=SqlStore(self._engine, book_id, clock=self._clock),
             )
             self._books[book_id] = book
+            if owner is not None:
+                try:
+                    with write_transaction(self._engine) as conn:
+                        grant(conn, book_id, owner, "owner")
+                except BaseException:
+                    self._discard_locked(book_id)
+                    raise
             return book
+
+    def _discard_locked(self, book_id: UUID) -> None:
+        """Remove a book's rows and forget it; the caller holds its lock."""
+        book = self._books.pop(book_id, None)
+        if book is not None:
+            book.close()
+        with write_transaction(self._engine) as conn:
+            delete_book(conn, book_id)
+
+    def discard(self, book_id: UUID) -> None:
+        """Delete a book outright -- every row, every grant -- and forget it.
+
+        For a book that should never have come to be: an import that failed
+        halfway. Takes the book's lock, so no request is mid-way through it.
+        """
+        with self._lock_for(book_id):
+            self._discard_locked(book_id)
+        with self._guard:
+            self._locks.pop(book_id, None)
 
     def forget(self, book_id: UUID) -> None:
         """Drop a book from the cache, closing its connection."""

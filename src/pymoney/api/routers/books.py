@@ -70,9 +70,11 @@ def create_book(
         scale=body.base_currency_scale,
         symbol=body.base_currency_symbol,
     )
-    book = registry.create(name=body.name, base_currency=currency, actor=actor.subject)
-    with write_transaction(engine) as conn:
-        grant(conn, book.id, actor.subject, "owner")
+    # The owner grant is part of creating the book (see BookRegistry.create):
+    # a book nobody can see is not a useful outcome of a POST.
+    book = registry.create(
+        name=body.name, base_currency=currency, actor=actor.subject, owner=actor.subject
+    )
     return BookOut.of(book.settings, book.revision, "owner")
 
 

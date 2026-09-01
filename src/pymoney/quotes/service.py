@@ -20,10 +20,19 @@ all call. One run, for one book:
    user typed in is never touched: a fetched quote lands beside it, and the
    valuation policy ranks the user's above it for that day.
 
-Everything happens inside one ``book.bulk()`` unit of work, so a run is
+Storing happens inside one ``book.bulk()`` unit of work, so a run is
 all-or-nothing against the database while each price still gets its own
-revision, and under whatever lock the caller holds on the book -- the scheduler
-takes the registry's per-book lock, exactly as a request would.
+revision.
+
+The three steps are three methods -- :meth:`QuoteService.prepare`,
+:meth:`QuoteService.fetch`, :meth:`QuoteService.store` -- because only the
+first and last touch the book. The API serialises every access to a book
+behind one lock (decision #14), and a provider can take a minute to answer or
+not answer at all; holding that lock through the network calls would freeze
+every request on the book for as long as the ECB takes. So the scheduler and
+the "fetch now" endpoint take the lock twice, briefly, and let the fetching
+happen in between with the book free. :meth:`QuoteService.run` does all three
+in a row for callers that hold no lock at all: the command line, and tests.
 """
 
 from __future__ import annotations
@@ -41,7 +50,7 @@ from ..core.errors import PyMoneyError
 from .provider import Http, Quote, QuoteError, QuoteProvider, QuoteRequest, urllib_http
 from .registry import ProviderRegistry
 
-__all__ = ["FetchProblem", "FetchReport", "PlannedFetch", "QuoteService"]
+__all__ = ["FetchProblem", "FetchReport", "PlannedFetch", "PreparedRun", "QuoteService"]
 
 DEFAULT_LOOKBACK_DAYS = 7
 
@@ -50,6 +59,23 @@ DEFAULT_LOOKBACK_DAYS = 7
 class PlannedFetch:
     provider: QuoteProvider
     request: QuoteRequest
+
+
+@dataclass(slots=True, kw_only=True)
+class PreparedRun:
+    """A run between its steps: what was planned, then what came back.
+
+    Made by :meth:`QuoteService.prepare` under the book's lock, filled by
+    :meth:`QuoteService.fetch` with no lock held, consumed by
+    :meth:`QuoteService.store` under the lock again. Holds only plain data and
+    provider objects -- never the book -- so it can cross the gap safely.
+    """
+
+    book_id: UUID
+    report: FetchReport
+    planned: list[PlannedFetch]
+    results: list[tuple[PlannedFetch, list[Quote]]] = field(default_factory=list)
+    fetched: bool = False
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -191,8 +217,8 @@ class QuoteService:
         ]
         return max(dates) if dates else None
 
-    # -- running -----------------------------------------------------------
-    def run(
+    # -- running, in three steps ---------------------------------------------
+    def prepare(
         self,
         book: Book,
         *,
@@ -200,10 +226,13 @@ class QuoteService:
         end: date | None = None,
         commodity_ids: Iterable[UUID] | None = None,
         providers: Iterable[str] | None = None,
-        fetch: Callable[[QuoteProvider, QuoteRequest], list[Quote]] | None = None,
-    ) -> FetchReport:
-        """Fetch and store everything the plan asks for. Never raises for a
-        provider's failure; the report says what went wrong."""
+    ) -> PreparedRun:
+        """Step one, under the book's lock: decide what to ask whom.
+
+        Reads the book's commodities and prices and nothing else; takes
+        milliseconds. The result carries everything the network step needs, so
+        the book can be released before a single request goes out.
+        """
         report = FetchReport(book_id=book.id, started_at=self.clock.now())
         planned, report.up_to_date = self.plan(
             book,
@@ -218,10 +247,23 @@ class QuoteService:
             report.start = min(p.request.start for p in planned)
             report.end = max(p.request.end for p in planned)
         report.providers = sorted({p.provider.name for p in planned})
-        do_fetch = fetch or (lambda provider, request: provider.fetch(request, self.http))
+        return PreparedRun(book_id=book.id, report=report, planned=planned)
 
-        results: list[tuple[PlannedFetch, list[Quote]]] = []
-        for item in planned:
+    def fetch(
+        self,
+        prepared: PreparedRun,
+        *,
+        fetch: Callable[[QuoteProvider, QuoteRequest], list[Quote]] | None = None,
+    ) -> PreparedRun:
+        """Step two, with **no** lock held: ask the providers.
+
+        This is the slow part -- a provider may take a minute, or time out --
+        and it touches nothing of the book's. A provider failing is one
+        problem in the report; the others still run.
+        """
+        do_fetch = fetch or (lambda provider, request: provider.fetch(request, self.http))
+        report = prepared.report
+        for item in prepared.planned:
             try:
                 quotes = do_fetch(item.provider, item.request)
             except QuoteError as exc:
@@ -243,15 +285,53 @@ class QuoteService:
                 )
                 continue
             report.fetched += len(quotes)
-            results.append((item, quotes))
+            prepared.results.append((item, quotes))
+        prepared.fetched = True
+        return prepared
 
+    def store(self, book: Book, prepared: PreparedRun) -> FetchReport:
+        """Step three, under the book's lock again: write what came back.
+
+        One ``bulk()`` unit of work; a quote already stored for that day and
+        source is skipped, a different one is a correction row. The book may
+        have moved on while the network was busy -- a commodity renamed, a
+        price typed in by hand -- which is why every lookup here is against
+        the book as it is *now*, not as it was when the run was planned.
+        """
+        if prepared.book_id != book.id:
+            raise ValueError("this run was prepared for another book")
+        if not prepared.fetched:
+            raise ValueError("fetch() must run before store()")
+        report = prepared.report
         with book.bulk():
-            for item, quotes in results:
+            for item, quotes in prepared.results:
                 self._store(book, item, quotes, report)
-
         report.finished_at = self.clock.now()
         self.last_runs[book.id] = report
         return report
+
+    def run(
+        self,
+        book: Book,
+        *,
+        start: date | None = None,
+        end: date | None = None,
+        commodity_ids: Iterable[UUID] | None = None,
+        providers: Iterable[str] | None = None,
+        fetch: Callable[[QuoteProvider, QuoteRequest], list[Quote]] | None = None,
+    ) -> FetchReport:
+        """All three steps in a row, for a caller that holds no lock: the
+        command line, a script, a test. Never raises for a provider's failure;
+        the report says what went wrong.
+
+        Not for the API process: there the book is locked by whoever holds it,
+        and the network step must happen between two lockings, not inside one.
+        """
+        prepared = self.prepare(
+            book, start=start, end=end, commodity_ids=commodity_ids, providers=providers
+        )
+        self.fetch(prepared, fetch=fetch)
+        return self.store(book, prepared)
 
     def _store(
         self, book: Book, item: PlannedFetch, quotes: list[Quote], report: FetchReport

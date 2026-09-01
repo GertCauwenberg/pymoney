@@ -374,3 +374,61 @@ class TestMissingSections:
         prices = KmyFile.read(path).prices
         assert len(prices) == 1
         assert prices[0].source == "ok"
+
+
+class TestHostileFiles:
+    """Since the upload endpoint, a .kmy can come from a stranger. None of
+    these are KMyMoney files; all of them are refused before they do harm."""
+
+    def test_entity_expansion_is_refused(self, tmp_path: Path):
+        bomb = tmp_path / "laughs.kmy"
+        bomb.write_text(
+            '<?xml version="1.0"?>\n'
+            '<!DOCTYPE lolz [<!ENTITY lol "lol">'
+            '<!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">'
+            '<!ENTITY lol2 "&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;">'
+            "]>\n"
+            '<KMYMONEY-FILE><FILEINFO/><ACCOUNTS><ACCOUNT id="A1" name="&lol2;"/></ACCOUNTS></KMYMONEY-FILE>\n'
+        )
+        with pytest.raises(
+            KmyFormatError, match="XML features a KMyMoney file never needs"
+        ):
+            KmyFile.read(bomb)
+
+    def test_external_entities_are_refused(self, tmp_path: Path):
+        secret = tmp_path / "secret.txt"
+        secret.write_text("hunter2")
+        leak = tmp_path / "leak.kmy"
+        leak.write_text(
+            '<?xml version="1.0"?>\n'
+            f'<!DOCTYPE k [<!ENTITY xxe SYSTEM "file://{secret}">]>\n'
+            '<KMYMONEY-FILE><FILEINFO/><ACCOUNTS><ACCOUNT id="A1" name="&xxe;"/></ACCOUNTS></KMYMONEY-FILE>\n'
+        )
+        with pytest.raises(KmyFormatError, match="never needs"):
+            KmyFile.read(leak)
+        # And the streamed half takes the same road.
+        with pytest.raises(KmyFormatError):
+            list(KmyFile(path=leak).iter_transactions())
+
+    def test_a_gzip_bomb_is_cut_off_at_the_cap(self, tmp_path: Path):
+        from pymoney.importers.kmymoney.parser import KmyTooLargeError
+
+        # 64 MB of XML-looking filler that gzips to a few kilobytes.
+        filler = (
+            b'<?xml version="1.0"?><KMYMONEY-FILE>'
+            + b"<!-- "
+            + b"0" * (64 * 1024**2)
+            + b" -->"
+        )
+        bomb = tmp_path / "bomb.kmy"
+        bomb.write_bytes(gzip.compress(filler, compresslevel=1))
+        assert bomb.stat().st_size < 1024**2
+        with open_kmy(bomb, max_bytes=4 * 1024**2) as stream:
+            with pytest.raises(KmyTooLargeError, match="inflates past 4 MB"):
+                while stream.read(1024**2):
+                    pass
+        # The cap is a KmyFormatError too, so the importer reports it as "not a file we read".
+        assert issubclass(KmyTooLargeError, KmyFormatError)
+
+    def test_the_real_file_still_reads_under_the_cap(self, gzipped: Path):
+        assert len(KmyFile.read(gzipped).accounts) > 0

@@ -81,7 +81,7 @@ src/pymoney/api/                  the HTTP API
 | Coverage | 99% statements and branches |
 | Type checking | `mypy` clean, no `type: ignore` in the domain |
 | Lint | `ruff` clean |
-| Dependencies | none for `pymoney.core`; SQLAlchemy + Alembic for `pymoney.store` |
+| Dependencies | none for `pymoney.core`; SQLAlchemy + Alembic (and `defusedxml`, for the importer) for `pymoney.store` |
 
 ## Development
 
@@ -276,7 +276,9 @@ KMyMoney displayed, to the minor unit.** The importer verifies that itself, on
 your data, and says so in the report.
 
 Reads gzipped or plain XML; refuses GPG-encrypted files with the `gpg --decrypt`
-command line rather than asking for your passphrase. Transactions are streamed,
+command line rather than asking for your passphrase. Since anyone with an
+account can upload one, the XML goes through `defusedxml` (no entity expansion,
+no external entities) and a gzip stream is capped on its *decompressed* size. Transactions are streamed,
 so memory does not depend on how long you have been using KMyMoney. Measured:
 **772 transactions/second**, so a 50,000-entry ledger takes about a minute and a
 200,000-entry one about four.
@@ -592,8 +594,10 @@ it above any fetched quote for the same day.
 
 The API server runs the service on a schedule (`PYMONEY_QUOTE_INTERVAL_MINUTES`,
 default 360, `0` to disable) in a thread that takes each book's lock exactly as
-a request would; `POST /books/{id}/quotes/fetch` runs it on demand with an
-optional backfill range, `GET /books/{id}/quotes/last` shows the last report,
+a request would -- but only to *plan* and to *store*, never across the network
+calls: a provider may take a minute or not answer at all, and the book is free
+while it is being asked. `POST /books/{id}/quotes/fetch` runs the same three
+steps on demand with an optional backfill range, `GET /books/{id}/quotes/last` shows the last report,
 and `GET /quote-providers` lists what `quote_source` may be set to. The command
 line is for cron and one-off backfills **when the server is not running**
 against the same database, since the server's caches assume they are the only

@@ -19,6 +19,7 @@ Two credentials are accepted, and the difference matters:
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hmac import compare_digest
@@ -44,6 +45,8 @@ __all__ = [
     "OwnedBook",
     "ReadableBook",
     "WritableBook",
+    "acting_as",
+    "check_role",
     "get_engine",
     "get_mailer",
     "get_quotes",
@@ -231,6 +234,43 @@ def readable_books(engine: Engine, subject: str) -> dict[UUID, str]:
         return {book_id: role for book_id, role in rows}
 
 
+def check_role(engine: Engine, book_id: UUID, actor: Actor, minimum: str) -> str:
+    """The caller's role on the book, or the HTTP refusal.
+
+    The check alone, without opening the book: for the rare endpoint that must
+    take the book's lock more than once (see :mod:`.routers.quotes`).
+    """
+    role = role_on(engine, book_id, actor.subject)
+    if role is None:
+        # Deliberately 404, not 403: whether a book exists is itself
+        # information the caller has no grant to.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"no book {book_id}",
+        )
+    if ROLE_RANK[role] < ROLE_RANK[minimum]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"this needs {minimum} on the book; you have {role}",
+        )
+    return role
+
+
+@contextmanager
+def acting_as(registry: BookRegistry, book_id: UUID, actor: Actor) -> Iterator[Book]:
+    """Open the book under its lock with the caller named in the change log."""
+    with registry.open(book_id) as book:
+        # Inside the lock, so no other request can see a half-set actor. The
+        # change log is an audit trail; an entry without a name is much less
+        # use than one with.
+        previous = book.actor
+        book.actor = actor.audit_name
+        try:
+            yield book
+        finally:
+            book.actor = previous
+
+
 def require_role(minimum: str):
     """Build a dependency yielding a book the caller holds ``minimum`` on.
 
@@ -244,19 +284,7 @@ def require_role(minimum: str):
         engine: Annotated[Engine, Depends(get_engine)],
         registry: Annotated[BookRegistry, Depends(get_registry)],
     ) -> Iterator[Book]:
-        role = role_on(engine, book_id, actor.subject)
-        if role is None:
-            # Deliberately 404, not 403: whether a book exists is itself
-            # information the caller has no grant to.
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"no book {book_id}",
-            )
-        if ROLE_RANK[role] < ROLE_RANK[minimum]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"this needs {minimum} on the book; you have {role}",
-            )
+        check_role(engine, book_id, actor, minimum)
         with registry.open(book_id) as book:
             # Inside the lock, so no other request can see a half-set actor. The
             # change log is an audit trail; an entry without a name is much less

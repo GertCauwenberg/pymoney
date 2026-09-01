@@ -13,15 +13,21 @@ file is therefore read twice: once for the small sections, once for the
 transactions. Decompressing twice is cheaper than holding the ledger in memory,
 and a one-off import can afford it either way.
 
-.. note::
-   XML from an untrusted source can be hostile (entity expansion). These files
-   come from the user's own machine and are implicitly trusted; if that ever
-   stops being true, ``defusedxml`` is the drop-in answer.
+The XML is parsed with ``defusedxml``, not the standard library directly. A
+``.kmy`` used to arrive only from the user's own disk; since the web app's
+import endpoint, anyone with an account can upload one, and an XML file can be
+hostile: entity expansion ("billion laughs"), external entities that read
+local files or call out to the network. ``defusedxml`` refuses all of that
+with a :class:`KmyFormatError`-wrapped exception rather than expanding it. The
+same goes for the other half of the file format: a gzip stream is read through
+a cap on the *decompressed* size, because a 50 MB upload limit says nothing
+about a 50 MB gzip of zeros that inflates to fifty gigabytes.
 """
 
 from __future__ import annotations
 
 import gzip
+import io
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -29,7 +35,10 @@ from datetime import date
 from fractions import Fraction
 from pathlib import Path
 from typing import IO, Any, ClassVar
-from xml.etree.ElementTree import Element, ParseError, iterparse
+from xml.etree.ElementTree import Element, ParseError
+
+from defusedxml import DefusedXmlException
+from defusedxml.ElementTree import iterparse
 
 from .model import (
     KmyAccount,
@@ -42,7 +51,18 @@ from .model import (
     KmyTransaction,
 )
 
-__all__ = ["KmyFile", "KmyFormatError", "detect_format", "open_kmy"]
+__all__ = [
+    "DEFAULT_MAX_XML_BYTES",
+    "KmyFile",
+    "KmyFormatError",
+    "KmyTooLargeError",
+    "detect_format",
+    "open_kmy",
+]
+
+DEFAULT_MAX_XML_BYTES = 2 * 1024**3
+"""How much XML a file may inflate to before we stop reading: 2 GiB, which is
+more than a lifetime of KMyMoney and less than a gzip bomb."""
 
 GZIP_MAGIC = b"\x1f\x8b"
 PGP_ARMOUR = b"-----BEGIN PGP MESSAGE-----"
@@ -51,6 +71,39 @@ PGP_BINARY = (b"\x85", b"\x8c", b"\xc1")
 
 class KmyFormatError(Exception):
     """The file is not a KMyMoney file we can read."""
+
+
+class KmyTooLargeError(KmyFormatError):
+    """The file inflates past the size we are prepared to read."""
+
+
+class _Capped(io.RawIOBase):
+    """A read-only stream that refuses to hand out more than ``limit`` bytes."""
+
+    def __init__(self, inner: IO[bytes], limit: int, what: str) -> None:
+        self._inner = inner
+        self._limit = limit
+        self._what = what
+        self._seen = 0
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        chunk = self._inner.read(len(buffer))
+        self._seen += len(chunk)
+        if self._seen > self._limit:
+            raise KmyTooLargeError(
+                f"{self._what} inflates past {self._limit // 1024**2} MB; refusing to read on"
+            )
+        buffer[: len(chunk)] = chunk
+        return len(chunk)
+
+    def close(self) -> None:
+        try:
+            self._inner.close()
+        finally:
+            super().close()
 
 
 def detect_format(path: Path) -> str:
@@ -75,8 +128,14 @@ def detect_format(path: Path) -> str:
 
 
 @contextmanager
-def open_kmy(path: Path) -> Iterator[IO[bytes]]:
-    """Open a ``.kmy`` file as a binary stream of XML."""
+def open_kmy(
+    path: Path, *, max_bytes: int = DEFAULT_MAX_XML_BYTES
+) -> Iterator[IO[bytes]]:
+    """Open a ``.kmy`` file as a binary stream of XML.
+
+    :param max_bytes: the most XML the stream may yield, compressed or not;
+        past it, reading raises :class:`KmyTooLargeError`.
+    """
     kind = detect_format(path)
     if kind == "gpg":
         raise KmyFormatError(
@@ -85,8 +144,9 @@ def open_kmy(path: Path) -> Iterator[IO[bytes]]:
             f"We deliberately do not shell out to gpg: your passphrase is not "
             f"ours to handle."
         )
-    # Both handles are closed in the finally below; this *is* the context manager.
-    handle: Any = gzip.open(path, "rb") if kind == "gzip" else path.open("rb")  # noqa: SIM115
+    # Closed in the finally below; this *is* the context manager.
+    raw: Any = gzip.open(path, "rb") if kind == "gzip" else path.open("rb")  # noqa: SIM115
+    handle: Any = io.BufferedReader(_Capped(raw, max_bytes, str(path)))
     try:
         yield handle
     finally:
@@ -176,6 +236,8 @@ class KmyFile:
     prices: list[KmyPrice] = field(default_factory=list)
     tags: dict[str, str] = field(default_factory=dict)
     key_values: dict[str, str] = field(default_factory=dict)
+    max_bytes: int = DEFAULT_MAX_XML_BYTES
+    """The most XML the file may inflate to (see :func:`open_kmy`)."""
     """The file's own settings, notably ``kmm-baseCurrency``."""
     declared_counts: dict[str, int] = field(default_factory=dict)
     """The ``count`` attribute of each section, as the file claims it."""
@@ -186,21 +248,26 @@ class KmyFile:
 
     # -- loading -----------------------------------------------------------
     @classmethod
-    def read(cls, path: Path | str) -> KmyFile:
+    def read(cls, path: Path | str, *, max_bytes: int = DEFAULT_MAX_XML_BYTES) -> KmyFile:
         """Read everything except the transactions."""
         path = Path(path)
-        parsed = cls(path=path)
+        parsed = cls(path=path, max_bytes=max_bytes)
         try:
             parsed._read(path)
         except ParseError as exc:
             # A truncated or hand-edited file should say so, not surface an XML
             # traceback at someone migrating ten years of records.
             raise KmyFormatError(f"{path} is not valid XML: {exc}") from exc
+        except DefusedXmlException as exc:
+            raise KmyFormatError(
+                f"{path} uses XML features a KMyMoney file never needs "
+                f"({type(exc).__name__}); refusing to read it"
+            ) from exc
         return parsed
 
     def _read(self, path: Path) -> None:
         parsed = self
-        with open_kmy(path) as stream:
+        with open_kmy(path, max_bytes=self.max_bytes) as stream:
             root_seen = False
             depth = 0
             for event, element in iterparse(stream, events=("start", "end")):
@@ -257,9 +324,14 @@ class KmyFile:
             yield from self._iter_transactions()
         except ParseError as exc:
             raise KmyFormatError(f"{self.path} is not valid XML: {exc}") from exc
+        except DefusedXmlException as exc:
+            raise KmyFormatError(
+                f"{self.path} uses XML features a KMyMoney file never needs "
+                f"({type(exc).__name__}); refusing to read it"
+            ) from exc
 
     def _iter_transactions(self) -> Iterator[KmyTransaction]:
-        with open_kmy(self.path) as stream:
+        with open_kmy(self.path, max_bytes=self.max_bytes) as stream:
             stack: list[str] = []
             for event, element in iterparse(stream, events=("start", "end")):
                 if event == "start":

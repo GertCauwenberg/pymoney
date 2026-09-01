@@ -57,7 +57,7 @@ from .model import (
     KmyCommodity,
     KmyTransaction,
 )
-from .parser import KmyFile
+from .parser import DEFAULT_MAX_XML_BYTES, KmyFile
 from .report import Adjustment, ImportReport, Level
 
 __all__ = ["ImportOptions", "KmyImporter", "import_kmymoney"]
@@ -87,6 +87,8 @@ class ImportOptions:
     refused rather than silently duplicating the ledger."""
     skip_prices: bool = False
     dry_run: bool = False
+    max_xml_bytes: int = DEFAULT_MAX_XML_BYTES
+    """How far the file may inflate before the import gives up (gzip bombs)."""
     """Import into a throwaway book and report, without touching the target."""
 
 
@@ -928,5 +930,6 @@ def import_kmymoney(
     reuses matching commodities, but account and payee names will be
     disambiguated against what is already there.
     """
-    source = KmyFile.read(path)
+    options = options or ImportOptions()
+    source = KmyFile.read(path, max_bytes=options.max_xml_bytes)
     return KmyImporter(book, source, options).run()

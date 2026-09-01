@@ -594,21 +594,36 @@ class TestRunning:
 # scheduler
 # ==========================================================================
 class TestScheduler:
-    def test_a_tick_runs_every_book_under_its_lock(
+    def test_a_tick_locks_the_book_to_plan_and_to_store_but_not_to_fetch(
         self, priced_chart: Chart, service, fake
     ):
+        """The network is the slow part and touches nothing of the book's, so
+        the lock is released around it: a user posting while the ECB is slow
+        waits for the plan or the store, never for the ECB."""
         book = priced_chart.book
         fake.table["USD"] = [quote("EUR", "USD", date(2025, 12, 30), "1.09")]
         lock = threading.Lock()
-        opened: list = []
+        events: list[str] = []
 
         @contextmanager
         def open_book(book_id):
             assert book_id == book.id
             with lock:
-                opened.append(book_id)
+                events.append("lock")
                 yield book
+                events.append("unlock")
 
+        real_fetch = fake.fetch
+
+        def observed_fetch(request, http):
+            # If the scheduler still held the lock here, this would deadlock
+            # (a plain Lock, as the registry's) -- so acquiring it proves the
+            # book is free while the provider is being asked.
+            with lock:
+                events.append("fetch-with-book-free")
+            return real_fetch(request, http)
+
+        fake.fetch = observed_fetch
         scheduler = QuoteScheduler(
             service,
             book_ids=lambda: [book.id],
@@ -616,7 +631,7 @@ class TestScheduler:
             interval=timedelta(hours=1),
         )
         reports = scheduler.tick()
-        assert opened == [book.id]
+        assert events == ["lock", "unlock", "fetch-with-book-free", "lock", "unlock"]
         assert reports[book.id].stored == 1
         assert scheduler.ticks == 1
 

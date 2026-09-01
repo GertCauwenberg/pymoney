@@ -4,8 +4,11 @@ A daemon thread that wakes up every ``interval`` and runs the
 :class:`~pymoney.quotes.service.QuoteService` over every book in the database.
 Each book is taken through the :class:`~pymoney.api.registry.BookRegistry`, so
 the run holds the same per-book lock a request would (decision #14: one writer)
-and a user posting a transaction at that moment simply waits a few hundred
-milliseconds, as they would behind any other request.
+-- but only for the two short steps that touch the book: planning, and storing
+what came back. The network calls in between, which can take a minute per
+provider or time out altogether, happen with the book free, so a user posting
+a transaction at that moment waits a few milliseconds behind the plan or the
+store, never behind the ECB.
 
 Why a thread and not a separate process: the store's caches live in the API
 process and assume they are the only writer. A cron job against the same
@@ -104,7 +107,11 @@ class QuoteScheduler:
                 with self._open_book(book_id) as book:
                     if book.base_currency_id is None:
                         continue
-                    report = self.service.run(book)
+                    prepared = self.service.prepare(book)
+                # The lock is released here: the slow part runs against nobody.
+                self.service.fetch(prepared)
+                with self._open_book(book_id) as book:
+                    report = self.service.store(book, prepared)
                 reports[book_id] = report
                 if report.problems:
                     log.warning("quotes for book %s: %s", book_id, report.summary())

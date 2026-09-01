@@ -640,8 +640,14 @@ export interface paths {
         readonly put?: never;
         /**
          * Fetch quotes now, optionally backfilling
-         * @description Runs synchronously under the book's lock and returns the report. A
-         *     provider failing is a problem in the report, not an error response.
+         * @description Runs synchronously and returns the report. A provider failing is a
+         *     problem in the report, not an error response.
+         *
+         *     Not a ``WritableBook`` dependency on purpose: that would hold the book's
+         *     lock for the whole request, network calls included, and a provider that
+         *     takes a minute would hold up every other request on the book for a minute.
+         *     The lock is taken twice, briefly -- to plan, and to store -- and the
+         *     providers are asked in between with the book free.
          */
         readonly post: operations["fetch_quotes_books__book_id__quotes_fetch_post"];
         readonly delete?: never;

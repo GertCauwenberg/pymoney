@@ -71,6 +71,78 @@ class TestImportUpload:
         assert "could not be imported" in response.json()["detail"]
         assert user.get("/books").json() == []
 
+    def test_any_failure_leaves_no_book_behind(self, user: Client, kmy, monkeypatch):
+        """Not only a bad file: a bug in the importer, a disk error, anything.
+        Before, only three exception types were cleaned up after; everything
+        else escaped between creating the book and granting the owner, leaving
+        a book nobody could see or delete."""
+        from pymoney.api.routers import imports
+        from pymoney.store import schema
+
+        def exploding(*args, **kwargs):
+            raise OSError("disk on fire")
+
+        monkeypatch.setattr(imports, "import_kmymoney", exploding)
+        with pytest.raises(OSError):
+            upload(user, kmy)
+        assert user.get("/books").json() == []
+        # Not merely hidden behind a missing grant: the rows are gone.
+        from sqlalchemy import func, select
+
+        with user.http.app.state.engine.connect() as conn:
+            assert (
+                conn.execute(select(func.count()).select_from(schema.books)).scalar_one()
+                == 0
+            )
+        assert user.http.app.state.registry.known_ids() == ()
+
+    def test_the_owner_grant_is_written_with_the_book(
+        self, user: Client, kmy, monkeypatch
+    ):
+        """The grant is part of creating the book, not a step after importing:
+        should the cleanup itself never run (the process killed mid-import),
+        what is left is a book its owner can see and delete."""
+        from pymoney.api.routers import imports
+        from pymoney.store.grants import grants_for
+
+        engine = user.http.app.state.engine
+        seen: list[list[tuple[str, str]]] = []
+
+        def spying(path, book, options=None):
+            # At import time -- right after create() -- the grant already exists.
+            with engine.connect() as conn:
+                seen.append(grants_for(conn, book.id))
+            raise RuntimeError("killed mid-import")
+
+        monkeypatch.setattr(imports, "import_kmymoney", spying)
+        with pytest.raises(RuntimeError):
+            upload(user, kmy)
+        assert seen == [[("owner@example.invalid", "owner")]]
+
+    def test_a_gzip_bomb_is_refused(self, user: Client, tmp_path):
+        user.http.app.state.settings.max_upload_mb = 1
+        filler = (
+            b'<?xml version="1.0"?><KMYMONEY-FILE><!-- ' + b"0" * (64 * 1024**2) + b" -->"
+        )
+        bomb = tmp_path / "bomb.kmy"
+        bomb.write_bytes(gzip.compress(filler, compresslevel=1))
+        assert bomb.stat().st_size < 1024**2
+        response = upload(user, bomb)
+        assert response.status_code == 422
+        assert "inflates past" in response.json()["detail"]
+        assert user.get("/books").json() == []
+
+    def test_hostile_xml_is_refused(self, user: Client, tmp_path):
+        evil = tmp_path / "evil.kmy"
+        evil.write_text(
+            '<?xml version="1.0"?><!DOCTYPE k [<!ENTITY x SYSTEM "file:///etc/passwd">]>'
+            '<KMYMONEY-FILE><ACCOUNTS><ACCOUNT id="A" name="&x;"/></ACCOUNTS></KMYMONEY-FILE>'
+        )
+        response = upload(user, evil)
+        assert response.status_code == 422
+        assert "never needs" in response.json()["detail"]
+        assert user.get("/books").json() == []
+
     def test_too_large_is_refused_early(self, user: Client, tmp_path, monkeypatch):
         user.http.app.state.settings.max_upload_mb = 1
         big = tmp_path / "big.kmy"

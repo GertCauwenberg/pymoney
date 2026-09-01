@@ -27,14 +27,13 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-store = ["sqlalchemy>=2.0.30", "alembic>=1.13"]
+store = ["sqlalchemy>=2.0.30", "alembic>=1.13", "defusedxml>=0.7"]
 api = [
     "pymoney-core[store]",
     "fastapi>=0.115",
     "pydantic>=2.9",
     "pydantic-settings>=2.5",
     "uvicorn[standard]>=0.30",
-    # File uploads (the KMyMoney import endpoint).
     "python-multipart>=0.0.9",
 ]
 postgres = ["psycopg[binary]>=3.1", "psycopg2-binary>=2.9"]

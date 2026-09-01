@@ -8449,7 +8449,7 @@
     },
     "/books/{book_id}/quotes/fetch": {
       "post": {
-        "description": "Runs synchronously under the book's lock and returns the report. A\nprovider failing is a problem in the report, not an error response.",
+        "description": "Runs synchronously and returns the report. A provider failing is a\nproblem in the report, not an error response.\n\nNot a ``WritableBook`` dependency on purpose: that would hold the book's\nlock for the whole request, network calls included, and a provider that\ntakes a minute would hold up every other request on the book for a minute.\nThe lock is taken twice, briefly -- to plan, and to store -- and the\nproviders are asked in between with the book free.",
         "operationId": "fetch_quotes_books__book_id__quotes_fetch_post",
         "parameters": [
           {

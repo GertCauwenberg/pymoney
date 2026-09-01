@@ -109,6 +109,44 @@ class TestFetch:
         last = client.get(f"/books/{ledger.book_id}/quotes/last").json()
         assert last["stored"] == 2 and "2 stored" in last["summary"]
 
+    def test_the_book_is_free_while_the_provider_is_asked(self, ledger: Ledger):
+        """A provider can take a minute; the per-book lock must not be held
+        through that, or every other request on the book waits a minute too.
+        Taking the registry's lock from inside the provider proves it is free
+        -- held, this would deadlock (timeout) rather than pass."""
+        client = ledger.client
+        self._usd(ledger)
+        fake = client.http.app.state.fake_provider
+        registry = client.http.app.state.registry
+        from uuid import UUID
+
+        lock = registry._lock_for(UUID(ledger.book_id))
+        today = date(2026, 1, 1)
+        fake.table["USD"] = [q(today - timedelta(days=1), "1.09")]
+        seen: list[bool] = []
+        real_fetch = fake.fetch
+
+        def fetch(request, http):
+            free = lock.acquire(timeout=2)
+            seen.append(free)
+            if free:
+                lock.release()
+            return real_fetch(request, http)
+
+        fake.fetch = fetch
+        try:
+            response = client.post(f"/books/{ledger.book_id}/quotes/fetch", json={})
+        finally:
+            fake.fetch = real_fetch
+        assert response.status_code == 200, response.text
+        assert seen == [True]
+        assert response.json()["stored"] == 1
+        # And the change log names who asked.
+        changes = client.get(
+            f"/books/{ledger.book_id}/changes", params={"since": 0}
+        ).json()
+        assert changes["batches"][-1]["actor"] == "owner@example.invalid"
+
     def test_a_run_again_changes_nothing(self, ledger: Ledger):
         client = ledger.client
         self._usd(ledger)

@@ -13,15 +13,11 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from sqlalchemy import Engine
 
 from ...core.errors import PyMoneyError
 from ...importers.kmymoney import ImportOptions, import_kmymoney
 from ...importers.kmymoney.parser import KmyFormatError
-from ...store import write_transaction
-from ...store.admin import delete_book
-from ...store.grants import grant
-from ..deps import CurrentUser, get_engine, get_registry, get_settings_dep
+from ..deps import CurrentUser, get_registry, get_settings_dep
 from ..registry import BookRegistry
 from ..schemas import BookOut, ImportOut, ImportProblemOut
 from ..settings import Settings
@@ -43,7 +39,6 @@ CHUNK = 1024 * 1024
 )
 def import_kmymoney_file(
     actor: CurrentUser,
-    engine: Annotated[Engine, Depends(get_engine)],
     registry: Annotated[BookRegistry, Depends(get_registry)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
     file: Annotated[UploadFile, File(description="A .kmy file, gzipped or plain XML.")],
@@ -69,26 +64,42 @@ def import_kmymoney_file(
                     )
                 out.write(chunk)
 
-        book = registry.create(name=name.strip(), base_currency=None, actor=actor.subject)
+        # The uploader owns the book from the moment it exists (the grant is
+        # part of BookRegistry.create), so even if the cleanup below could not
+        # run -- the process killed mid-import -- what is left is a book its
+        # owner can see and delete, never one nobody can reach.
+        book = registry.create(
+            name=name.strip(),
+            base_currency=None,
+            actor=actor.subject,
+            owner=actor.subject,
+        )
         try:
             with registry.open(book.id) as opened:
                 report = import_kmymoney(
                     path,
                     opened,
                     options=ImportOptions(
-                        adjust_rounding=rounding_adjustments, skip_prices=skip_prices
+                        adjust_rounding=rounding_adjustments,
+                        skip_prices=skip_prices,
+                        # The upload limit bounds the *compressed* file; this
+                        # bounds what it may inflate to. Real ledgers gzip
+                        # about 10:1; forty times the limit is generous, and a
+                        # bomb is not a ledger.
+                        max_xml_bytes=limit * 40,
                     ),
                 )
-        except (KmyFormatError, PyMoneyError, ValueError) as exc:
-            registry.forget(book.id)
-            with write_transaction(engine) as conn:
-                delete_book(conn, book.id)
-            raise HTTPException(
-                status_code=UNPROCESSABLE, detail=f"the file could not be imported: {exc}"
-            ) from exc
+        except BaseException as exc:
+            # Whatever went wrong -- a bad file, a bug, a disk full, the client
+            # gone -- a failed import leaves no book behind.
+            registry.discard(book.id)
+            if isinstance(exc, KmyFormatError | PyMoneyError | ValueError):
+                raise HTTPException(
+                    status_code=UNPROCESSABLE,
+                    detail=f"the file could not be imported: {exc}",
+                ) from exc
+            raise
 
-    with write_transaction(engine) as conn:
-        grant(conn, book.id, actor.subject, "owner")
     with registry.open(book.id) as opened:
         out_book = BookOut.of(opened.settings, opened.revision, "owner")
     return ImportOut(
