@@ -114,10 +114,19 @@ describe("ApiClient", () => {
     expect(error.message).toBe("start: Field required");
   });
 
-  it("reports a 401 to the app", async () => {
-    const { fetch } = fakeFetch([{ status: 401, body: { detail: "Not authenticated" } }]);
+  it("reports a 401 to the app -- except from the session probe", async () => {
+    const { fetch } = fakeFetch([
+      { status: 401, body: { detail: "Not authenticated" } },
+      { status: 401, body: { detail: "Not authenticated" } },
+    ]);
     const onUnauthorized = vi.fn();
     const api = new ApiClient({ baseUrl: "/api", fetch, onUnauthorized });
+    // An ordinary call losing its session drops the app to the login page.
+    await expect(api.books()).rejects.toMatchObject({ status: 401 });
+    expect(onUnauthorized).toHaveBeenCalledOnce();
+    // me() *asks* whether a session exists: a 401 is its answer, not an event.
+    // Otherwise a cookie-less probe racing a login would wipe the session the
+    // login just established.
     await expect(api.me()).rejects.toMatchObject({ status: 401, message: "Not authenticated" });
     expect(onUnauthorized).toHaveBeenCalledOnce();
   });

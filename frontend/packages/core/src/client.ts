@@ -206,7 +206,7 @@ export class ApiClient {
 
   // -- plumbing ----------------------------------------------------------
 
-  async request<T>(method: string, path: string, body?: unknown, idempotencyKey?: string): Promise<T> {
+  async request<T>(method: string, path: string, body?: unknown, idempotencyKey?: string, options?: { notifyUnauthorized?: boolean }): Promise<T> {
     const headers: Record<string, string> = { Accept: "application/json" };
     const { bearer, csrf } = this.auth.get();
     if (bearer) headers["Authorization"] = `Bearer ${bearer}`;
@@ -220,7 +220,7 @@ export class ApiClient {
 
     if (!response.ok) {
       const error = await ApiError.fromResponse(response);
-      if (error.status === 401) this.onUnauthorized?.();
+      if (error.status === 401 && options?.notifyUnauthorized !== false) this.onUnauthorized?.();
       throw error;
     }
     if (response.status === 204) return undefined as T;
@@ -321,7 +321,11 @@ export class ApiClient {
   }
 
   me(): Promise<User> {
-    return this.get<User>("/auth/me");
+    // The probe that *asks* whether a session exists: a 401 here is its
+    // answer, not "the session died". Without this, a cookie-less /me racing
+    // a login or activation would fire onUnauthorized and wipe the session
+    // that was just established.
+    return this.request<User>("GET", "/auth/me", undefined, undefined, { notifyUnauthorized: false });
   }
 
   /** Change the display name or the language, stored with the account. */

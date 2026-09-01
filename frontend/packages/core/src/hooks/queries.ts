@@ -82,14 +82,22 @@ export function useSession() {
   });
 }
 
+/**
+ * A fresh session must not be overwritten by a stale answer: a `GET /auth/me`
+ * started *before* the login/activation (without the cookie) can resolve
+ * *after* it and write `null` over the user. Cancel anything in flight first.
+ */
+async function rememberSession(qc: ReturnType<typeof useQueryClient>, user: User): Promise<void> {
+  await qc.cancelQueries({ queryKey: keys.session });
+  qc.setQueryData(keys.session, user);
+}
+
 export function useLogin() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (credentials: LoginIn) => api.login(credentials),
-    onSuccess: (session) => {
-      qc.setQueryData(keys.session, session.user);
-    },
+    onSuccess: (session) => rememberSession(qc, session.user),
   });
 }
 
@@ -98,9 +106,7 @@ export function useRegister() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (details: RegisterIn) => api.register(details),
-    onSuccess: (result) => {
-      if (!isPending(result)) qc.setQueryData(keys.session, result.user);
-    },
+    onSuccess: (result) => (isPending(result) ? undefined : rememberSession(qc, result.user)),
   });
 }
 
@@ -109,7 +115,7 @@ export function useActivate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (token: string) => api.activate(token),
-    onSuccess: (session) => qc.setQueryData(keys.session, session.user),
+    onSuccess: (session) => rememberSession(qc, session.user),
   });
 }
 
@@ -128,7 +134,7 @@ export function useResetPassword() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ token, password }: { token: string; password: string }) => api.resetPassword(token, password),
-    onSuccess: (session) => qc.setQueryData(keys.session, session.user),
+    onSuccess: (session) => rememberSession(qc, session.user),
   });
 }
 
