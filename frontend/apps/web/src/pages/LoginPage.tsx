@@ -8,6 +8,7 @@ import { Link, Navigate, useLocation } from "react-router-dom";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { LanguageSwitch } from "../components/LanguageSwitch";
 import { Field } from "../components/fields";
+import { Logo } from "../components/Logo";
 
 export function LoginPage() {
   const t = useT();
@@ -43,7 +44,7 @@ export function LoginPage() {
     return (
       <main className="page page--narrow">
         <header className="topbar">
-        <h1 className="brand">PyMoney</h1>
+        <h1 className="brand"><Logo />PyMoney</h1>
         <LanguageSwitch />
       </header>
         <div className="card">
@@ -78,7 +79,7 @@ export function LoginPage() {
   return (
     <main className="page page--narrow">
       <header className="topbar">
-        <h1 className="brand">PyMoney</h1>
+        <h1 className="brand"><Logo />PyMoney</h1>
         <LanguageSwitch />
       </header>
       <form className="card" onSubmit={submit}>

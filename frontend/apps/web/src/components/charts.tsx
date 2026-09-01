@@ -14,20 +14,18 @@ import { useT } from "@pymoney/core/hooks";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-/** A palette that stays apart on a white page and in print. */
+/** The Okabe-Ito palette: built to stay apart for the common kinds of
+ * colour-blindness, and it still does on a white page and in print. Darkened
+ * yellow, because Okabe-Ito's #F0E442 vanishes on white. */
 export const PALETTE = [
-  "#2563eb",
-  "#f97316",
-  "#16a34a",
-  "#dc2626",
-  "#7c3aed",
-  "#0891b2",
-  "#ca8a04",
-  "#db2777",
-  "#4b5563",
-  "#65a30d",
-  "#9333ea",
-  "#0d9488",
+  "#0072b2", // blue
+  "#e69f00", // orange
+  "#009e73", // bluish green
+  "#d55e00", // vermillion
+  "#56b4e9", // sky blue
+  "#cc79a7", // reddish purple
+  "#b0a000", // yellow, darkened for white backgrounds
+  "#6b7280", // grey
 ];
 
 function arc(cx: number, cy: number, r: number, from: number, to: number): string {

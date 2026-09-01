@@ -1,41 +1,74 @@
-/* PyMoney web. Plain CSS, no framework: a ledger wants tabular digits and
-   quiet colours, not a design system. Light and dark follow the OS. */
+/* PyMoney web. Plain CSS, no framework: a ledger wants tabular digits, but it
+   does not have to be grey. The palette leans on the Okabe-Ito colour set --
+   blue, orange/vermillion, teal, amber -- chosen to stay apart for the common
+   kinds of colour-blindness, and colour is always a *second* cue: a negative
+   amount keeps its minus sign, a reconcile state keeps its letter, a chart
+   keeps its legend. Light and dark follow the OS. */
 
 :root {
-  --bg: #fafaf9;
+  --bg: #f6f7f9;
   --surface: #ffffff;
-  --text: #1c1917;
-  --muted: #6b6560;
-  --border: #e7e5e4;
-  --border-strong: #c9c5c1;
-  --accent: #1d4ed8;
+  --surface-raised: #ffffff;
+  --text: #19212c;
+  --muted: #5d6b7c;
+  --border: #e3e7ec;
+  --border-strong: #bcc6d2;
+  --accent: #0b62b8; /* Okabe-Ito blue, deepened for AA contrast on white */
+  --accent-strong: #084a8c;
+  --accent-soft: #e8f1fb;
   --accent-text: #ffffff;
-  --negative: #b91c1c;
-  --warning-bg: #fef3c7;
-  --warning-text: #78350f;
-  --error-bg: #fee2e2;
-  --error-text: #7f1d1d;
-  --row-hover: #f5f5f4;
-  --radius: 6px;
+  --ink: #122a44; /* the top bar's deep blue-ink */
+  --ink-2: #1d4370;
+  --ink-text: #f2f7fd;
+  --negative: #bc4700; /* vermillion: reads "warm", not red-vs-green */
+  --negative-soft: #fbeee4;
+  --positive: #00664f; /* bluish teal, used only where the sign is shown too */
+  --warning-bg: #fdf1d7;
+  --warning-border: #e0a90c;
+  --warning-text: #6e4e00;
+  --error-bg: #fbe9dd;
+  --error-border: #c95e1c;
+  --error-text: #7e3200;
+  --row-hover: #eef3f9;
+  --row-tint: #f3f6fa;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-1: 0 1px 2px rgba(16, 33, 54, 0.06), 0 1px 6px rgba(16, 33, 54, 0.05);
+  --shadow-2: 0 4px 14px rgba(16, 33, 54, 0.1), 0 1px 3px rgba(16, 33, 54, 0.08);
+  --topbar-grad: linear-gradient(120deg, #0d2238 0%, #133a63 55%, #0b62b8 130%);
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #161412;
-    --surface: #1f1c1a;
-    --text: #ece9e6;
-    --muted: #a39e98;
-    --border: #2e2a27;
-    --border-strong: #4a443f;
-    --accent: #60a5fa;
-    --accent-text: #0b1220;
-    --negative: #f87171;
-    --warning-bg: #3b2f0b;
-    --warning-text: #fde68a;
-    --error-bg: #3f1212;
-    --error-text: #fecaca;
-    --row-hover: #26221f;
+    --bg: #0f141b;
+    --surface: #171e28;
+    --surface-raised: #1b2431;
+    --text: #e7ecf2;
+    --muted: #93a1b3;
+    --border: #263140;
+    --border-strong: #3d4c60;
+    --accent: #64aee8; /* sky blue: Okabe-Ito's light blue works on dark */
+    --accent-strong: #8cc5f0;
+    --accent-soft: #14283d;
+    --accent-text: #07111d;
+    --ink: #0b1622;
+    --ink-2: #13283f;
+    --ink-text: #e8f1fb;
+    --negative: #f2a15f; /* light orange keeps its distance from the teal */
+    --negative-soft: #32220f;
+    --positive: #57c4a3;
+    --warning-bg: #32280c;
+    --warning-border: #8a6d0b;
+    --warning-text: #f4d87c;
+    --error-bg: #371d0c;
+    --error-border: #a35324;
+    --error-text: #f6c49e;
+    --row-hover: #1d2836;
+    --row-tint: #161f2a;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.5);
+    --topbar-grad: linear-gradient(120deg, #0a1420 0%, #102c4a 55%, #14548f 130%);
   }
 }
 
@@ -56,6 +89,14 @@ body {
   line-height: 1.45;
   color: var(--text);
   background: var(--bg);
+}
+
+/* A thin ribbon of the brand gradient along the very top of every page. */
+body::before {
+  content: "";
+  display: block;
+  height: 4px;
+  background: linear-gradient(90deg, #0b62b8, #2a9d8f 45%, #e69f00 80%, #c95e1c);
 }
 
 a {
@@ -100,8 +141,31 @@ code {
   gap: 1.5rem;
   flex-wrap: wrap;
   padding: 0.6rem 1rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: var(--topbar-grad);
+  color: var(--ink-text);
+  border-bottom: 1px solid var(--ink-2);
+  box-shadow: var(--shadow-1);
+}
+.topbar .muted,
+.topbar__book {
+  color: var(--ink-text);
+}
+.topbar select {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink-text);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.topbar select option {
+  color: initial;
+  background: initial;
+}
+.topbar .btn {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--ink-text);
+}
+.topbar .btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
 }
 .topbar__left {
   display: flex;
@@ -110,6 +174,7 @@ code {
 }
 .topbar__book {
   font-weight: 600;
+  opacity: 0.9;
 }
 .topbar__user {
   margin-left: auto;
@@ -122,13 +187,31 @@ code {
   font-weight: 700;
   letter-spacing: 0.02em;
   text-decoration: none;
-  color: var(--text);
+  color: inherit;
   font-size: 1.1rem;
   margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.topbar .brand {
+  color: var(--ink-text);
+}
+.brand__mark {
+  width: 1.35em;
+  height: 1.35em;
+  flex: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
 }
 .page--narrow > .brand {
-  font-size: 1.6rem;
+  font-size: 1.7rem;
   margin-bottom: 1rem;
+  justify-content: center;
+  width: 100%;
+}
+.page--narrow > .brand .brand__mark {
+  width: 1.5em;
+  height: 1.5em;
 }
 
 .tabs {
@@ -137,16 +220,32 @@ code {
 }
 .tabs a {
   padding: 0.35rem 0.75rem;
-  border-radius: var(--radius);
+  border-radius: 999px;
   text-decoration: none;
-  color: var(--text);
+  color: rgba(242, 247, 253, 0.85);
 }
 .tabs a:hover {
-  background: var(--row-hover);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink-text);
 }
 .tabs a.active {
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--ink-text);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+/* The sub-tab row (Charts) sits on the page, not on the ink bar. */
+.tabs--sub a {
+  color: var(--muted);
+}
+.tabs--sub a:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+.tabs--sub a.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: none;
 }
 
 /* ---- cards & forms --------------------------------------------------- */
@@ -154,8 +253,9 @@ code {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: 1.25rem;
+  box-shadow: var(--shadow-1);
 }
 .cards {
   list-style: none;
@@ -177,6 +277,14 @@ code {
 }
 .card--link a:hover {
   background: var(--row-hover);
+}
+.card--link {
+  transition: box-shadow 120ms ease, transform 120ms ease;
+  border-left: 4px solid var(--accent);
+}
+.card--link:hover {
+  box-shadow: var(--shadow-2);
+  transform: translateY(-1px);
 }
 
 .field {
@@ -242,13 +350,13 @@ button:focus-visible {
   cursor: default;
 }
 .btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  border-color: var(--accent-strong);
   color: var(--accent-text);
+  box-shadow: var(--shadow-1);
 }
 .btn--primary:hover:not(:disabled) {
   filter: brightness(1.08);
-  background: var(--accent);
 }
 .btn--small {
   padding: 0.2rem 0.6rem;
@@ -283,9 +391,10 @@ button:focus-visible {
 }
 .chip--active,
 .chip--active:hover {
-  background: var(--accent);
+  background: var(--accent-soft);
   border-color: var(--accent);
-  color: var(--accent-text);
+  color: var(--accent);
+  font-weight: 600;
 }
 .presets {
   display: flex;
@@ -317,7 +426,8 @@ button:focus-visible {
   margin-bottom: 1rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
 }
 .toolbar .field {
   margin-bottom: 0.5rem;
@@ -336,10 +446,12 @@ button:focus-visible {
 .banner--error {
   background: var(--error-bg);
   color: var(--error-text);
+  border-left: 4px solid var(--error-border);
 }
 .banner--warning {
   background: var(--warning-bg);
   color: var(--warning-text);
+  border-left: 4px solid var(--warning-border);
 }
 .banner .btn {
   margin-left: auto;
@@ -376,6 +488,13 @@ button:focus-visible {
 .kpi {
   font-size: 1.05rem;
   margin: 1rem 0;
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
 }
 .kpi strong {
   font-variant-numeric: tabular-nums;
@@ -391,6 +510,7 @@ button:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  box-shadow: var(--shadow-1);
 }
 .report th,
 .report td {
@@ -405,6 +525,8 @@ button:focus-visible {
   letter-spacing: 0.04em;
   color: var(--muted);
   font-weight: 600;
+  background: var(--row-tint);
+  border-bottom: 2px solid var(--border-strong);
 }
 .report .num {
   text-align: right;
@@ -418,10 +540,12 @@ button:focus-visible {
   font-size: 0.95rem;
   font-weight: 700;
   padding-top: 0.8rem;
-  background: var(--bg);
+  background: var(--accent-soft);
+  border-left: 4px solid var(--accent);
+  color: var(--accent);
 }
 .report__section td {
-  background: var(--bg);
+  background: var(--accent-soft);
 }
 .report__total th,
 .report__total td {
@@ -430,8 +554,9 @@ button:focus-visible {
 .report__total--emphasis th,
 .report__total--emphasis td {
   font-size: 1.05rem;
-  border-top: 2px solid var(--text);
+  border-top: 2px solid var(--accent);
   border-bottom: none;
+  background: var(--accent-soft);
 }
 .report--compact th,
 .report--compact td {
@@ -466,8 +591,11 @@ button:focus-visible {
   font-weight: 700;
 }
 
+/* Colour is the second cue: the sign is always there too. Vermillion and
+   teal, not red and green, so they stay apart for deutan and protan eyes. */
 .money--negative {
   color: var(--negative);
+  font-weight: 500;
 }
 .money--zero {
   color: var(--muted);
@@ -582,16 +710,28 @@ button:focus-visible {
 }
 
 .reconcile {
-  display: inline-block;
-  min-width: 1.1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
   text-align: center;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--muted);
 }
-.reconcile--reconciled,
-.reconcile--frozen {
+.reconcile--cleared {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+.reconcile--reconciled {
+  background: var(--accent-soft);
   color: var(--accent);
+}
+.reconcile--frozen {
+  background: var(--ink);
+  color: var(--ink-text);
 }
 
 .load-more {
@@ -651,10 +791,13 @@ button:focus-visible {
 }
 .tabs__aside {
   margin-left: 0.75rem;
-  color: var(--muted) !important;
+  color: rgba(242, 247, 253, 0.6) !important;
+}
+.tabs__aside:hover {
+  color: var(--ink-text) !important;
 }
 .tabs__aside.active {
-  color: var(--accent-text) !important;
+  color: var(--ink) !important;
 }
 .sharing__form {
   margin-top: 1.5rem;
@@ -737,7 +880,7 @@ button:focus-visible {
   padding-left: 1.25rem;
 }
 .prices__row--user td:first-child {
-  border-left: 3px solid var(--accent);
+  border-left: 4px solid var(--accent);
 }
 .danger {
   margin-top: 2rem;
@@ -793,7 +936,7 @@ button:focus-visible {
   vertical-align: -0.1em;
 }
 .pie__legend-row--active td {
-  background: #f3f4f6;
+  background: var(--row-hover);
 }
 .line__svg {
   width: 100%;
@@ -821,4 +964,60 @@ button:focus-visible {
 }
 .period-table td.num {
   white-space: nowrap;
+}
+
+
+/* ---- the look of the door -------------------------------------------- */
+
+.page--narrow {
+  position: relative;
+}
+.page--narrow::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60rem 30rem at 15% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    radial-gradient(50rem 26rem at 110% 10%, color-mix(in srgb, #e69f00 12%, transparent), transparent 60%);
+}
+.page--narrow > .card {
+  box-shadow: var(--shadow-2);
+}
+
+/* Positive running balances and gains may wear the teal; the sign (or the
+   absence of a minus) still carries the meaning on its own. */
+.money--positive-strong {
+  color: var(--positive);
+  font-weight: 600;
+}
+
+@media print {
+  body::before,
+  .page--narrow::before {
+    display: none;
+  }
+}
+
+/* ---- polish ------------------------------------------------------------ */
+
+a.btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+a.btn--link {
+  text-decoration: underline;
+}
+
+/* Zebra stripes where rows are many and look alike. */
+.register tbody tr:nth-child(even),
+.line__table tbody tr:nth-child(even),
+.period-table tbody tr:nth-child(even) {
+  background: var(--row-tint);
+}
+.register tbody tr:hover,
+.line__table tbody tr:hover,
+.period-table tbody tr:hover {
+  background: var(--row-hover);
 }

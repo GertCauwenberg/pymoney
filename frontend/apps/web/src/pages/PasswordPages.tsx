@@ -5,6 +5,7 @@ import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Field } from "../components/fields";
+import { Logo } from "../components/Logo";
 
 /** Ask for a reset link. The answer is the same whether the address exists. */
 export function ForgotPasswordPage() {
@@ -15,7 +16,7 @@ export function ForgotPasswordPage() {
 
   return (
     <main className="page page--narrow">
-      <h1 className="brand">{t("PyMoney")}</h1>
+      <h1 className="brand"><Logo />{t("PyMoney")}</h1>
       {forgot.isSuccess ? (
         <div className="card">
           <h2>{t("Check your email")}</h2>
@@ -68,7 +69,7 @@ export function ResetPasswordPage() {
 
   return (
     <main className="page page--narrow">
-      <h1 className="brand">{t("PyMoney")}</h1>
+      <h1 className="brand"><Logo />{t("PyMoney")}</h1>
       <form
         className="card"
         onSubmit={(e) => {
@@ -127,7 +128,7 @@ export function ActivatePage() {
 
   return (
     <main className="page page--narrow">
-      <h1 className="brand">{t("PyMoney")}</h1>
+      <h1 className="brand"><Logo />{t("PyMoney")}</h1>
       <div className="card">
         <h2>{t("Activating your account")}</h2>
         {!token && (

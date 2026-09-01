@@ -43,6 +43,7 @@ from ...api.schemas import (
 )
 from ..client import ApiError, LedgerClient, OfflineError
 from ..i18n import _, current_locale
+from .theme import amount_brush
 from .transaction_dialog import TransactionDialog
 
 __all__ = ["Executor", "MainWindow", "SyncExecutor", "ThreadedExecutor"]
@@ -308,6 +309,11 @@ class MainWindow(QMainWindow):
                     else ""
                 )
                 item = QTreeWidgetItem([label, text])
+                if amount is not None:
+                    # The minus sign is in the text; vermillion only repeats it.
+                    brush = amount_brush(amount.minor * natural_sign(a.account_class))
+                    if brush is not None:
+                        item.setForeground(1, brush)
                 item.setData(0, Qt.ItemDataRole.UserRole, a.id)
                 item.setTextAlignment(
                     1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -372,6 +378,15 @@ class MainWindow(QMainWindow):
                     item.setTextAlignment(
                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                     )
+                    # The minus sign is in the text; vermillion only repeats it.
+                    signed = (
+                        row.quantity.minor
+                        if col == 4
+                        else (row.running_balance.minor if row.running_balance else 0)
+                    ) * sign
+                    brush = amount_brush(signed)
+                    if brush is not None:
+                        item.setForeground(brush)
                 self.register.setItem(i, col, item)
         closing = page.totals.closing
         if closing is not None and account is not None:

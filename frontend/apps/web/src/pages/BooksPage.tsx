@@ -10,6 +10,7 @@ import { Field } from "../components/fields";
 import { Loading } from "../components/Loading";
 import { ImportBookForm } from "./ImportBookForm";
 import { NewBookForm } from "./NewBookForm";
+import { Logo } from "../components/Logo";
 
 export function BooksPage() {
   const t = useT();
@@ -42,7 +43,7 @@ export function BooksPage() {
   return (
     <main className="page page--narrow">
       <header className="topbar">
-        <h1 className="brand">{t("PyMoney")}</h1>
+        <h1 className="brand"><Logo />{t("PyMoney")}</h1>
         <div className="topbar__user">
           <LanguageSwitch />
           {session.data?.display_name || session.data?.email}

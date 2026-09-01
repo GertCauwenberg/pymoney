@@ -5,6 +5,7 @@ import { NavLink, Outlet, useParams } from "react-router-dom";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { LanguageSwitch } from "../components/LanguageSwitch";
 import { Loading } from "../components/Loading";
+import { Logo } from "../components/Logo";
 
 export interface BookContext {
   bookId: string;
@@ -44,6 +45,7 @@ export function BookShell() {
       <header className="topbar">
         <div className="topbar__left">
           <NavLink to="/books" state={{ pick: true }} className="brand" title={t("Your books")}>
+            <Logo />
             {t("PyMoney")}
           </NavLink>
           <span className="topbar__book" title={`revision ${book.data.revision}`}>

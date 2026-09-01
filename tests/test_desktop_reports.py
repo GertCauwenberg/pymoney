@@ -363,8 +363,9 @@ class TestCharts:
             "2026-03",
         ]
         names = [s.name() for s in window.chart.series()]
-        assert names == ["Net worth", "Assets", "Liabilities"]
-        net = window.chart.series()[0]
+        # Net worth last: it is drawn on top when it coincides with the assets.
+        assert names == ["Assets", "Liabilities", "Net worth"]
+        net = window.chart.series()[-1]
         assert net.count() == 3
         # January: 3000 - 900 - 900 + 900 (wallet) + 900 (shares at cost, no
         # quote yet -> 10 * 90 USD... no: ACME has no price before March).

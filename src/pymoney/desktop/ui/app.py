@@ -16,6 +16,7 @@ from ..remote import RemoteClient
 from ..transport import UrllibTransport
 from .login_dialog import LoginDialog, default_replica_path
 from .main_window import MainWindow
+from .theme import apply_theme
 
 __all__ = ["connect", "main"]
 
@@ -33,6 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName("PyMoney")
     app.setOrganizationName("PyMoney")
+    apply_theme(app)
     settings = QSettings()
     url = str(settings.value("server", "http://127.0.0.1:8000"))
     email = str(settings.value("email", ""))

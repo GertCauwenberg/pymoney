@@ -103,10 +103,10 @@ export function NetWorthReport() {
             commodity={report.data.target}
             locale={locale}
             series={[
-              { name: t("Assets"), values: points.map((p) => p.assets.minor), colour: "#16a34a" },
-              { name: t("Liabilities"), values: points.map((p) => -p.liabilities.minor), colour: "#dc2626" },
+              { name: t("Assets"), values: points.map((p) => p.assets.minor), colour: "#009e73" },
+              { name: t("Liabilities"), values: points.map((p) => -p.liabilities.minor), colour: "#d55e00" },
               // Last, so it is drawn on top when it coincides with the assets.
-              { name: t("Net worth"), values: points.map((p) => p.net_worth.minor), colour: "#2563eb" },
+              { name: t("Net worth"), values: points.map((p) => p.net_worth.minor), colour: "#0072b2" },
             ]}
           />
           <ValuationPanel conversions={report.data.conversions} unpriced={report.data.unpriced} target={report.data.target} />

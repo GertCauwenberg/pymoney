@@ -32,7 +32,7 @@ from PySide6.QtCharts import (
     QValueAxis,
 )
 from PySide6.QtCore import QDateTime, QPointF, Qt
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -64,6 +64,7 @@ from ..client import LedgerClient, ReportOptions
 from ..i18n import _
 from .main_window import Executor, ThreadedExecutor, format_amount
 from .reports import PERIOD_PRESETS, _pydate, _qdate, period_for
+from .theme import CHART_PALETTE
 
 __all__ = ["CHART_TITLES", "ChartKind", "ChartWindow", "open_chart", "pie_slices"]
 
@@ -365,11 +366,12 @@ class ChartWindow(QMainWindow):
         self.chart.setTitle(title)
         series = QPieSeries()
         total = sum(v for _, v in slices)
-        for label, value in slices:
+        for i, (label, value) in enumerate(slices):
             share = value / total if total else 0
             piece = series.append(
                 f"{label}  {self._amount_text(value, code)}  ({share:.0%})", value
             )
+            piece.setColor(QColor(CHART_PALETTE[i % len(CHART_PALETTE)]))
             piece.setLabelVisible(share >= 0.04)
         self.chart.addSeries(series)
         self.chart.legend().setVisible(True)
@@ -424,10 +426,12 @@ class ChartWindow(QMainWindow):
         self.chart.setTitle(_(CHART_TITLES[self.kind]))
         commodity = self._symbol_for.get(report.target)
         scale = commodity.minor_unit_factor if commodity else 100
+        # Assets first and the net-worth line last, drawn on top, in the same
+        # colours as the web app (green, vermillion, blue: Okabe-Ito).
         lines = {
-            _("Net worth"): [p.net_worth.minor for p in report.points],
-            _("Assets"): [p.assets.minor for p in report.points],
-            _("Liabilities"): [-p.liabilities.minor for p in report.points],
+            _("Assets"): ("#009e73", [p.assets.minor for p in report.points]),
+            _("Liabilities"): ("#d55e00", [-p.liabilities.minor for p in report.points]),
+            _("Net worth"): ("#0072b2", [p.net_worth.minor for p in report.points]),
         }
         x_axis = QDateTimeAxis()
         x_axis.setFormat("yyyy-MM-dd" if report.interval == "month" else "yyyy-MM")
@@ -437,9 +441,13 @@ class ChartWindow(QMainWindow):
         self.chart.addAxis(x_axis, Qt.AlignmentFlag.AlignBottom)
         self.chart.addAxis(y_axis, Qt.AlignmentFlag.AlignLeft)
         low = high = 0.0
-        for name, values in lines.items():
+        for name, (colour, values) in lines.items():
             series = QLineSeries()
             series.setName(name)
+            pen = series.pen()
+            pen.setColor(QColor(colour))
+            pen.setWidth(2)
+            series.setPen(pen)
             for point, value in zip(report.points, values, strict=True):
                 series.append(QPointF(_msecs(point.as_of), value / scale))
                 low, high = min(low, value / scale), max(high, value / scale)
