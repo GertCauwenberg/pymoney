@@ -22,8 +22,17 @@ from ..schemas import (
     BalanceSheetOut,
     HoldingsOut,
     IncomeStatementOut,
+    NetWorthSeriesOut,
+    PeriodTableOut,
+    ReportInterval,
 )
-from ..views import balance_sheet_out, holdings_out, income_statement_out
+from ..views import (
+    balance_sheet_out,
+    holdings_out,
+    income_statement_out,
+    net_worth_series_out,
+    period_table_out,
+)
 from ._shared import set_revision
 
 router = APIRouter(prefix="/books/{book_id}/reports", tags=["reports"])
@@ -111,6 +120,65 @@ def get_holdings(
     set_revision(response, book)
     policy = _policy(book, as_of, target_id, known_before, None, None)
     return holdings_out(book, policy, include_empty=include_empty, strict=strict)
+
+
+@router.get(
+    "/net-worth",
+    response_model=NetWorthSeriesOut,
+    summary="Net worth at the end of every period",
+)
+def get_net_worth(
+    book: ReadableBook,
+    response: Response,
+    start: date,
+    end: date | None = Query(default=None, description="Inclusive; defaults to today."),
+    interval: ReportInterval = Query(default="month"),
+    target_id: UUID | None = Query(default=None),
+    known_before: datetime | None = Query(default=None),
+    sources: list[str] | None = Query(default=None),
+    max_staleness_days: int | None = Query(default=None, ge=0),
+    strict: bool = Query(default=True),
+) -> NetWorthSeriesOut:
+    """Each point is valued at its own date: what the book was worth then."""
+    set_revision(response, book)
+    policy = _policy(book, end, target_id, known_before, sources, max_staleness_days)
+    return net_worth_series_out(
+        book, policy, start=start, interval=interval, strict=strict
+    )
+
+
+@router.get(
+    "/period-table",
+    response_model=PeriodTableOut,
+    summary="Income and expenses per account, per period",
+)
+def get_period_table(
+    book: ReadableBook,
+    response: Response,
+    start: date,
+    end: date | None = Query(
+        default=None,
+        description="Inclusive, and also the valuation date for translation.",
+    ),
+    interval: ReportInterval = Query(default="month"),
+    target_id: UUID | None = Query(default=None),
+    known_before: datetime | None = Query(default=None),
+    sources: list[str] | None = Query(default=None),
+    max_staleness_days: int | None = Query(default=None, ge=0),
+    include_closed: bool = Query(default=False),
+    strict: bool = Query(default=True),
+) -> PeriodTableOut:
+    """Every column is translated at one rate -- the end date -- like the income statement."""
+    set_revision(response, book)
+    policy = _policy(book, end, target_id, known_before, sources, max_staleness_days)
+    return period_table_out(
+        book,
+        policy,
+        start=start,
+        interval=interval,
+        include_closed=include_closed,
+        strict=strict,
+    )
 
 
 __all__ = ["router"]

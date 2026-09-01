@@ -14,8 +14,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from fractions import Fraction
+from typing import Literal
 from uuid import UUID
 
 from .account import Account, AccountClass, AccountType
@@ -32,11 +33,20 @@ __all__ = [
     "Holding",
     "HoldingsReport",
     "IncomeStatement",
+    "Interval",
+    "NetWorthPoint",
+    "NetWorthSeries",
+    "Period",
+    "PeriodRow",
+    "PeriodTable",
     "Valuer",
     "account_tree",
     "balance_sheet",
     "holdings",
     "income_statement",
+    "net_worth_series",
+    "period_table",
+    "periods_between",
 ]
 
 
@@ -514,6 +524,290 @@ def holdings(
         target=valuer.target,
         policy=policy,
         positions=tuple(positions),
+        conversions=valuer.conversions,
+        unpriced=valuer.unpriced,
+    )
+
+
+# ==========================================================================
+# over time: the same figures, per period
+# ==========================================================================
+Interval = Literal["month", "quarter", "year"]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Period:
+    """One column of a time series: a closed date range with a short label."""
+
+    start: date
+    end: date
+    label: str
+    """``2026-03`` for a month, ``2026-Q1`` for a quarter, ``2026`` for a year."""
+
+
+def _period_start(day: date, interval: Interval) -> date:
+    if interval == "month":
+        return day.replace(day=1)
+    if interval == "quarter":
+        return day.replace(month=day.month - (day.month - 1) % 3, day=1)
+    return day.replace(month=1, day=1)
+
+
+def _next_start(start: date, interval: Interval) -> date:
+    months = {"month": 1, "quarter": 3, "year": 12}[interval]
+    year, month = divmod(start.month - 1 + months, 12)
+    return start.replace(year=start.year + year, month=month + 1)
+
+
+def _label(start: date, interval: Interval) -> str:
+    if interval == "month":
+        return f"{start.year}-{start.month:02d}"
+    if interval == "quarter":
+        return f"{start.year}-Q{(start.month - 1) // 3 + 1}"
+    return str(start.year)
+
+
+def periods_between(
+    start: date, end: date, interval: Interval = "month"
+) -> tuple[Period, ...]:
+    """Calendar periods covering ``start``..``end`` inclusive.
+
+    The first and last are clipped to the range, so a report from the 15th
+    counts from the 15th: a column is what happened in the window, never more.
+    """
+    if start > end:
+        raise ValidationError(f"start {start} is after end {end}")
+    out: list[Period] = []
+    cursor = _period_start(start, interval)
+    while cursor <= end:
+        following = _next_start(cursor, interval)
+        out.append(
+            Period(
+                start=max(cursor, start),
+                end=min(following - timedelta(days=1), end),
+                label=_label(cursor, interval),
+            )
+        )
+        cursor = following
+    return tuple(out)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NetWorthPoint:
+    as_of: date
+    label: str
+    assets: Amount
+    liabilities: Amount
+    """Signed as stored, so normally negative."""
+    net_worth: Amount
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NetWorthSeries:
+    """Assets, liabilities and net worth at the end of every period."""
+
+    start: date
+    end: date
+    interval: Interval
+    target: Commodity
+    policy: ValuationPolicy
+    points: tuple[NetWorthPoint, ...]
+    conversions: tuple[Conversion, ...] = ()
+    """Every distinct rate used at any point, so the line can be traced."""
+    unpriced: tuple[Commodity, ...] = ()
+
+
+def net_worth_series(
+    book: Book,
+    policy: ValuationPolicy,
+    *,
+    start: date,
+    interval: Interval = "month",
+    strict: bool = True,
+) -> NetWorthSeries:
+    """The balance sheet's three totals at the end of each period up to ``policy.as_of``.
+
+    Each point is valued *as of its own date* -- that is what a net-worth line
+    means: what it was worth then, at the rates known for then -- under the same
+    knowledge cutoff and source preferences for every point, so the series is
+    as reproducible as a single balance sheet.
+    """
+    end = policy.as_of
+    if end is None:
+        raise ValidationError("a net worth series needs policy.as_of as its end date")
+    by_class = {
+        klass: [a.id for a in book.accounts(account_class=klass)]
+        for klass in (AccountClass.ASSET, AccountClass.LIABILITY)
+    }
+    target = Valuer(book, policy, strict=strict).target
+    points: list[NetWorthPoint] = []
+    conversions: dict[tuple, Conversion] = {}
+    unpriced: dict[UUID, Commodity] = {}
+    for period in periods_between(start, end, interval):
+        dated = policy.for_date(period.end)
+        valuer = Valuer(book, dated, strict=strict)
+        own = book.balances_by_account(end=period.end)
+        totals = {
+            klass: valuer.value_amount(Balances(own[i] for i in ids))
+            for klass, ids in by_class.items()
+        }
+        points.append(
+            NetWorthPoint(
+                as_of=period.end,
+                label=period.label,
+                assets=totals[AccountClass.ASSET],
+                liabilities=totals[AccountClass.LIABILITY],
+                net_worth=totals[AccountClass.ASSET] + totals[AccountClass.LIABILITY],
+            )
+        )
+        for conversion in valuer.conversions:
+            conversions.setdefault(tuple(p.id for p in conversion.prices), conversion)
+        for commodity in valuer.unpriced:
+            unpriced.setdefault(commodity.id, commodity)
+    return NetWorthSeries(
+        start=start,
+        end=end,
+        interval=interval,
+        target=target,
+        policy=policy,
+        points=tuple(points),
+        conversions=tuple(
+            sorted(
+                conversions.values(),
+                key=lambda c: (
+                    c.base.code,
+                    c.prices[0].effective_date if c.prices else date.min,
+                ),
+            )
+        ),
+        unpriced=tuple(sorted(unpriced.values(), key=lambda c: c.code)),
+    )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PeriodRow:
+    """One account across the columns: subtree movement per period, and the total."""
+
+    account: Account
+    path: str
+    depth: int
+    cells: tuple[Amount, ...]
+    """Signed as stored, one per column."""
+    total: Amount
+    sign: int
+
+    @property
+    def display_cells(self) -> tuple[Amount, ...]:
+        return tuple(c * self.sign for c in self.cells)
+
+    @property
+    def display_total(self) -> Amount:
+        return self.total * self.sign
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PeriodTable:
+    """Income and expense accounts down, periods across: the spreadsheet view."""
+
+    start: date
+    end: date
+    interval: Interval
+    target: Commodity
+    policy: ValuationPolicy
+    columns: tuple[Period, ...]
+    rows: tuple[PeriodRow, ...]
+    income: tuple[Amount, ...]
+    """Per column, signed as stored (normally negative); the last is the total."""
+    expenses: tuple[Amount, ...]
+    conversions: tuple[Conversion, ...] = ()
+    unpriced: tuple[Commodity, ...] = ()
+
+    @property
+    def net(self) -> tuple[Amount, ...]:
+        """Surplus per column, positive when more came in than went out."""
+        return tuple(-(i + e) for i, e in zip(self.income, self.expenses, strict=True))
+
+
+def period_table(
+    book: Book,
+    policy: ValuationPolicy,
+    *,
+    start: date,
+    interval: Interval = "month",
+    include_closed: bool = False,
+    strict: bool = True,
+) -> PeriodTable:
+    """Income and expenses per period from ``start`` to ``policy.as_of``.
+
+    Like the income statement, every column is translated at one rate -- the
+    policy's ``as_of`` -- so a row can be read across without exchange-rate
+    noise between the months. Rows follow the account tree, each holding its
+    subtree's movement, so a parent reads as the sum of its children.
+    """
+    end = policy.as_of
+    if end is None:
+        raise ValidationError("a period table needs policy.as_of as its end date")
+    columns = periods_between(start, end, interval)
+    valuer = Valuer(book, policy, strict=strict)
+    # Income above expenses, then by name: the order a P&L reads in.
+    roots = sorted(
+        (a for a in book.roots() if not a.account_class.is_balance_sheet),
+        key=lambda a: (a.account_class is not AccountClass.INCOME, a.name),
+    )
+    per_column: list[dict[UUID, Balances]] = []
+    own_per_column: list[dict[UUID, Amount]] = []
+    for column in columns:
+        own = book.balances_by_account(start=column.start, end=column.end)
+        own_per_column.append(own)
+        per_column.append(_subtree_totals(book, own, roots))
+
+    def summed(cells: Iterable[Amount]) -> Amount:
+        # The total is the sum of the booked cells, not a fresh valuation of
+        # the whole: a spreadsheet row must add up to its own last column.
+        total = Amount.zero(valuer.target)
+        for cell in cells:
+            total = total + cell
+        return total
+
+    rows: list[PeriodRow] = []
+
+    def emit(account: Account, depth: int) -> None:
+        if account.closed and not include_closed:
+            return
+        cells = tuple(valuer.value_amount(t[account.id]) for t in per_column)
+        rows.append(
+            PeriodRow(
+                account=account,
+                path=book.path(account),
+                depth=depth,
+                cells=cells,
+                total=summed(cells),
+                sign=account.report_sign,
+            )
+        )
+        for child in book.children(account.id):
+            emit(child, depth + 1)
+
+    for root in roots:
+        emit(root, 0)
+
+    def class_totals(klass: AccountClass) -> tuple[Amount, ...]:
+        ids = [a.id for a in book.accounts(account_class=klass)]
+        per = [
+            valuer.value_amount(Balances(own[i] for i in ids)) for own in own_per_column
+        ]
+        return (*per, summed(per))
+
+    return PeriodTable(
+        start=start,
+        end=end,
+        interval=interval,
+        target=valuer.target,
+        policy=policy,
+        columns=columns,
+        rows=tuple(rows),
+        income=class_totals(AccountClass.INCOME),
+        expenses=class_totals(AccountClass.EXPENSE),
         conversions=valuer.conversions,
         unpriced=valuer.unpriced,
     )

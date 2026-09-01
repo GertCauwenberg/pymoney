@@ -14,8 +14,10 @@ import type {
   HoldingsQuery,
   IncomeStatementQuery,
   LoginIn,
+  NetWorthQuery,
   PayeeIn,
   PayeesQuery,
+  PeriodTableQuery,
   PriceIn,
   PricesQuery,
   QuoteFetchIn,
@@ -44,6 +46,10 @@ export const keys = {
     ["books", bookId, "reports", "income-statement", q] as const,
   holdings: (bookId: string, q: HoldingsQuery) =>
     ["books", bookId, "reports", "holdings", q] as const,
+  netWorth: (bookId: string, q: NetWorthQuery) =>
+    ["books", bookId, "reports", "net-worth", q] as const,
+  periodTable: (bookId: string, q: PeriodTableQuery) =>
+    ["books", bookId, "reports", "period-table", q] as const,
   account: (bookId: string, accountId: string) => ["books", bookId, "accounts", accountId] as const,
   payees: (bookId: string, q: PayeesQuery) => ["books", bookId, "payees", q] as const,
   ledger: (bookId: string, accountId: string, q: Omit<RegisterQuery, "cursor">) =>
@@ -213,6 +219,26 @@ export function useIncomeStatement(
   return useQuery({
     queryKey: keys.incomeStatement(bookId, query),
     queryFn: () => api.incomeStatement(bookId, query),
+    enabled,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useNetWorth(bookId: string, query: NetWorthQuery, enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.netWorth(bookId, query),
+    queryFn: () => api.netWorth(bookId, query),
+    enabled,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function usePeriodTable(bookId: string, query: PeriodTableQuery, enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.periodTable(bookId, query),
+    queryFn: () => api.periodTable(bookId, query),
     enabled,
     placeholderData: (previous) => previous,
   });

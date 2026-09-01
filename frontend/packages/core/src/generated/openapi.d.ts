@@ -718,6 +718,46 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/books/{book_id}/reports/net-worth": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Net worth at the end of every period
+         * @description Each point is valued at its own date: what the book was worth then.
+         */
+        readonly get: operations["get_net_worth_books__book_id__reports_net_worth_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/reports/period-table": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Income and expenses per account, per period
+         * @description Every column is translated at one rate -- the end date -- like the income statement.
+         */
+        readonly get: operations["get_period_table_books__book_id__reports_period_table_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/books/{book_id}/transactions": {
         readonly parameters: {
             readonly query?: never;
@@ -1514,6 +1554,52 @@ export interface components {
              */
             readonly parent_id: string | null;
         };
+        /** NetWorthPointOut */
+        readonly NetWorthPointOut: {
+            /**
+             * As Of
+             * Format: date
+             */
+            readonly as_of: string;
+            readonly assets: components["schemas"]["AmountOut"];
+            /** Label */
+            readonly label: string;
+            /** @description Signed as stored, so normally negative. */
+            readonly liabilities: components["schemas"]["AmountOut"];
+            readonly net_worth: components["schemas"]["AmountOut"];
+        };
+        /**
+         * NetWorthSeriesOut
+         * @description Assets, liabilities and net worth at the end of every period: the line chart.
+         */
+        readonly NetWorthSeriesOut: {
+            /**
+             * Conversions
+             * @description Every distinct rate used at any point of the series.
+             */
+            readonly conversions: readonly components["schemas"]["ConversionOut"][];
+            /**
+             * End
+             * Format: date
+             */
+            readonly end: string;
+            /**
+             * Interval
+             * @enum {string}
+             */
+            readonly interval: "month" | "quarter" | "year";
+            /** Points */
+            readonly points: readonly components["schemas"]["NetWorthPointOut"][];
+            /**
+             * Start
+             * Format: date
+             */
+            readonly start: string;
+            /** Target */
+            readonly target: string;
+            /** Unpriced */
+            readonly unpriced: readonly string[];
+        };
         /** PayeeIn */
         readonly PayeeIn: {
             /**
@@ -1584,6 +1670,96 @@ export interface components {
              * @constant
              */
             readonly status: "pending";
+        };
+        /** PeriodOut */
+        readonly PeriodOut: {
+            /**
+             * End
+             * Format: date
+             */
+            readonly end: string;
+            /**
+             * Label
+             * @description `2026-03`, `2026-Q1` or `2026`.
+             */
+            readonly label: string;
+            /**
+             * Start
+             * Format: date
+             */
+            readonly start: string;
+        };
+        /** PeriodRowOut */
+        readonly PeriodRowOut: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            readonly account_id: string;
+            /**
+             * Cells
+             * @description Subtree movement per column, signed as stored.
+             */
+            readonly cells: readonly components["schemas"]["AmountOut"][];
+            /** Depth */
+            readonly depth: number;
+            /**
+             * Display Cells
+             * @description The same, signed to read naturally (income positive).
+             */
+            readonly display_cells: readonly components["schemas"]["AmountOut"][];
+            readonly display_total: components["schemas"]["AmountOut"];
+            /** Path */
+            readonly path: string;
+            readonly total: components["schemas"]["AmountOut"];
+        };
+        /**
+         * PeriodTableOut
+         * @description Income and expense accounts down, periods across: the spreadsheet view.
+         */
+        readonly PeriodTableOut: {
+            /** Columns */
+            readonly columns: readonly components["schemas"]["PeriodOut"][];
+            /** Conversions */
+            readonly conversions: readonly components["schemas"]["ConversionOut"][];
+            /**
+             * End
+             * Format: date
+             */
+            readonly end: string;
+            /** Expenses */
+            readonly expenses: readonly components["schemas"]["AmountOut"][];
+            /**
+             * Income
+             * @description Per column, signed as stored; the last entry is the total.
+             */
+            readonly income: readonly components["schemas"]["AmountOut"][];
+            /**
+             * Income Earned
+             * @description Income as positive figures.
+             */
+            readonly income_earned: readonly components["schemas"]["AmountOut"][];
+            /**
+             * Interval
+             * @enum {string}
+             */
+            readonly interval: "month" | "quarter" | "year";
+            /**
+             * Net
+             * @description Surplus per column, positive when saving.
+             */
+            readonly net: readonly components["schemas"]["AmountOut"][];
+            /** Rows */
+            readonly rows: readonly components["schemas"]["PeriodRowOut"][];
+            /**
+             * Start
+             * Format: date
+             */
+            readonly start: string;
+            /** Target */
+            readonly target: string;
+            /** Unpriced */
+            readonly unpriced: readonly string[];
         };
         /** PriceIn */
         readonly PriceIn: {
@@ -5606,6 +5782,147 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["IncomeStatementOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly get_net_worth_books__book_id__reports_net_worth_get: {
+        readonly parameters: {
+            readonly query: {
+                /** @description Inclusive; defaults to today. */
+                readonly end?: string | null;
+                readonly interval?: "month" | "quarter" | "year";
+                readonly known_before?: string | null;
+                readonly max_staleness_days?: number | null;
+                readonly sources?: readonly string[] | null;
+                readonly start: string;
+                readonly strict?: boolean;
+                readonly target_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NetWorthSeriesOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly get_period_table_books__book_id__reports_period_table_get: {
+        readonly parameters: {
+            readonly query: {
+                /** @description Inclusive, and also the valuation date for translation. */
+                readonly end?: string | null;
+                readonly include_closed?: boolean;
+                readonly interval?: "month" | "quarter" | "year";
+                readonly known_before?: string | null;
+                readonly max_staleness_days?: number | null;
+                readonly sources?: readonly string[] | null;
+                readonly start: string;
+                readonly strict?: boolean;
+                readonly target_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PeriodTableOut"];
                 };
             };
             /** @description Not authenticated. */

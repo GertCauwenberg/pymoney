@@ -64,9 +64,12 @@ from ..api.schemas import (
     CommodityOut,
     HoldingsOut,
     IncomeStatementOut,
+    NetWorthSeriesOut,
     PayeeIn,
     PayeeOut,
+    PeriodTableOut,
     RegisterPage,
+    ReportInterval,
     SessionOut,
     SyncPageOut,
     TransactionIn,
@@ -79,6 +82,8 @@ from ..api.views import (
     balance_sheet_out,
     holdings_out,
     income_statement_out,
+    net_worth_series_out,
+    period_table_out,
     register_page,
 )
 from ..core import commands as cmd
@@ -412,6 +417,47 @@ class OfflineClient(LedgerClient):
                 book,
                 self._policy(book, options),
                 start=start,
+                include_closed=options.include_closed,
+                strict=options.strict,
+            )
+        )
+
+    def net_worth(
+        self,
+        book_id: UUID,
+        *,
+        start: date,
+        interval: ReportInterval = "month",
+        options: ReportOptions | None = None,
+    ) -> NetWorthSeriesOut:
+        book = self._ready(book_id)
+        options = options or ReportOptions()
+        return self._guarded(
+            lambda: net_worth_series_out(
+                book,
+                self._policy(book, options),
+                start=start,
+                interval=interval,
+                strict=options.strict,
+            )
+        )
+
+    def period_table(
+        self,
+        book_id: UUID,
+        *,
+        start: date,
+        interval: ReportInterval = "month",
+        options: ReportOptions | None = None,
+    ) -> PeriodTableOut:
+        book = self._ready(book_id)
+        options = options or ReportOptions()
+        return self._guarded(
+            lambda: period_table_out(
+                book,
+                self._policy(book, options),
+                start=start,
+                interval=interval,
                 include_closed=options.include_closed,
                 strict=options.strict,
             )

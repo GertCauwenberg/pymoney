@@ -139,3 +139,75 @@ export function rowsToCsv(rows: readonly ReportRow[]): string {
   );
   return [header.join(","), ...lines].join("\r\n") + "\r\n";
 }
+
+// --- pies -----------------------------------------------------------------------
+
+export interface PieSlice {
+  label: string;
+  /** Minor units, positive. */
+  minor: number;
+  /** 0..1 share of the whole. */
+  share: number;
+  /** Account id when the slice is one account; absent for "Other". */
+  accountId?: string;
+}
+
+/** Slices smaller than this share are gathered into one "Other" slice. */
+export const OTHER_BELOW = 0.02;
+
+/**
+ * Turn labelled figures into pie slices: positive only, largest first, the
+ * slivers folded into one "Other". A category whose net for the period is a
+ * refund has no share of "where the money went" and is left out rather than
+ * drawn as a negative wedge.
+ */
+export function pieSlices(
+  labelled: readonly { label: string; minor: number; accountId?: string }[],
+  otherLabel = "Other",
+): PieSlice[] {
+  const positive = labelled.filter((l) => l.minor > 0).sort((a, b) => b.minor - a.minor);
+  const total = positive.reduce((acc, l) => acc + l.minor, 0);
+  if (total === 0) return [];
+  const big = positive.filter((l) => l.minor / total >= OTHER_BELOW);
+  const rest = positive.filter((l) => l.minor / total < OTHER_BELOW);
+  const kept = rest.length > 1 ? big : positive;
+  const slices: PieSlice[] = kept.map((l) => ({
+    label: l.label,
+    minor: l.minor,
+    share: l.minor / total,
+    ...(l.accountId ? { accountId: l.accountId } : {}),
+  }));
+  if (rest.length > 1) {
+    const other = rest.reduce((acc, l) => acc + l.minor, 0);
+    slices.push({ label: otherLabel, minor: other, share: other / total });
+  }
+  return slices;
+}
+
+/**
+ * Income or expense categories as pie slices: each account's *own* figure
+ * (so a parent and its children are not both counted), read with the
+ * class's natural sign.
+ */
+export function categorySlices(
+  rows: readonly ReportRow[],
+  accounts: readonly Account[],
+  accountClass: "INCOME" | "EXPENSE",
+  otherLabel = "Other",
+): PieSlice[] {
+  const classOf = new Map(accounts.map((a) => [a.id, a.account_class]));
+  const sign = accountClass === "INCOME" ? -1 : 1;
+  return pieSlices(
+    rows
+      .filter((r) => classOf.get(r.account_id) === accountClass)
+      .map((r) => ({ label: r.path.split(":").pop() ?? r.path, minor: r.own_value.minor * sign, accountId: r.account_id })),
+    otherLabel,
+  );
+}
+
+export function slicesToCsv(slices: readonly PieSlice[], commodity: string): string {
+  const lines = ["label,amount,share"];
+  for (const s of slices) lines.push(`${JSON.stringify(s.label)},${s.minor},${(s.share * 100).toFixed(1)}%`);
+  lines.push(`,,${commodity}`);
+  return lines.join("\n");
+}

@@ -43,7 +43,9 @@ def label_keys() -> set[str]:
         "frontend/apps/web/src/pages/SharingPage.tsx",
         "frontend/apps/web/src/pages/CommoditiesPage.tsx",
         "frontend/apps/web/src/ledger/ReconcileMark.tsx",
+        "frontend/apps/web/src/reports/NetWorthReport.tsx",
         "src/pymoney/desktop/ui/reports.py",
+        "src/pymoney/desktop/ui/charts.py",
     ):
         text = (ROOT / rel).read_text(encoding="utf-8")
         head = text.split("export function")[0] if rel.endswith(("ts", "tsx")) else text

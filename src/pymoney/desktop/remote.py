@@ -30,9 +30,12 @@ from ..api.schemas import (
     CommodityOut,
     HoldingsOut,
     IncomeStatementOut,
+    NetWorthSeriesOut,
     PayeeIn,
     PayeeOut,
+    PeriodTableOut,
     RegisterPage,
+    ReportInterval,
     SessionOut,
     TransactionIn,
     TransactionOut,
@@ -231,6 +234,43 @@ class RemoteClient(LedgerClient):
             f"income-statement:{query}",
             IncomeStatementOut,
             f"/books/{book_id}/reports/income-statement{query}",
+        )
+
+    def net_worth(
+        self,
+        book_id: UUID,
+        *,
+        start: date,
+        interval: ReportInterval = "month",
+        options: ReportOptions | None = None,
+    ) -> NetWorthSeriesOut:
+        params = self._report_query(options, start=start, interval=interval)
+        params["end"] = params.pop("as_of")
+        params.pop("include_closed")
+        query = _query(params)
+        return self._cached(
+            book_id,
+            f"net-worth:{query}",
+            NetWorthSeriesOut,
+            f"/books/{book_id}/reports/net-worth{query}",
+        )
+
+    def period_table(
+        self,
+        book_id: UUID,
+        *,
+        start: date,
+        interval: ReportInterval = "month",
+        options: ReportOptions | None = None,
+    ) -> PeriodTableOut:
+        params = self._report_query(options, start=start, interval=interval)
+        params["end"] = params.pop("as_of")
+        query = _query(params)
+        return self._cached(
+            book_id,
+            f"period-table:{query}",
+            PeriodTableOut,
+            f"/books/{book_id}/reports/period-table{query}",
         )
 
     def holdings(

@@ -219,6 +219,19 @@ class MainWindow(QMainWindow):
             action.triggered.connect(lambda _=False, k=kind: self.open_report(k))
             reports.addAction(action)
             self.report_actions.append(action)
+        reports.addSeparator()
+        for kind, label in (
+            ("income-pie", "Income by category"),
+            ("expense-pie", "Expenses by category"),
+            ("net-worth", "Net worth over time"),
+            ("period-table", "Income and expenses by period"),
+            ("holdings-pie", "Holdings by position"),
+        ):
+            action = QAction(f"&{_(label)}…", self)
+            action.setData(kind)
+            action.triggered.connect(lambda _=False, k=kind: self.open_chart(k))
+            reports.addAction(action)
+            self.report_actions.append(action)
         self.report_windows: list[QMainWindow] = []
 
         self.status_label = QLabel()
@@ -495,6 +508,24 @@ class MainWindow(QMainWindow):
         from .reports import open_report
 
         window = open_report(
+            self.client,
+            self.book.id,
+            kind,  # type: ignore[arg-type]
+            self.commodities,
+            self.book.base_currency_id,
+            executor=self.executor,
+            parent=self,
+        )
+        self.report_windows.append(window)
+        return window
+
+    def open_chart(self, kind: str) -> QMainWindow | None:
+        """A graphical report for the current book, in its own top-level window."""
+        if self.book is None:
+            return None
+        from .charts import open_chart
+
+        window = open_chart(
             self.client,
             self.book.id,
             kind,  # type: ignore[arg-type]

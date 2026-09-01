@@ -25,7 +25,7 @@ src/pymoney/core/               the domain. pure stdlib, no dependencies
     commands.py     the intents clients send
     handlers/       command handlers, one module per aggregate
     book.py         the aggregate: consistency boundary, dispatcher, read model
-    reports.py      balance sheet, income statement, holdings
+    reports.py      balance sheet, income statement, holdings; net worth over time, income/expenses by period
 
 src/pymoney/store/              persistence. SQLAlchemy Core, no ORM mapping
     types.py        portable UUID / JSON / timezone-aware timestamp columns
@@ -536,9 +536,9 @@ report hands back the `Conversion` objects it used.
 
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · importers other
-than KMyMoney (OFX, CSV) · attachments · tags · a UI for reconciliation
-and payee management · the desktop app's account/commodity management and reconciliation (see
-[The web frontend](#the-web-frontend)).
+than KMyMoney (OFX, CSV) · attachments · tags · a UI for payee management ·
+the desktop app's account/commodity management and reconciliation (the web app
+has both; see [The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
 
@@ -710,7 +710,11 @@ period presets and React Query hooks -- with no DOM dependency, so the mobile
 and desktop apps to come reuse it whole. `@pymoney/web` is the React web app
 built on it: the three reports (balance sheet, income statement and holdings,
 each with currency translation, a traceable list of the rates used, CSV export
-and print styles), drill-down from any report row to the account's register and
+and print styles), the **Charts** tab (income and expenses by category as pies,
+net worth over time as a line, holdings by position as a pie, and the
+spreadsheet view of income and expenses per month, quarter or year -- all drawn
+from the same report payloads, in plain SVG, with a legend or table a reader
+without the picture can use), drill-down from any report row to the account's register and
 from any register row to the transaction, and -- by role -- posting, editing and
 deleting transactions with payees created on the spot, managing commodities and
 prices, and fetching quotes (editors), and managing the chart of accounts

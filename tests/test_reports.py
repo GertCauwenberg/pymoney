@@ -565,3 +565,148 @@ class TestHoldingsCostInAnotherCurrency:
         assert report.total_cost.commodity.code == "EUR"
         assert report.total_cost.is_zero
         assert not report.total_value.is_zero
+
+
+class TestPeriods:
+    def test_months_are_clipped_to_the_window(self):
+        from pymoney.core import periods_between
+
+        months = periods_between(date(2026, 1, 15), date(2026, 3, 10))
+        assert [(p.start, p.end, p.label) for p in months] == [
+            (date(2026, 1, 15), date(2026, 1, 31), "2026-01"),
+            (date(2026, 2, 1), date(2026, 2, 28), "2026-02"),
+            (date(2026, 3, 1), date(2026, 3, 10), "2026-03"),
+        ]
+
+    def test_quarters_and_years(self):
+        from pymoney.core import periods_between
+
+        quarters = periods_between(date(2025, 11, 1), date(2026, 4, 30), "quarter")
+        assert [p.label for p in quarters] == ["2025-Q4", "2026-Q1", "2026-Q2"]
+        assert quarters[1].start == date(2026, 1, 1) and quarters[1].end == date(
+            2026, 3, 31
+        )
+        years = periods_between(date(2024, 6, 1), date(2026, 1, 1), "year")
+        assert [p.label for p in years] == ["2024", "2025", "2026"]
+        assert years[0].start == date(2024, 6, 1) and years[-1].end == date(2026, 1, 1)
+
+    def test_a_backwards_window_is_refused(self):
+        from pymoney.core import periods_between
+
+        with pytest.raises(ValidationError):
+            periods_between(date(2026, 2, 1), date(2026, 1, 1))
+
+
+class TestNetWorthSeries:
+    def test_one_point_per_period_end(self, funded: Chart):
+        from pymoney.core import net_worth_series
+
+        book = funded.book
+        # Something in February, so the line moves.
+        book.post(
+            date(2026, 2, 10),
+            [LegSpec.of(funded.checking.id, "-500.00"), LegSpec.of(funded.fuel.id)],
+        )
+        series = net_worth_series(
+            book, book.default_policy(date(2026, 3, 15)), start=date(2026, 1, 1)
+        )
+        assert [p.label for p in series.points] == ["2026-01", "2026-02", "2026-03"]
+        assert [p.as_of for p in series.points] == [
+            date(2026, 1, 31),
+            date(2026, 2, 28),
+            date(2026, 3, 15),
+        ]
+        january, february, march = series.points
+        # Checking 10000 - 84.20 + 3200 = 13115.80; card owes 61.50.
+        assert january.assets.minor == 1311580
+        assert january.liabilities.minor == -6150
+        assert january.net_worth.minor == 1311580 - 6150
+        assert february.net_worth.minor == january.net_worth.minor - 50000
+        assert march.net_worth == february.net_worth
+        assert series.target is book.base_currency
+
+    def test_each_point_is_valued_at_its_own_date(self, invested: Chart):
+        from pymoney.core import net_worth_series
+
+        book = invested.book
+        # A better AAPL price arrives in February.
+        book.add_price(
+            invested.aapl, invested.usd, "200", effective_date=date(2026, 2, 15)
+        )
+        series = net_worth_series(
+            book, book.default_policy(date(2026, 2, 28)), start=date(2026, 1, 1)
+        )
+        january, february = series.points
+        assert february.net_worth > january.net_worth
+        # Both rates show up in the provenance.
+        rates = {(c.base.code, c.quote.code) for c in series.conversions}
+        assert ("AAPL", "EUR") in rates
+        assert len([c for c in series.conversions if c.base.code == "AAPL"]) == 2
+
+    def test_needs_an_end_date(self, funded: Chart):
+        from pymoney.core import net_worth_series
+
+        with pytest.raises(ValidationError):
+            net_worth_series(
+                funded.book,
+                ValuationPolicy(target=funded.book.base_currency),
+                start=date(2026, 1, 1),
+            )
+
+
+class TestPeriodTable:
+    def test_rows_by_account_and_columns_by_month(self, funded: Chart):
+        from pymoney.core import period_table
+
+        book = funded.book
+        book.post(
+            date(2026, 2, 3),
+            [LegSpec.of(funded.checking.id, "-40.00"), LegSpec.of(funded.groceries.id)],
+        )
+        table = period_table(
+            book, book.default_policy(date(2026, 2, 28)), start=date(2026, 1, 1)
+        )
+        assert [c.label for c in table.columns] == ["2026-01", "2026-02"]
+        by_path = {r.path: r for r in table.rows}
+        groceries = by_path["Expenses:Groceries"]
+        assert [c.minor for c in groceries.cells] == [8420, 4000]
+        assert groceries.total.minor == 12420
+        assert groceries.display_total.minor == 12420
+        # The parent row is the sum of its children, column by column.
+        expenses = by_path["Expenses"]
+        assert [c.minor for c in expenses.cells] == [8420 + 6150, 4000]
+        assert expenses.depth == 0 and groceries.depth == 1
+        # Income is stored negative; the display sign flips it.
+        salary = by_path["Income:Salary"]
+        assert [c.minor for c in salary.cells] == [-320000, 0]
+        assert [c.minor for c in salary.display_cells] == [320000, 0]
+        # Class totals, with the grand total last.
+        assert [a.minor for a in table.income] == [-320000, 0, -320000]
+        assert [a.minor for a in table.expenses] == [14570, 4000, 18570]
+        assert [a.minor for a in table.net] == [320000 - 14570, -4000, 320000 - 18570]
+        # No balance-sheet accounts in here.
+        assert not any(
+            r.path.startswith(("Assets", "Liabilities", "Equity")) for r in table.rows
+        )
+
+    def test_agrees_with_the_income_statement(self, funded: Chart):
+        from pymoney.core import period_table
+
+        book = funded.book
+        policy = book.default_policy(JAN31)
+        statement = income_statement(book, policy, start=date(2026, 1, 1))
+        table = period_table(book, policy, start=date(2026, 1, 1), interval="year")
+        assert table.income[-1] == statement.income
+        assert table.expenses[-1] == statement.expenses
+        assert table.net[-1] == statement.net
+
+    def test_closed_accounts_are_hidden_by_default(self, funded: Chart):
+        from pymoney.core import SetAccountClosed, period_table
+
+        book = funded.book
+        book.execute(SetAccountClosed(account_id=funded.fees.id, closed=True))
+        policy = book.default_policy(JAN31)
+        hidden = period_table(book, policy, start=date(2026, 1, 1))
+        shown = period_table(book, policy, start=date(2026, 1, 1), include_closed=True)
+        assert "Expenses:Bank Fees" not in {r.path for r in hidden.rows}
+        assert "Expenses:Bank Fees" in {r.path for r in shown.rows}

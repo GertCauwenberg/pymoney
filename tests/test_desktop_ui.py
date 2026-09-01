@@ -455,6 +455,11 @@ def test_the_desktop_speaks_dutch_when_told(qtbot, api: Client, tmp_path):
             "&Balans…",
             "&Resultatenrekening…",
             "&Posities…",
+            "&Inkomsten per categorie…",
+            "&Uitgaven per categorie…",
+            "&Vermogen in de tijd…",
+            "&Inkomsten en uitgaven per periode…",
+            "&Beleggingen per positie…",
         ]
         win.load()
         assert (

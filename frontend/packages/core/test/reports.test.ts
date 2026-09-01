@@ -91,3 +91,28 @@ describe("rowsToCsv", () => {
     );
   });
 });
+
+describe("pieSlices", () => {
+  it("keeps positives, sorts, and folds slivers into Other", async () => {
+    const { pieSlices } = await import("../src/reports");
+    const slices = pieSlices([
+      { label: "Food", minor: 6000 },
+      { label: "Refund", minor: -500 },
+      { label: "Fuel", minor: 4000 },
+      { label: "Tiny", minor: 50 },
+      { label: "Tinier", minor: 50 },
+    ]);
+    expect(slices.map((s) => [s.label, s.minor])).toEqual([
+      ["Food", 6000],
+      ["Fuel", 4000],
+      ["Other", 100],
+    ]);
+    expect(slices.reduce((a, s) => a + s.share, 0)).toBeCloseTo(1);
+  });
+
+  it("does not make an Other of a single sliver, and is empty without positives", async () => {
+    const { pieSlices } = await import("../src/reports");
+    expect(pieSlices([{ label: "A", minor: 10000 }, { label: "B", minor: 10 }]).map((s) => s.label)).toEqual(["A", "B"]);
+    expect(pieSlices([{ label: "A", minor: 0 }, { label: "B", minor: -3 }])).toEqual([]);
+  });
+});

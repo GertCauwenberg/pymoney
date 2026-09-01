@@ -1645,6 +1645,101 @@
         "title": "MoveAccountIn",
         "type": "object"
       },
+      "NetWorthPointOut": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "assets": {
+            "$ref": "#/components/schemas/AmountOut"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "liabilities": {
+            "$ref": "#/components/schemas/AmountOut",
+            "description": "Signed as stored, so normally negative."
+          },
+          "net_worth": {
+            "$ref": "#/components/schemas/AmountOut"
+          }
+        },
+        "required": [
+          "as_of",
+          "label",
+          "assets",
+          "liabilities",
+          "net_worth"
+        ],
+        "title": "NetWorthPointOut",
+        "type": "object"
+      },
+      "NetWorthSeriesOut": {
+        "additionalProperties": false,
+        "description": "Assets, liabilities and net worth at the end of every period: the line chart.",
+        "properties": {
+          "conversions": {
+            "description": "Every distinct rate used at any point of the series.",
+            "items": {
+              "$ref": "#/components/schemas/ConversionOut"
+            },
+            "title": "Conversions",
+            "type": "array"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "interval": {
+            "enum": [
+              "month",
+              "quarter",
+              "year"
+            ],
+            "title": "Interval",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/NetWorthPointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "unpriced": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unpriced",
+            "type": "array"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "interval",
+          "target",
+          "points",
+          "conversions",
+          "unpriced"
+        ],
+        "title": "NetWorthSeriesOut",
+        "type": "object"
+      },
       "PayeeIn": {
         "additionalProperties": false,
         "properties": {
@@ -1844,6 +1939,188 @@
           "email"
         ],
         "title": "PendingOut",
+        "type": "object"
+      },
+      "PeriodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "label": {
+            "description": "`2026-03`, `2026-Q1` or `2026`.",
+            "title": "Label",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "label"
+        ],
+        "title": "PeriodOut",
+        "type": "object"
+      },
+      "PeriodRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "cells": {
+            "description": "Subtree movement per column, signed as stored.",
+            "items": {
+              "$ref": "#/components/schemas/AmountOut"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "depth": {
+            "title": "Depth",
+            "type": "integer"
+          },
+          "display_cells": {
+            "description": "The same, signed to read naturally (income positive).",
+            "items": {
+              "$ref": "#/components/schemas/AmountOut"
+            },
+            "title": "Display Cells",
+            "type": "array"
+          },
+          "display_total": {
+            "$ref": "#/components/schemas/AmountOut"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "total": {
+            "$ref": "#/components/schemas/AmountOut"
+          }
+        },
+        "required": [
+          "account_id",
+          "path",
+          "depth",
+          "cells",
+          "display_cells",
+          "total",
+          "display_total"
+        ],
+        "title": "PeriodRowOut",
+        "type": "object"
+      },
+      "PeriodTableOut": {
+        "additionalProperties": false,
+        "description": "Income and expense accounts down, periods across: the spreadsheet view.",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodOut"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "conversions": {
+            "items": {
+              "$ref": "#/components/schemas/ConversionOut"
+            },
+            "title": "Conversions",
+            "type": "array"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "expenses": {
+            "items": {
+              "$ref": "#/components/schemas/AmountOut"
+            },
+            "title": "Expenses",
+            "type": "array"
+          },
+          "income": {
+            "description": "Per column, signed as stored; the last entry is the total.",
+            "items": {
+              "$ref": "#/components/schemas/AmountOut"
+            },
+            "title": "Income",
+            "type": "array"
+          },
+          "income_earned": {
+            "description": "Income as positive figures.",
+            "items": {
+              "$ref": "#/components/schemas/AmountOut"
+            },
+            "title": "Income Earned",
+            "type": "array"
+          },
+          "interval": {
+            "enum": [
+              "month",
+              "quarter",
+              "year"
+            ],
+            "title": "Interval",
+            "type": "string"
+          },
+          "net": {
+            "description": "Surplus per column, positive when saving.",
+            "items": {
+              "$ref": "#/components/schemas/AmountOut"
+            },
+            "title": "Net",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "unpriced": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unpriced",
+            "type": "array"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "interval",
+          "target",
+          "columns",
+          "rows",
+          "income",
+          "income_earned",
+          "expenses",
+          "net",
+          "conversions",
+          "unpriced"
+        ],
+        "title": "PeriodTableOut",
         "type": "object"
       },
       "PriceIn": {
@@ -8885,6 +9162,426 @@
           }
         },
         "summary": "Income and expenses over a period",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/books/{book_id}/reports/net-worth": {
+      "get": {
+        "description": "Each point is valued at its own date: what the book was worth then.",
+        "operationId": "get_net_worth_books__book_id__reports_net_worth_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive; defaults to today.",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive; defaults to today.",
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "month",
+              "enum": [
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Interval",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "known_before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Known Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sources",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sources"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_staleness_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Staleness Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "strict",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Strict",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetWorthSeriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Net worth at the end of every period",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/books/{book_id}/reports/period-table": {
+      "get": {
+        "description": "Every column is translated at one rate -- the end date -- like the income statement.",
+        "operationId": "get_period_table_books__book_id__reports_period_table_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive, and also the valuation date for translation.",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive, and also the valuation date for translation.",
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "month",
+              "enum": [
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Interval",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "known_before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Known Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sources",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sources"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_staleness_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Staleness Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_closed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Closed",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "strict",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Strict",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodTableOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Income and expenses per account, per period",
         "tags": [
           "reports"
         ]

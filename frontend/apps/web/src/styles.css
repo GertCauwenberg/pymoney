@@ -764,3 +764,61 @@ button:focus-visible {
   font-size: 0.85em;
   max-width: 9rem;
 }
+
+/* --- charts ---------------------------------------------------------------- */
+.tabs--sub {
+  font-size: 0.9em;
+  margin-bottom: 0.5rem;
+}
+.pie {
+  display: grid;
+  grid-template-columns: minmax(220px, 360px) 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .pie {
+    grid-template-columns: 1fr;
+  }
+}
+.pie__svg {
+  width: 100%;
+  height: auto;
+}
+.pie__swatch {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  border-radius: 2px;
+  vertical-align: -0.1em;
+}
+.pie__legend-row--active td {
+  background: #f3f4f6;
+}
+.line__svg {
+  width: 100%;
+  height: auto;
+  max-height: 420px;
+}
+.line__legend {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin: 0.5rem 0 1rem;
+}
+.line__table {
+  font-size: 0.9em;
+}
+.period-table__scroll {
+  overflow-x: auto;
+}
+.period-table th[scope="row"] {
+  white-space: nowrap;
+  font-weight: normal;
+}
+.period-table .report__row--depth-0 th[scope="row"] {
+  font-weight: 600;
+}
+.period-table td.num {
+  white-space: nowrap;
+}

@@ -922,6 +922,70 @@ class HoldingsOut(Out):
     total_cost: AmountOut
 
 
+ReportInterval = Literal["month", "quarter", "year"]
+
+
+class PeriodOut(Out):
+    start: date
+    end: date
+    label: str = Field(description="`2026-03`, `2026-Q1` or `2026`.")
+
+
+class NetWorthPointOut(Out):
+    as_of: date
+    label: str
+    assets: AmountOut
+    liabilities: AmountOut = Field(description="Signed as stored, so normally negative.")
+    net_worth: AmountOut
+
+
+class NetWorthSeriesOut(Out):
+    """Assets, liabilities and net worth at the end of every period: the line chart."""
+
+    start: date
+    end: date
+    interval: ReportInterval
+    target: str
+    points: list[NetWorthPointOut]
+    conversions: list[ConversionOut] = Field(
+        description="Every distinct rate used at any point of the series."
+    )
+    unpriced: list[str]
+
+
+class PeriodRowOut(Out):
+    account_id: UUID
+    path: str
+    depth: int
+    cells: list[AmountOut] = Field(
+        description="Subtree movement per column, signed as stored."
+    )
+    display_cells: list[AmountOut] = Field(
+        description="The same, signed to read naturally (income positive)."
+    )
+    total: AmountOut
+    display_total: AmountOut
+
+
+class PeriodTableOut(Out):
+    """Income and expense accounts down, periods across: the spreadsheet view."""
+
+    start: date
+    end: date
+    interval: ReportInterval
+    target: str
+    columns: list[PeriodOut]
+    rows: list[PeriodRowOut]
+    income: list[AmountOut] = Field(
+        description="Per column, signed as stored; the last entry is the total."
+    )
+    income_earned: list[AmountOut] = Field(description="Income as positive figures.")
+    expenses: list[AmountOut]
+    net: list[AmountOut] = Field(description="Surplus per column, positive when saving.")
+    conversions: list[ConversionOut]
+    unpriced: list[str]
+
+
 # ==========================================================================
 # sync
 # ==========================================================================

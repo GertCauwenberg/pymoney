@@ -33,12 +33,16 @@ import type {
   IncomeStatement,
   IncomeStatementQuery,
   LoginIn,
+  NetWorthQuery,
+  NetWorthSeries,
   Payee,
   PayeeIn,
   ReconcileIn,
   SetSplitStateIn,
   PayeesQuery,
   Pending,
+  PeriodTable,
+  PeriodTableQuery,
   Price,
   PriceIn,
   PricePage,
@@ -557,5 +561,15 @@ export class ApiClient {
 
   holdings(bookId: string, query: HoldingsQuery = {}): Promise<Holdings> {
     return this.get<Holdings>(`/books/${bookId}/reports/holdings${queryString(query)}`);
+  }
+
+  /** Assets, liabilities and net worth at the end of every period. */
+  netWorth(bookId: string, query: NetWorthQuery): Promise<NetWorthSeries> {
+    return this.get<NetWorthSeries>(`/books/${bookId}/reports/net-worth${queryString(query)}`);
+  }
+
+  /** Income and expense accounts down, periods across. */
+  periodTable(bookId: string, query: PeriodTableQuery): Promise<PeriodTable> {
+    return this.get<PeriodTable>(`/books/${bookId}/reports/period-table${queryString(query)}`);
   }
 }

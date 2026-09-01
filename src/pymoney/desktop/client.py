@@ -38,9 +38,12 @@ from ..api.schemas import (
     CommodityOut,
     HoldingsOut,
     IncomeStatementOut,
+    NetWorthSeriesOut,
     PayeeIn,
     PayeeOut,
+    PeriodTableOut,
     RegisterPage,
+    ReportInterval,
     TransactionIn,
     TransactionOut,
     TransactionUpdateIn,
@@ -195,6 +198,28 @@ class LedgerClient(ABC):
         *,
         include_empty: bool = False,
     ) -> HoldingsOut: ...
+
+    @abstractmethod
+    def net_worth(
+        self,
+        book_id: UUID,
+        *,
+        start: date,
+        interval: ReportInterval = "month",
+        options: ReportOptions | None = None,
+    ) -> NetWorthSeriesOut:
+        """Assets, liabilities and net worth at the end of every period up to ``options.as_of``."""
+
+    @abstractmethod
+    def period_table(
+        self,
+        book_id: UUID,
+        *,
+        start: date,
+        interval: ReportInterval = "month",
+        options: ReportOptions | None = None,
+    ) -> PeriodTableOut:
+        """Income and expense accounts per period, from ``start`` to ``options.as_of``."""
 
     # -- ledger --------------------------------------------------------------
     @abstractmethod

@@ -741,3 +741,35 @@ class TestReports:
             )
             == 1
         )
+
+    def test_net_worth_and_period_table(self, rich, kind):
+        client, book_id, _usd, _eur, old = rich
+        series = client.net_worth(
+            book_id,
+            start=date(2026, 1, 1),
+            options=ReportOptions(as_of=date(2026, 2, 28)),
+        )
+        assert [p.label for p in series.points] == ["2026-01", "2026-02"]
+        january, february = series.points
+        # February only spent 20.00 on the (closed) account.
+        assert february.net_worth.minor == january.net_worth.minor - 2000
+        assert series.target == "EUR"
+
+        table = client.period_table(
+            book_id,
+            start=date(2026, 1, 1),
+            interval="month",
+            options=ReportOptions(as_of=date(2026, 2, 28), include_closed=True),
+        )
+        assert [c.label for c in table.columns] == ["2026-01", "2026-02"]
+        assert [a.minor for a in table.income_earned] == [300000, 0, 300000]
+        assert [a.minor for a in table.expenses] == [5000, 2000, 7000]
+        assert [a.minor for a in table.net] == [295000, -2000, 293000]
+        closed_row = next(r for r in table.rows if r.account_id == old)
+        assert [c.minor for c in closed_row.display_cells] == [0, 2000]
+        hidden = client.period_table(
+            book_id,
+            start=date(2026, 1, 1),
+            options=ReportOptions(as_of=date(2026, 2, 28)),
+        )
+        assert all(r.account_id != old for r in hidden.rows)

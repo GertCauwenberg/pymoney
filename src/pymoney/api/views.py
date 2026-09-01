@@ -14,7 +14,15 @@ from uuid import UUID
 from ..core.amount import Amount, Balances, RationalAmount
 from ..core.book import Book
 from ..core.price import ValuationPolicy
-from ..core.reports import Valuer, balance_sheet, holdings, income_statement
+from ..core.reports import (
+    Interval,
+    Valuer,
+    balance_sheet,
+    holdings,
+    income_statement,
+    net_worth_series,
+    period_table,
+)
 from .routers._shared import encode_cursor
 from .schemas import (
     AccountBalanceOut,
@@ -25,6 +33,11 @@ from .schemas import (
     HoldingOut,
     HoldingsOut,
     IncomeStatementOut,
+    NetWorthPointOut,
+    NetWorthSeriesOut,
+    PeriodOut,
+    PeriodRowOut,
+    PeriodTableOut,
     RateOut,
     ReconcileStateName,
     RegisterPage,
@@ -38,6 +51,8 @@ __all__ = [
     "account_out",
     "balance_sheet_out",
     "conversions_out",
+    "net_worth_series_out",
+    "period_table_out",
     "register_page",
     "report_rows",
 ]
@@ -281,4 +296,75 @@ def holdings_out(
         ],
         total_value=AmountOut.of(report.total_value),
         total_cost=AmountOut.of(report.total_cost),
+    )
+
+
+def net_worth_series_out(
+    book: Book, policy: ValuationPolicy, *, start: date, interval: Interval, strict: bool
+) -> NetWorthSeriesOut:
+    series = net_worth_series(book, policy, start=start, interval=interval, strict=strict)
+    return NetWorthSeriesOut(
+        start=series.start,
+        end=series.end,
+        interval=series.interval,
+        target=series.target.code,
+        points=[
+            NetWorthPointOut(
+                as_of=p.as_of,
+                label=p.label,
+                assets=AmountOut.of(p.assets),
+                liabilities=AmountOut.of(p.liabilities),
+                net_worth=AmountOut.of(p.net_worth),
+            )
+            for p in series.points
+        ],
+        conversions=conversions_out(series.conversions),
+        unpriced=[c.code for c in series.unpriced],
+    )
+
+
+def period_table_out(
+    book: Book,
+    policy: ValuationPolicy,
+    *,
+    start: date,
+    interval: Interval,
+    include_closed: bool,
+    strict: bool,
+) -> PeriodTableOut:
+    table = period_table(
+        book,
+        policy,
+        start=start,
+        interval=interval,
+        include_closed=include_closed,
+        strict=strict,
+    )
+    amounts = lambda cells: [AmountOut.of(a) for a in cells]  # noqa: E731
+    return PeriodTableOut(
+        start=table.start,
+        end=table.end,
+        interval=table.interval,
+        target=table.target.code,
+        columns=[
+            PeriodOut(start=c.start, end=c.end, label=c.label) for c in table.columns
+        ],
+        rows=[
+            PeriodRowOut(
+                account_id=r.account.id,
+                path=r.path,
+                depth=r.depth,
+                cells=amounts(r.cells),
+                display_cells=amounts(r.display_cells),
+                total=AmountOut.of(r.total),
+                display_total=AmountOut.of(r.display_total),
+            )
+            for r in table.rows
+        ],
+        income=amounts(table.income),
+        income_earned=amounts(-a for a in table.income),
+        expenses=amounts(table.expenses),
+        net=amounts(table.net),
+        conversions=conversions_out(table.conversions),
+        unpriced=[c.code for c in table.unpriced],
     )

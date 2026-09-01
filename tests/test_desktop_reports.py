@@ -294,7 +294,7 @@ def test_the_main_window_opens_reports_from_its_menu(qtbot, api: Client, tmp_pat
     client.login(EMAIL, PASSWORD)
     win = MainWindow(client, executor=SyncExecutor(), sync_every_ms=0)
     qtbot.addWidget(win)
-    assert [a.text() for a in win.report_actions] == [
+    assert [a.text() for a in win.report_actions[:3]] == [
         "&Balance sheet…",
         "&Income statement…",
         "&Holdings…",
@@ -302,7 +302,7 @@ def test_the_main_window_opens_reports_from_its_menu(qtbot, api: Client, tmp_pat
     assert not win.report_actions[0].isEnabled()  # no book yet
     win.load()
     assert win.report_actions[0].isEnabled()
-    for action in win.report_actions:
+    for action in win.report_actions[:3]:
         action.trigger()
     assert [w.windowTitle() for w in win.report_windows] == [
         "PyMoney — Balance sheet",
@@ -312,4 +312,138 @@ def test_the_main_window_opens_reports_from_its_menu(qtbot, api: Client, tmp_pat
     assert all(w.report is not None for w in win.report_windows)
     assert win.report_windows[0].status.text() == "Balance sheet in EUR"
     assert UUID(str(book_id))  # the fixture's id is a real uuid
+    client.close()
+
+
+class TestCharts:
+    """The graphical reports draw the same figures the tables show."""
+
+    @staticmethod
+    def chart(qtbot, client, book_id, kind, commodities, eur):
+        from pymoney.desktop.ui.charts import ChartWindow
+
+        window = ChartWindow(
+            client, book_id, kind, commodities, eur, executor=SyncExecutor(), today=TODAY
+        )
+        qtbot.addWidget(window)
+        return window
+
+    def test_expense_and_income_pies(self, qtbot, book):
+        client, book_id, commodities, eur, _usd, _old = book
+        window = self.chart(qtbot, client, book_id, "expense-pie", commodities, eur)
+        # Year to date: Food 60 and, on the closed account, 15. A pie slice is a
+        # category's own figure, positive, largest first.
+        assert window.slices == [("Food", 6000), ("Old habit", 1500)]
+        assert window.chart.series()[0].count() == 2
+        assert "75.00 EUR" in window.summary.text()
+        assert window.status.text() == "Expenses by category in EUR"
+
+        income = self.chart(qtbot, client, book_id, "income-pie", commodities, eur)
+        assert income.slices == [("Salary", 600000)]
+        assert "Salary" in income.chart.series()[0].slices()[0].label()
+        assert income.csv_text().splitlines() == [
+            "label,amount,currency",
+            'Salary,"6,000.00",EUR',
+        ]
+
+    def test_holdings_pie_and_currency(self, qtbot, book):
+        client, book_id, commodities, eur, usd, _old = book
+        window = self.chart(qtbot, client, book_id, "holdings-pie", commodities, eur)
+        assert window.slices == [("ACME", 108000)]
+        window.target.setCurrentIndex(window.target.findData(str(usd)))
+        assert window.slices == [("ACME", 120000)]
+        assert window.status.text() == "Holdings by position in USD"
+
+    def test_net_worth_line(self, qtbot, book):
+        client, book_id, commodities, eur, _usd, _old = book
+        window = self.chart(qtbot, client, book_id, "net-worth", commodities, eur)
+        assert [p.label for p in window.report.points] == [
+            "2026-01",
+            "2026-02",
+            "2026-03",
+        ]
+        names = [s.name() for s in window.chart.series()]
+        assert names == ["Net worth", "Assets", "Liabilities"]
+        net = window.chart.series()[0]
+        assert net.count() == 3
+        # January: 3000 - 900 - 900 + 900 (wallet) + 900 (shares at cost, no
+        # quote yet -> 10 * 90 USD... no: ACME has no price before March).
+        points = [round(net.at(i).y(), 2) for i in range(net.count())]
+        assert points[-1] == 6105.0
+        assert "6,105.00 EUR" in window.summary.text()
+        # Quarterly collapses the three months into one point.
+        window.interval.setCurrentIndex(window.interval.findData("quarter"))
+        assert [p.label for p in window.report.points] == ["2026-Q1"]
+
+    def test_period_table(self, qtbot, book):
+        client, book_id, commodities, eur, _usd, _old = book
+        window = self.chart(qtbot, client, book_id, "period-table", commodities, eur)
+        table = window.table
+        headers = [
+            table.horizontalHeaderItem(c).text() for c in range(table.columnCount())
+        ]
+        assert headers == ["Account", "2026-01", "2026-02", "2026-03", "Total"]
+        rows = {
+            table.item(r, 0).text().strip(): [
+                table.item(r, c).text() for c in range(1, table.columnCount())
+            ]
+            for r in range(table.rowCount())
+        }
+        assert rows["Salary"] == ["3,000.00", "3,000.00", "", "6,000.00"]
+        assert rows["Food"] == ["", "", "60.00", "60.00"]
+        assert "Old habit" not in rows  # closed, hidden by default
+        assert rows["Income"] == ["3,000.00", "3,000.00", "0.00", "6,000.00"]
+        assert rows["Expenses"] == ["0.00", "15.00", "60.00", "75.00"]
+        assert rows["Net"] == ["3,000.00", "2,985.00", "-60.00", "5,925.00"]
+        window.closed.setChecked(True)
+        assert any(
+            table.item(r, 0).text().strip() == "Old habit"
+            for r in range(table.rowCount())
+        )
+        csv_lines = window.csv_text().splitlines()
+        assert csv_lines[0] == "account,2026-01,2026-02,2026-03,total"
+        assert csv_lines[-1].startswith("Net,")
+
+    def test_an_error_is_shown_not_raised(self, qtbot, book):
+        client, book_id, commodities, eur, _usd, _old = book
+        window = self.chart(qtbot, client, book_id, "holdings-pie", commodities, eur)
+        window.strict.setChecked(True)
+        window.as_of.setDate(_qdate_for(date(2026, 2, 1)))  # before any ACME quote
+        assert window.last_error is not None
+        assert window.slices == [] and "NoPrice" in window.status.text()
+
+
+def _qdate_for(value: date):
+    from PySide6.QtCore import QDate
+
+    return QDate(value.year, value.month, value.day)
+
+
+def test_the_main_window_opens_charts_from_its_menu(qtbot, api: Client, tmp_path):
+    api.register(EMAIL)
+    api.make_book("Menu")
+    api.account("Cash", "CASH")
+    api.logout()
+    client = OfflineClient(InProcessTransport(api.http), tmp_path / "c.sqlite")
+    client.login(EMAIL, PASSWORD)
+    win = MainWindow(client, executor=SyncExecutor(), sync_every_ms=0)
+    qtbot.addWidget(win)
+    win.load()
+    assert [a.text() for a in win.report_actions[3:]] == [
+        "&Income by category…",
+        "&Expenses by category…",
+        "&Net worth over time…",
+        "&Income and expenses by period…",
+        "&Holdings by position…",
+    ]
+    for action in win.report_actions[3:]:
+        action.trigger()
+    assert [w.windowTitle() for w in win.report_windows] == [
+        "PyMoney — Income by category",
+        "PyMoney — Expenses by category",
+        "PyMoney — Net worth over time",
+        "PyMoney — Income and expenses by period",
+        "PyMoney — Holdings by position",
+    ]
+    assert all(w.report is not None for w in win.report_windows)
     client.close()

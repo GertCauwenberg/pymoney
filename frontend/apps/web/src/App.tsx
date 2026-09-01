@@ -11,6 +11,11 @@ import { ActivatePage, ForgotPasswordPage, ResetPasswordPage } from "./pages/Pas
 import { NotFound } from "./pages/NotFound";
 import { SharingPage } from "./pages/SharingPage";
 import { BalanceSheetReport } from "./reports/BalanceSheetReport";
+import { CategoryPieReport } from "./reports/CategoryPieReport";
+import { ChartsShell } from "./reports/ChartsShell";
+import { HoldingsPieReport } from "./reports/HoldingsPieReport";
+import { NetWorthReport } from "./reports/NetWorthReport";
+import { PeriodTableReport } from "./reports/PeriodTableReport";
 import { HoldingsReport } from "./reports/HoldingsReport";
 import { IncomeStatementReport } from "./reports/IncomeStatementReport";
 import { AccountRegisterPage } from "./ledger/AccountRegisterPage";
@@ -32,6 +37,14 @@ export function App() {
           <Route path="reports/balance-sheet" element={<BalanceSheetReport />} />
           <Route path="reports/income-statement" element={<IncomeStatementReport />} />
           <Route path="reports/holdings" element={<HoldingsReport />} />
+          <Route path="reports/charts" element={<ChartsShell />}>
+            <Route index element={<Navigate to="expenses" replace />} />
+            <Route path="income" element={<CategoryPieReport kind="INCOME" />} />
+            <Route path="expenses" element={<CategoryPieReport kind="EXPENSE" />} />
+            <Route path="net-worth" element={<NetWorthReport />} />
+            <Route path="by-period" element={<PeriodTableReport />} />
+            <Route path="holdings" element={<HoldingsPieReport />} />
+          </Route>
           <Route path="sharing" element={<SharingPage />} />
           <Route path="accounts" element={<AccountsPage />} />
           <Route path="commodities" element={<CommoditiesPage />} />

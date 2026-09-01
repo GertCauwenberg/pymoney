@@ -424,6 +424,67 @@ class TestReports:
         assert body["net"]["minor"] == 320000 - 8420
         assert body["savings_rate"]["num"] > 0
 
+    def test_net_worth_series(self, ledger: Ledger):
+        ledger.client.post_transaction(
+            "2026-02-14",
+            [
+                {"account_id": ledger.checking, "value": "-100.00"},
+                {"account_id": ledger.fuel},
+            ],
+        )
+        body = ledger.client.get(
+            f"/books/{ledger.book_id}/reports/net-worth",
+            params={"start": "2026-01-01", "end": "2026-03-15", "interval": "month"},
+        ).json()
+        assert [p["label"] for p in body["points"]] == ["2026-01", "2026-02", "2026-03"]
+        assert [p["net_worth"]["minor"] for p in body["points"]] == [
+            411580,
+            411580 - 10000,
+            411580 - 10000,
+        ]
+        assert body["points"][-1]["as_of"] == "2026-03-15"
+        assert body["interval"] == "month" and body["target"] == "EUR"
+        quarterly = ledger.client.get(
+            f"/books/{ledger.book_id}/reports/net-worth",
+            params={"start": "2026-01-01", "end": "2026-03-15", "interval": "quarter"},
+        ).json()
+        assert [p["label"] for p in quarterly["points"]] == ["2026-Q1"]
+        assert (
+            ledger.client.get(
+                f"/books/{ledger.book_id}/reports/net-worth",
+                params={"start": "2026-01-01", "interval": "fortnight"},
+            ).status_code
+            == 422
+        )
+
+    def test_period_table(self, ledger: Ledger):
+        ledger.client.post_transaction(
+            "2026-02-14",
+            [
+                {"account_id": ledger.checking, "value": "-100.00"},
+                {"account_id": ledger.fuel},
+            ],
+        )
+        body = ledger.client.get(
+            f"/books/{ledger.book_id}/reports/period-table",
+            params={"start": "2026-01-01", "end": "2026-02-28"},
+        ).json()
+        assert [c["label"] for c in body["columns"]] == ["2026-01", "2026-02"]
+        rows = {r["path"]: r for r in body["rows"]}
+        assert [c["minor"] for c in rows["Groceries"]["display_cells"]] == [8420, 0]
+        assert [c["minor"] for c in rows["Fuel"]["display_cells"]] == [0, 10000]
+        assert [c["minor"] for c in rows["Salary"]["display_cells"]] == [320000, 0]
+        assert rows["Salary"]["display_total"]["minor"] == 320000
+        # Class rows: per column plus the total, and net = income - expenses.
+        assert [a["minor"] for a in body["income_earned"]] == [320000, 0, 320000]
+        assert [a["minor"] for a in body["expenses"]] == [8420, 10000, 18420]
+        assert [a["minor"] for a in body["net"]] == [
+            320000 - 8420,
+            -10000,
+            320000 - 18420,
+        ]
+        assert "Checking" not in rows
+
     def test_a_period_excludes_what_is_outside_it(self, ledger: Ledger):
         body = ledger.client.get(
             f"/books/{ledger.book_id}/reports/income-statement",
