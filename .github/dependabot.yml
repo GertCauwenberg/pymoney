@@ -11,20 +11,44 @@ updates:
       prefix: "ci"
 
   - package-ecosystem: pip
-    directory: /
+    directory: /server
     schedule:
       interval: weekly
       day: monday
     commit-message:
-      prefix: "deps"
+      prefix: "deps(server)"
     groups:
       dev-tools:
         patterns: ["ruff", "mypy", "pytest*", "hypothesis", "coverage"]
 
-  - package-ecosystem: docker
-    directory: /
+  - package-ecosystem: pip
+    directory: /desktop
     schedule:
       interval: weekly
       day: monday
     commit-message:
-      prefix: "docker"
+      prefix: "deps(desktop)"
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(frontend)"
+
+  - package-ecosystem: docker
+    directory: /server
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "docker(server)"
+
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "docker(frontend)"

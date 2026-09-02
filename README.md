@@ -1,11 +1,32 @@
 # PyMoney
 
-Double-entry accounting that runs everywhere. So far: the domain model,
-persistence over SQLite and PostgreSQL, a KMyMoney importer, the HTTP API, and a
-read-only web frontend (reports, registers, transactions).
+Double-entry accounting that runs everywhere: the domain model, persistence
+over SQLite and PostgreSQL, a KMyMoney importer, the HTTP API, a web frontend
+and a desktop client.
+
+Three components, three directories, each deployable -- and checked -- on its
+own:
 
 ```
-src/pymoney/core/               the domain. pure stdlib, no dependencies
+server/     the Python package `pymoney-core`: the domain, the stores, quotes,
+            the importer and the HTTP API. Its own pyproject, tests, Dockerfile,
+            Alembic configuration and the shipped API contract (docs/openapi.json).
+desktop/    the Python package `pymoney-desktop`: the PySide6 client. Depends on
+            server/ (it speaks the API's schemas and, offline, runs the API's read
+            models on a local replica). Its own pyproject, tests and PyInstaller spec.
+frontend/   the npm workspace: @pymoney/core (platform-agnostic client, types
+            generated from the server's contract) and @pymoney/web (React), plus
+            the Playwright end-to-end suite. Its own Dockerfile (nginx).
+
+Makefile            delegates: `make check` checks all three
+compose.yaml        the local stack: PostgreSQL, the server image, the suite
+scripts/i18n.py     the one cross-component tool: the Dutch catalogue must cover both clients
+```
+
+Inside `server/src/pymoney`:
+
+```
+core/                           the domain. pure stdlib, no dependencies
     ids.py          UUIDv7, monotonic
     clock.py        injectable clock (UTC instants)
     entity.py       id / book_id / created_at / updated_at / revision
@@ -27,7 +48,7 @@ src/pymoney/core/               the domain. pure stdlib, no dependencies
     book.py         the aggregate: consistency boundary, dispatcher, read model
     reports.py      balance sheet, income statement, holdings; net worth over time, income/expenses by period
 
-src/pymoney/store/              persistence. SQLAlchemy Core, no ORM mapping
+store/                          persistence. SQLAlchemy Core, no ORM mapping
     types.py        portable UUID / JSON / timezone-aware timestamp columns
     schema.py       tables and indexes
     mapper.py       domain objects <-> rows
@@ -37,7 +58,7 @@ src/pymoney/store/              persistence. SQLAlchemy Core, no ORM mapping
     grants.py       who may see a book; the command line for books made outside the API
     migrations/     Alembic
 
-src/pymoney/quotes/               price quotes
+quotes/                           price quotes
     provider.py     the QuoteProvider interface: one request in, exact quotes out
     ecb.py          ECB daily reference rates (currencies, exact decimals)
     yahoo.py        Yahoo Finance closes (securities; floats, rounded to Yahoo's own precision)
@@ -46,30 +67,34 @@ src/pymoney/quotes/               price quotes
     scheduler.py    the periodic thread inside the API process
     __main__.py     the command line, for cron and backfills
 
-src/pymoney/desktop/              the PySide6 client
-    client.py       LedgerClient: the one interface the UI talks to
-    transport.py    HTTP as one function, swappable for a test
-    remote.py       online: every write a request; a revision-invalidated read cache
-    offline.py      a local SQLite replica, an outbox, replay; rejections rebuild
-    replica.py      server sync batches -> local rows
-    drafts.py       transaction form logic without Qt (the twin of the web's ledger.ts)
-    ui/             the windows and dialogs
-
-src/pymoney/importers/kmymoney/   migration from KMyMoney
+importers/kmymoney/               migration from KMyMoney
     model.py        the file's own structures, unintepreted
     parser.py       .kmy reading: gzip, XML, streamed transactions
     importer.py     model -> book, including the rounding reconciliation
     report.py       what was done, approximated, and skipped
     __main__.py     the command line
 
-src/pymoney/api/                  the HTTP API
+api/                              the HTTP API
     schemas.py      wire models, deliberately not the domain objects
     security.py     password hashing, session tokens, idempotency keys
     registry.py     one open Book per book id, one lock per book
     deps.py         who is calling, what they may do, which book
     errors.py       domain errors -> status codes, in one place
+    testing.py      the in-process API and HTTP client both test suites drive
     routers/        one module per resource
     app.py          the application factory
+```
+
+And `desktop/src/pymoney_desktop`:
+
+```
+client.py       LedgerClient: the one interface the UI talks to
+transport.py    HTTP as one function, swappable for a test
+remote.py       online: every write a request; a revision-invalidated read cache
+offline.py      a local SQLite replica, an outbox, replay; rejections rebuild
+replica.py      server sync batches -> local rows
+drafts.py       transaction form logic without Qt (the twin of the web's ledger.ts)
+ui/             the windows, dialogs, charts and the theme
 ```
 
 ## Status
@@ -86,14 +111,22 @@ src/pymoney/api/                  the HTTP API
 ## Development
 
 ```bash
-make install        # venv + editable install with dev extras
-make check          # what CI runs: lint, types, tests (no PostgreSQL)
-make test           # fast loop: memory + sqlite
-make test-all       # every backend, PostgreSQL included
-make bench-scaling  # does the ledger stay fast as it grows?
-make test-thorough  # 5000 Hypothesis examples; when touching rounding
-make help           # everything else
+make install                  # one .venv for server + desktop, npm for the frontend
+make check                    # what CI runs, for all three components
+make -C server help           # the server's targets: test, test-all, serve, migrate, openapi, image...
+make -C server test           # fast loop: memory + sqlite
+make -C server test-all       # every backend, PostgreSQL included
+make -C server bench-scaling  # does the ledger stay fast as it grows?
+make -C server test-thorough  # 5000 Hypothesis examples; when touching rounding
+make -C desktop help          # the desktop's: test, run, build
+make -C frontend help         # the frontend's: dev, test, check, e2e
 ```
+
+Every component has its own `Makefile`, `check` target and coverage gate; the
+root Makefile only delegates. The two Python packages share one virtualenv in a
+checkout (`.venv` at the root) because the desktop depends on the server, but
+they are separate distributions: the server image never installs Qt, and the
+desktop suite never runs inside it.
 
 Optionally `pip install pre-commit && pre-commit install` for the fast checks on
 commit.
@@ -118,7 +151,7 @@ cp .env.example .env                                        # then change the pa
 docker compose up -d                                        # PostgreSQL
 docker compose --profile api run --rm api python -m pymoney.store.migrate
 docker compose --profile api up -d                          # the API on 127.0.0.1:8000
-make image-test                                             # run the suite inside the image
+make -C server image-test                                   # run the server suite inside its image
 ```
 
 `compose.yaml` has three services. `db` is PostgreSQL; its init script creates
@@ -141,10 +174,14 @@ book nobody holds a grant on is invisible to every user, by design.
 
 ### CI
 
-`.github/workflows/ci.yml` runs lint + format, `mypy`, the suite on Python 3.12
-and 3.13 with the `ci` Hypothesis profile and the coverage gate, and a container
-job that builds both image targets, runs the suite inside the test image and
-validates `compose.yaml`. A single aggregate `CI` check is the one to require in
+`.github/workflows/ci.yml` has a job group per component. Server: lint +
+format + contract, `mypy`, the suite on Python 3.12 and 3.13 with the `ci`
+Hypothesis profile and the coverage gate, PostgreSQL, and a container job that
+builds both image targets, runs the suite inside the test image (the server
+alone -- no Qt, nothing skipped) and validates `compose.yaml`. Desktop: lint,
+types, the offscreen Qt suite with its own coverage gate. Frontend: generated
+types, typecheck, tests, build, and the browser end-to-end suite. Shared: the
+translation catalogue. A single aggregate `CI` check is the one to require in
 branch protection. There is a weekly scheduled run: the core has no runtime
 dependencies, but the dev tools do, and a new ruff or mypy release should not
 first show up on someone's unrelated pull request.
@@ -245,7 +282,7 @@ pytest                                  # memory + sqlite (the default)
 pytest --stores=postgres                # needs PYMONEY_TEST_DATABASE_URL,
                                         # or falls back to a throwaway pgserver
 make up                                 # PostgreSQL via compose
-make migrate                            # python -m pymoney.store.migrate, $PYMONEY_DATABASE_URL
+make -C server migrate                  # python -m pymoney.store.migrate, $PYMONEY_DATABASE_URL
 ```
 
 A few tests are memory-only, and deliberately so: `check_integrity` looks for
@@ -334,12 +371,12 @@ file is refused up front, before anything is created, on the strength of the
 ## The HTTP API
 
 ```bash
-make serve              # http://127.0.0.1:8000/docs
-make openapi            # regenerate docs/openapi.json
+make -C server serve    # http://127.0.0.1:8000/docs
+make -C server openapi  # regenerate server/docs/openapi.json
 ```
 
-`docs/openapi.json` is committed and CI fails if it drifts from the code, so a
-client generated from it is never wrong about the server.
+`server/docs/openapi.json` is committed and CI fails if it drifts from the code,
+so a client generated from it is never wrong about the server.
 
 **Amounts and rates are never JSON floats.** `0.1` is not one tenth, so an amount
 crosses the wire as a string (`"12.34"`, `"10/3"`) or an integer and a JSON float
@@ -455,7 +492,7 @@ baffling "cannot start a transaction within a transaction".
 
 ## Performance
 
-`benchmarks/bench_store.py` measures it; `tests/test_performance.py` keeps it
+`server/benchmarks/bench_store.py` measures it; `server/tests/test_performance.py` keeps it
 true. The tests make no wall-clock assertions — those are flaky on shared
 runners — and instead pin **statement counts** (an N+1 fails the build) and
 **query plans** (an index that stops being used fails the build).
@@ -484,7 +521,7 @@ seconds.
 ## Things worth knowing before you build on this
 
 **The rounding guarantee.** `book_legs` promises three things, and the property
-tests in `tests/test_posting.py` enforce them for arbitrary inputs:
+tests in `server/tests/test_posting.py` enforce them for arbitrary inputs:
 
 1. booked values sum to exactly zero;
 2. no leg is distorted by more than one minor unit;
@@ -606,10 +643,10 @@ writer.
 ## Languages
 
 The web app, the desktop app and the server's emails are available in English
-and Dutch. One catalogue serves all three: `src/pymoney/i18n/nl.json`, keyed by
+and Dutch. One catalogue serves all three: `server/src/pymoney/i18n/nl.json`, keyed by
 the English source string (so code reads as English and English needs no
 catalogue), copied into the frontend by `scripts/i18n.py` the way
-`docs/openapi.json` is. `make i18n-check` -- and CI -- fails when a string the
+`server/docs/openapi.json` is. `make i18n-check` -- and CI -- fails when a string the
 code asks for (`t("…")` in the web app, `_("…")` in the desktop,
 `translate("…")` on the server) has no Dutch translation, or the catalogue has
 a stale key, or the frontend's copy is behind. Placeholders (`Delete {name}?`)
@@ -627,8 +664,8 @@ plus its code in `pymoney.i18n.SUPPORTED` and the frontend's `LOCALES`.
 ## The desktop app
 
 ```bash
-pip install -e '.[desktop]'
-python -m pymoney.desktop            # or: make desktop
+make -C desktop install              # installs ../server too, into the shared .venv
+python -m pymoney_desktop            # or: make -C desktop run
 ```
 
 A PySide6 client with the web app's core functionality -- books, the account
@@ -642,7 +679,7 @@ reports run the very same view code against the local replica, so the numbers
 are the ones the server would give.
 
 **One interface, two implementations.** The UI talks to
-`pymoney.desktop.LedgerClient` and nothing else. Its wire types are the API's
+`pymoney_desktop.LedgerClient` and nothing else. Its wire types are the API's
 own pydantic schemas, so the desktop and the web frontend speak the identical
 contract.
 
@@ -673,16 +710,16 @@ Nothing is merged, ever. A 5xx or no connection stops the replay; the entries
 stay and are tried next time. A pull follows every replay.
 
 The login dialog has the choice ("Keep a local copy and work offline"); the
-replica lives in the platform's app-data directory. `tests/test_desktop_clients.py`
+replica lives in the platform's app-data directory. `desktop/tests/test_desktop_clients.py`
 runs both clients against the real API in-process, with a transport that can be
 unplugged, through the whole story: work offline, replay, dropped ack,
-rejection and rebuild, cold start offline. `tests/test_desktop_ui.py` drives the
+rejection and rebuild, cold start offline. `desktop/tests/test_desktop_ui.py` drives the
 real window offscreen (`pytest-qt`) through posting, editing, deleting,
 reconnecting and a rejection.
 
 ### Packaging: PyInstaller, not Briefcase (for now)
 
-`make desktop-build` runs `packaging/pymoney-desktop.spec` and produces
+`make -C desktop build` runs `desktop/packaging/pymoney-desktop.spec` and produces
 `dist/PyMoney/`, a one-folder build. The reasoning:
 
 - **PyInstaller** is one command, has maintained hooks for both PySide6 and
@@ -697,14 +734,14 @@ reconnecting and a rejection.
 
 So: PyInstaller for "give me a binary", and move to Briefcase when signed
 installers are a requirement -- the app itself needs no change for that,
-Briefcase consumes the same entry point (`pymoney.desktop.__main__:main`).
+Briefcase consumes the same entry point (`pymoney_desktop.__main__:main`).
 
 ## The web frontend
 
 ```bash
-make serve          # the API
-make seed-demo      # optional demo book
-make web-install && make web-dev    # http://localhost:5173
+make -C server serve              # the API
+make -C server seed-demo          # optional demo book
+make -C frontend install dev      # http://localhost:5173
 ```
 
 `frontend/` is an npm workspace with two packages. `@pymoney/core` is the
@@ -722,8 +759,8 @@ without the picture can use), drill-down from any report row to the account's re
 from any register row to the transaction, and -- by role -- posting, editing and
 deleting transactions with payees created on the spot, managing commodities and
 prices, and fetching quotes (editors), and managing the chart of accounts
-(owners). `make web-check` is what CI runs; it fails if the
-generated types no longer match the committed OpenAPI document. `make e2e` runs
+(owners). `make -C frontend check` is what CI runs; it fails if the
+generated types no longer match the committed OpenAPI document. `make -C frontend e2e` runs
 the Playwright walkthroughs -- a real browser against the real API and app,
 from registering to posting and deleting a transaction; see
 [frontend/README.md](frontend/README.md#end-to-end-tests).

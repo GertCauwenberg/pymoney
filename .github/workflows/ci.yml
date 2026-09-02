@@ -24,52 +24,62 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   FORCE_COLOR: "1"
 
+# Three components, three sets of jobs. Each is checked from its own directory
+# with its own configuration, the way it is deployed: the server image never
+# sees Qt, the desktop suite never pretends to be the server's.
 jobs:
-  lint:
-    name: Lint and format
+  # ---------------------------------------------------------------- server ----
+  server-lint:
+    name: "server: lint, format, contract"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: server/pyproject.toml
       - run: pip install -e '.[dev]'
       - name: ruff check
-        run: ruff check --output-format=github src tests
+        run: ruff check --output-format=github src tests scripts benchmarks
       - name: ruff format
-        run: ruff format --check --diff src tests
-
+        run: ruff format --check --diff src tests scripts benchmarks
       # The OpenAPI document is part of the contract we ship, so a changed
-      # endpoint must come with a regenerated spec. A client generated from the
-      # committed document is then never wrong about the server.
-      - name: Every UI string has a Dutch translation, and the frontend's copy is current
-        run: python scripts/i18n.py --check && git diff --exit-code -- frontend/packages/core/src/generated/nl.json
+      # endpoint must come with a regenerated spec. The frontend generates its
+      # types from it, so it is never wrong about the server.
       - name: OpenAPI document is up to date
         run: |
           python scripts/openapi.py
           git diff --exit-code docs/openapi.json \
-            || { echo "::error::docs/openapi.json is stale; run 'make openapi'"; exit 1; }
+            || { echo "::error::server/docs/openapi.json is stale; run 'make -C server openapi'"; exit 1; }
 
-  types:
-    name: Type check
+  server-types:
+    name: "server: type check"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: server/pyproject.toml
       - run: pip install -e '.[dev]'
       - run: mypy
 
   # Memory and SQLite need no services, so this job stays fast and carries the
   # coverage gate. PostgreSQL gets its own job below.
-  test:
-    name: Tests (py${{ matrix.python-version }})
+  server-test:
+    name: "server: tests (py${{ matrix.python-version }})"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
     strategy:
       fail-fast: false
       matrix:
@@ -80,11 +90,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: server/pyproject.toml
       - run: pip install -e '.[dev]'
-      - name: Qt runtime libraries (the desktop tests run PySide6 offscreen)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
-
       # The `ci` Hypothesis profile runs ~10x the examples of local dev and is
       # derandomised, so a failure on CI is reproducible from the same seed.
       - name: pytest
@@ -93,37 +100,38 @@ jobs:
           --hypothesis-profile=ci
           --stores=memory,sqlite,sqlite-file
           -k "not postgres"
-          --cov=src/pymoney
+          --cov
           --cov-report=term-missing
           --cov-report=xml
           --junitxml=junit.xml
-
       - name: Coverage summary
         if: always()
         run: |
           {
-            echo "### Coverage (py${{ matrix.python-version }})"
+            echo "### Server coverage (py${{ matrix.python-version }})"
             echo
             coverage report --format=markdown
           } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports-py${{ matrix.python-version }}
+          name: server-test-reports-py${{ matrix.python-version }}
           path: |
-            coverage.xml
-            junit.xml
+            server/coverage.xml
+            server/junit.xml
           retention-days: 14
           if-no-files-found: warn
 
   # The same suite again, against a real PostgreSQL. Separate because it needs a
   # service container and takes minutes rather than seconds: a contributor
   # editing the domain should not wait for it to find a typo.
-  postgres:
-    name: Tests (PostgreSQL)
+  server-postgres:
+    name: "server: tests (PostgreSQL)"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
     services:
       postgres:
         image: postgres:17-alpine
@@ -151,13 +159,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: server/pyproject.toml
       - run: pip install -e '.[dev]'
-      - run: sudo apt-get install -y libegl1 libgl1
-
       - name: Confirm PostgreSQL is really being used
         run: pytest tests/test_store.py::test_postgres_is_actually_exercised -q
-
       - name: Migrations apply cleanly
         run: |
           alembic upgrade head
@@ -165,26 +170,25 @@ jobs:
           alembic upgrade head
         env:
           PYMONEY_DATABASE_URL: ${{ env.PYMONEY_TEST_DATABASE_URL }}
-
       - name: pytest (PostgreSQL backend)
         run: pytest --hypothesis-profile=ci --stores=postgres
-
       - name: Store and performance suites
         run: pytest tests/test_store.py tests/test_performance.py --stores=memory
 
-  docker:
-    name: Container build
+  server-image:
+    name: "server: container image"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-
       # Build the test stage and run the suite inside it: proves the image can
-      # actually run what we ship, not just that it builds.
+      # actually run what we ship, not just that it builds. The image holds the
+      # server alone -- no Qt -- and its coverage gate measures the server alone,
+      # so nothing is skipped and nothing is missed.
       - name: Build test image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: server
           target: test
           load: true
           tags: pymoney:test
@@ -192,27 +196,66 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Run the suite in the image
         run: docker run --rm pymoney:test
-
       - name: Build runtime image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: server
           target: runtime
           load: true
           tags: pymoney:runtime
           cache-from: type=gha
       - name: Smoke test the runtime image
         run: docker run --rm pymoney:runtime
-
-      - name: Validate compose file
+      - name: Validate compose files
         run: docker compose --env-file .env.example config --quiet
 
-  # The web frontend. `npm run check` regenerates the API types from
-  # docs/openapi.json and fails if they differ from what is committed, so a
-  # server change that alters the contract cannot land without the client
-  # noticing; then typecheck, tests, and a production build.
-  web:
-    name: Web frontend
+  # --------------------------------------------------------------- desktop ----
+  # Its own package, its own suite, its own coverage gate. Qt runs offscreen;
+  # the in-process API it talks to comes from the server package, installed as
+  # a dependency from the sibling directory.
+  desktop:
+    name: "desktop: lint, types, tests"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            server/pyproject.toml
+            desktop/pyproject.toml
+      - run: pip install -e '../server[api]' -e '.[dev]'
+      - name: Qt runtime libraries (PySide6 offscreen)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+      - name: ruff check
+        run: ruff check --output-format=github src tests
+      - name: ruff format
+        run: ruff format --check --diff src tests
+      - run: mypy
+      - name: pytest
+        run: pytest --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "### Desktop coverage"
+            echo
+            coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------- frontend ----
+  # `npm run check` regenerates the API types from server/docs/openapi.json and
+  # fails if they differ from what is committed, so a server change that alters
+  # the contract cannot land without the client noticing; then typecheck,
+  # tests, and a production build.
+  frontend:
+    name: "frontend: types, tests, build"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -226,12 +269,12 @@ jobs:
       - run: npm run check
         working-directory: frontend
 
-  # The browser walkthroughs: Playwright starts the API (from this checkout's
+  # The browser walkthroughs: Playwright starts the API (from the server's
   # Python environment) and the Vite dev server, then drives Chromium through
   # registering, sharing, posting and editing. Slower than the rest, so a job of
   # its own; a failure leaves a trace and an HTML report as an artifact.
-  e2e:
-    name: End-to-end (browser)
+  frontend-e2e:
+    name: "frontend: end-to-end (browser)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -239,7 +282,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m venv .venv && .venv/bin/pip install -e '.[dev]'
+          cache-dependency-path: server/pyproject.toml
+      - run: python -m venv .venv && .venv/bin/pip install -e './server[api]'
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -263,6 +307,20 @@ jobs:
             frontend/e2e/test-results
           retention-days: 7
 
+  # ---------------------------------------------------------------- shared ----
+  # The one thing that spans all three: the Dutch catalogue ships with the
+  # server and must cover every string in both clients.
+  i18n:
+    name: "shared: translations"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Every UI string has a Dutch translation, and the frontend's copy is current
+        run: python scripts/i18n.py --check && git diff --exit-code -- frontend/packages/core/src/generated/nl.json
+
   # Single required check for branch protection, so the matrix can grow without
   # reconfiguring the repository settings.
   #
@@ -273,7 +331,16 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [lint, types, test, postgres, docker, web, e2e]
+    needs:
+      - server-lint
+      - server-types
+      - server-test
+      - server-postgres
+      - server-image
+      - desktop
+      - frontend
+      - frontend-e2e
+      - i18n
     if: always()
     steps:
       - name: Fail if any job did not succeed

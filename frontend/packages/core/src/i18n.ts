@@ -1,6 +1,6 @@
 /**
  * Translations. Keys are the English source strings; `nl.json` is generated
- * from the server's catalogue (src/pymoney/i18n/nl.json) by scripts/i18n.py,
+ * from the server's catalogue (server/src/pymoney/i18n/nl.json) by scripts/i18n.py,
  * so the web app, the desktop and the server's emails share one dictionary.
  *
  * `translate("Delete {name}?", "nl", { name })` substitutes `{name}` after

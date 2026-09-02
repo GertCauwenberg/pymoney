@@ -9,7 +9,7 @@
     "./hooks": "./src/hooks/index.ts"
   },
   "scripts": {
-    "generate": "openapi-typescript ../../../docs/openapi.json --output src/generated/openapi.d.ts --immutable --alphabetize",
+    "generate": "openapi-typescript ../../../server/docs/openapi.json --output src/generated/openapi.d.ts --immutable --alphabetize",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

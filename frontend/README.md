@@ -19,22 +19,29 @@ place and is tested once.
 ## Running it
 
 ```bash
-make serve                 # the API on :8000 (PYMONEY_COOKIE_SECURE=0 for plain http)
-make seed-demo             # optional: a small, fully priced demo book
-make web-install           # npm ci
-make web-dev               # http://localhost:5173
+make -C ../server serve    # the API on :8000 (PYMONEY_COOKIE_SECURE=0 for plain http)
+make -C ../server seed-demo   # optional: a small, fully priced demo book
+make install               # npm ci
+make dev                   # http://localhost:5173
 ```
+
+(All `make` commands here run in `frontend/`; the component has its own Makefile.)
 
 In development Vite proxies `/api/*` to the API, so the browser sees a single
 origin: no CORS, no cookie-domain settings. See `apps/web/vite.config.ts` and
 `apps/web/.env.example`.
 
 ```bash
-make web-check             # what CI runs: generated types current, typecheck, tests, build
-make web-test              # just the tests
-make web-build             # production build -> apps/web/dist
+make check                 # what CI runs: generated types current, typecheck, tests, build
+make test                  # just the tests
+make build                 # production build -> apps/web/dist
 make e2e                   # browser walkthroughs against the real API (see below)
+make image                 # the nginx image serving the built app (Dockerfile here)
 ```
+
+The API types in `packages/core/src/generated/` are generated from the server's
+contract, `../server/docs/openapi.json`; `npm run generate` refreshes them and
+`make check` fails if they drift.
 
 ## End-to-end tests
 
@@ -43,14 +50,16 @@ the walkthroughs that do not: a real Chromium, driven by Playwright, against
 the real API (uvicorn, a fresh SQLite file in a temporary directory,
 registration open, the session cookie allowed over plain HTTP, the quote
 scheduler off) and the real web app (Vite, proxying `/api` exactly as `make
-web-dev` does). Playwright starts and stops both servers; nothing needs to be
-running beforehand, and the run never touches a development database.
+dev` does). Playwright starts and stops both servers; nothing needs to be
+running beforehand, and the run never touches a development database. The API
+runs from the repository's shared virtualenv (`../.venv`, with the server
+package installed: `make -C ../server install`).
 
 ```bash
-make install                 # the API's virtualenv, if not already there
-make web-install
+make -C ../server install    # the server's virtualenv, if not already there
+make install
 make e2e-install             # once: Playwright's Chromium
-make e2e                     # or: cd frontend && npm run e2e
+make e2e                     # or: npm run e2e
 ```
 
 What they walk through:
@@ -111,7 +120,7 @@ check. Placeholders: `t("Delete {name}?", { name })`.
 
 `packages/core/src/generated/openapi.d.ts` is generated from `docs/openapi.json`
 with `openapi-typescript` and committed. `npm run check` regenerates it and
-fails if it differs, exactly as the Python side fails when `docs/openapi.json`
+fails if it differs, exactly as the Python side fails when `server/docs/openapi.json`
 drifts from the code. So: the server cannot change a field without the spec
 changing, the spec cannot change without the client types changing, and the
 client types cannot change without the frontend build noticing. No hand-written

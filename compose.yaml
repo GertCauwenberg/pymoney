@@ -7,7 +7,8 @@
 #   docker compose --profile test run --rm tests
 #
 # Profiles keep the default `up` to the database alone: the API is opt-in, and
-# so is the test run.
+# so is the test run. The API image is built from ./server, the web image from
+# ./frontend (see compose-production.yaml); each component deploys on its own.
 name: pymoney
 
 x-postgres-env: &postgres-env
@@ -45,7 +46,7 @@ services:
   # storage backends including the `db` service.
   tests:
     build:
-      context: .
+      context: ./server
       target: test
     profiles: [test]
     depends_on:
@@ -78,7 +79,7 @@ services:
   #         python -m pymoney.store.grants BOOK_ID you@example.org owner
   api:
     build:
-      context: .
+      context: ./server
       target: runtime
     profiles: [api]
     depends_on:

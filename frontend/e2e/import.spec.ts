@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 
 import { register, uniqueEmail } from "./helpers";
 
-const FIXTURE = resolve(__dirname, "../../tests/fixtures/household.kmy.xml");
+const FIXTURE = resolve(__dirname, "../../server/tests/fixtures/household.kmy.xml");
 
 test("a new user imports a KMyMoney file instead of creating a book by hand", async ({ page }) => {
   await register(page, uniqueEmail("mover"), "Mover");

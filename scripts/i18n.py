@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CATALOGUE = ROOT / "src" / "pymoney" / "i18n" / "nl.json"
+CATALOGUE = ROOT / "server" / "src" / "pymoney" / "i18n" / "nl.json"
 FRONTEND_COPY = ROOT / "frontend" / "packages" / "core" / "src" / "generated" / "nl.json"
 
 CALL = re.compile(r"""(?<![\w.])(?:t|tr|_|translate)\(\s*"((?:[^"\\]|\\.)+)"\s*[,)]""")
@@ -44,8 +44,8 @@ def label_keys() -> set[str]:
         "frontend/apps/web/src/pages/CommoditiesPage.tsx",
         "frontend/apps/web/src/ledger/ReconcileMark.tsx",
         "frontend/apps/web/src/reports/NetWorthReport.tsx",
-        "src/pymoney/desktop/ui/reports.py",
-        "src/pymoney/desktop/ui/charts.py",
+        "desktop/src/pymoney_desktop/ui/reports.py",
+        "desktop/src/pymoney_desktop/ui/charts.py",
     ):
         text = (ROOT / rel).read_text(encoding="utf-8")
         head = text.split("export function")[0] if rel.endswith(("ts", "tsx")) else text
@@ -59,8 +59,8 @@ def label_keys() -> set[str]:
 
 def all_keys() -> set[str]:
     keys: set[str] = set()
-    for pattern in ("frontend/apps/web/src/**/*.tsx", "frontend/packages/core/src/*.ts", "src/pymoney/desktop/**/*.py",
-                    "src/pymoney/api/routers/auth.py"):
+    for pattern in ("frontend/apps/web/src/**/*.tsx", "frontend/packages/core/src/*.ts", "desktop/src/pymoney_desktop/**/*.py",
+                    "server/src/pymoney/api/routers/auth.py"):
         for path in ROOT.glob(pattern):
             if "/generated/" in str(path) or "/test/" in str(path):
                 continue
