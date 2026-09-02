@@ -578,6 +578,12 @@ class SqlStore(Store):
         if not rows:
             return ()
         splits_query = select(schema.splits)
+        # A LIMIT without its ORDER BY is a different query: the subquery would
+        # pick *some* N transactions, not the N just returned. A limited page is
+        # small, so its ids go in as a list; the subquery form is for the
+        # unbounded queries, where the list could run to thousands.
+        if source is not None and source._limit_clause is not None:
+            source = None
         if source is not None:
             ids_query = source.with_only_columns(schema.transactions.c.id).order_by(None)
             splits_query = splits_query.where(
