@@ -2,7 +2,13 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "types": ["vitest/globals"]
+    // No DOM lib, on purpose: this package runs on the web, on a phone and in
+    // Node alike. The WHATWG globals it does use -- fetch, Response, URL,
+    // FormData -- are typed by @types/node (a root devDependency). Named here
+    // explicitly: they used to arrive only because vitest's types happened to
+    // reference node's, and a dependency bump that changed that took every
+    // `fetch` in client.ts with it.
+    "types": ["node", "vitest/globals"]
   },
   "include": ["src", "test"]
 }
