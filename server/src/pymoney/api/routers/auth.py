@@ -509,12 +509,20 @@ def logout(
 
 
 @router.get("/me", response_model=UserOut, summary="The current user")
-def me(actor: CurrentUser) -> UserOut:
+def me(actor: CurrentUser, response: Response) -> UserOut:
+    """Also hands the session's CSRF token back to its owner: a browser tab
+    holds the cookie in common with its siblings but not their sessionStorage,
+    and without the token every write from a fresh tab would be refused."""
+    # A token in the body must never be cached by anything in between.
+    response.headers["Cache-Control"] = "no-store"
     return UserOut(
         id=actor.user_id,
         email=actor.email,
         display_name=actor.display_name,
         locale=actor.locale,
+        # Only for the cookie session it belongs with: a bearer client has no
+        # ambient credential, needs no CSRF token, and should not store one.
+        csrf_token=(actor.csrf_token or None) if actor.via_cookie else None,
     )
 
 

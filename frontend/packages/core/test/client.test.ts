@@ -114,6 +114,28 @@ describe("ApiClient", () => {
     expect(error.message).toBe("start: Field required");
   });
 
+  it("me() recovers the cookie session's CSRF token, but never in bearer mode", async () => {
+    const user = { id: "u1", email: "a@b.c", display_name: "A", locale: "en", csrf_token: "recovered" };
+    const { fetch } = fakeFetch([{ status: 200, body: user }, { status: 200, body: user }]);
+    // Cookie mode: a fresh tab holds the cookie but no token; /me restores it.
+    const cookieApi = new ApiClient({ baseUrl: "/api", fetch, credentials: "include" });
+    await cookieApi.me();
+    expect(cookieApi.auth.get().csrf).toBe("recovered");
+    // Bearer mode: no ambient credential, no CSRF token to keep.
+    const bearerApi = new ApiClient({ baseUrl: "/api", fetch, credentials: "omit" });
+    await bearerApi.me();
+    expect(bearerApi.auth.get().csrf).toBeUndefined();
+  });
+
+  it("me() never overwrites a token it already holds", async () => {
+    const user = { id: "u1", email: "a@b.c", display_name: "A", locale: "en", csrf_token: "stale-from-server" };
+    const { fetch } = fakeFetch([{ status: 200, body: user }]);
+    const api = new ApiClient({ baseUrl: "/api", fetch, credentials: "include" });
+    api.auth.set({ csrf: "fresh-from-login" });
+    await api.me();
+    expect(api.auth.get().csrf).toBe("fresh-from-login");
+  });
+
   it("reports a 401 to the app -- except from the session probe", async () => {
     const { fetch } = fakeFetch([
       { status: 401, body: { detail: "Not authenticated" } },

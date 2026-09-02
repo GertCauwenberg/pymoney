@@ -85,7 +85,12 @@ export interface paths {
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** The current user */
+        /**
+         * The current user
+         * @description Also hands the session's CSRF token back to its owner: a browser tab
+         *     holds the cookie in common with its siblings but not their sessionStorage,
+         *     and without the token every write from a fresh tab would be refused.
+         */
         readonly get: operations["me_auth_me_get"];
         readonly put?: never;
         readonly post?: never;
@@ -2402,6 +2407,11 @@ export interface components {
         };
         /** UserOut */
         readonly UserOut: {
+            /**
+             * Csrf Token
+             * @description The session's CSRF token, returned by GET /auth/me so a browser tab that holds the cookie but not the token (a fresh tab, a restored session) can write again. Bound to the session, useless without the cookie, and unreadable cross-origin; bearer clients can ignore it.
+             */
+            readonly csrf_token?: string | null;
             /** Display Name */
             readonly display_name: string;
             /** Email */

@@ -322,12 +322,21 @@ export class ApiClient {
     }
   }
 
-  me(): Promise<User> {
+  async me(): Promise<User> {
     // The probe that *asks* whether a session exists: a 401 here is its
     // answer, not "the session died". Without this, a cookie-less /me racing
     // a login or activation would fire onUnauthorized and wipe the session
     // that was just established.
-    return this.request<User>("GET", "/auth/me", undefined, undefined, { notifyUnauthorized: false });
+    const user = await this.request<User>("GET", "/auth/me", undefined, undefined, { notifyUnauthorized: false });
+    // A fresh browser tab shares the session cookie but not its siblings'
+    // sessionStorage: without this, it could read everything and write
+    // nothing. The server hands the session's CSRF token back to its owner;
+    // remember it, and every tab can write. Never in bearer mode, where the
+    // credential is not ambient and no CSRF token exists to keep.
+    if (user.csrf_token && this.credentialsMode !== "omit" && !this.auth.get().csrf) {
+      this.auth.set({ csrf: user.csrf_token });
+    }
+    return user;
   }
 
   /** Change the display name or the language, stored with the account. */

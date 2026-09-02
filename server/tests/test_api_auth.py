@@ -296,6 +296,29 @@ class TestLogin:
             == 202
         )
 
+    def test_me_hands_the_csrf_token_back_to_its_cookie_session(self, api: Client):
+        """A fresh browser tab shares the cookie but not sessionStorage; /me is
+        how it gets its CSRF token back -- and the token must actually work."""
+        session = api.register("a@example.invalid")
+        response = api.http.get("/auth/me")
+        assert response.headers["cache-control"] == "no-store"
+        token = response.json()["csrf_token"]
+        assert token == session["csrf_token"]
+        # A write with the recovered token, and none without.
+        ok = api.http.post(
+            "/books",
+            json={"name": "B", "base_currency_code": "EUR"},
+            headers={"X-CSRF-Token": token},
+        )
+        assert ok.status_code == 201
+        refused = api.http.post("/books", json={"name": "C", "base_currency_code": "EUR"})
+        assert refused.status_code == 403
+        # A bearer client gets no token: it has no ambient credential to bind it to.
+        bare = api.http.get(
+            "/auth/me", headers={"Authorization": f"Bearer {session['token']}"}
+        )
+        assert bare.json()["csrf_token"] is None
+
     def test_logout_invalidates_the_session(self, api: Client):
         api.register("a@example.invalid")
         api.logout()

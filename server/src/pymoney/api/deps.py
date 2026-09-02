@@ -100,6 +100,8 @@ class Actor:
     display_name: str
     session_id: UUID
     via_cookie: bool
+    csrf_token: str = ""
+    """This session's CSRF token; ``/auth/me`` hands it back to its owner."""
     locale: str = "en"
 
     @property
@@ -202,6 +204,7 @@ def current_actor(
         display_name=row.display_name,
         session_id=row.id,
         via_cookie=via_cookie,
+        csrf_token=row.csrf_token,
         locale=row.locale,
     )
 
