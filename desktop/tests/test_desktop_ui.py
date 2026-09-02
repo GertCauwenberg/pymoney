@@ -130,8 +130,9 @@ class TestMainWindow:
         assert win.boxes == [], win.boxes
         # The register shows it with the card's natural sign, and the tree's balance moved.
         assert win.register.rowCount() == 1
-        row = [win.register.item(0, c).text() for c in range(6)]
-        assert row[2:] == ["Trattoria", "Dinner", "62.50", "62.50"]
+        row = [win.register.item(0, c).text() for c in range(7)]
+        # payee, memo, the (empty) reconciliation mark, amount, balance
+        assert row[2:] == ["Trattoria", "Dinner", "", "62.50", "62.50"]
         assert tree_texts(win)["Visa"] == "62.50"
         assert tree_texts(win)["Restaurants"] == "62.50"
         assert (
@@ -552,3 +553,81 @@ def _qdate(value):
     from PySide6.QtCore import QDate
 
     return QDate(value.year, value.month, value.day)
+
+
+class TestReconciliation:
+    def _post(self, win, book_id, visa, food, amount, memo, when):
+        from pymoney.api.schemas import TransactionIn
+
+        return win.client.post_transaction(
+            book_id,
+            TransactionIn.model_validate(
+                {
+                    "date": when,
+                    "legs": [
+                        {"account_id": str(visa), "value": amount},
+                        {"account_id": str(food), "value": None},
+                    ],
+                    "memo": memo,
+                }
+            ),
+        )
+
+    def test_mark_one_row_and_reconcile_a_statement(self, window):
+        from PySide6.QtCore import Qt
+
+        win, _api, book_id, visa, food, _transport = window
+        self._post(win, book_id, visa, food, "-62.50", "Dinner", "2026-03-14")
+        self._post(win, book_id, visa, food, "-8.00", "Coffee", "2026-03-20")
+        win.load()
+        select_account(win, "Visa")
+        assert win.register.columnCount() == 7
+        assert [win.register.item(i, 4).text() for i in range(2)] == ["", ""]
+        assert win.reconcile_button.isEnabled()
+
+        # Mark the selected row cleared through the menu.
+        win.register.selectRow(0)
+        assert win.mark_button.isEnabled()
+        assert win.mark_actions["FROZEN"].isVisible()  # the owner may freeze
+        win.mark_actions["CLEARED"].trigger()
+        assert win.register.item(0, 4).text() == "C"
+        assert win.register.item(0, 4).toolTip() == "Cleared"
+
+        # The statement dialog: the cleared row is pre-ticked; tick the other,
+        # mark both reconciled.
+        captured = {}
+
+        def run(dialog):
+            captured["dialog"] = dialog
+            assert dialog.state_box.count() == 3  # owner: Frozen offered
+            ticks = [
+                dialog.table.item(i, 0).checkState() == Qt.CheckState.Checked
+                for i in range(2)
+            ]
+            assert ticks == [True, False]
+            assert dialog.summary.text().startswith("1 selected")
+            dialog.table.item(1, 0).setCheckState(Qt.CheckState.Checked)
+            assert dialog.summary.text().startswith("2 selected")
+            assert "70.50" in dialog.summary.text()
+            dialog.state_box.setCurrentIndex(1)  # Reconciled
+            dialog.date.setDate(_qdate(date(2026, 3, 31)))
+            return 1  # Accepted
+
+        win.run_dialog = run  # type: ignore[method-assign]
+        win.reconcile_account()
+        assert "dialog" in captured
+        assert [win.register.item(i, 4).text() for i in range(2)] == ["R", "R"]
+        # Reconciled rows are locked: editing is refused with a message.
+        win.register.selectRow(0)
+        win.edit_transaction()
+        assert win.boxes and win.boxes[-1][0] == "Locked"
+
+        # Freeze one as the owner; frozen rows offer no Mark at all.
+        win.mark_actions["FROZEN"].trigger()
+        assert win.register.item(0, 4).text() == "F"
+        win.register.selectRow(0)
+        win._enable_actions()
+        assert not win.mark_button.isEnabled()
+
+
+from datetime import date  # noqa: E402

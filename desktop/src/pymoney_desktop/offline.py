@@ -65,9 +65,12 @@ from pymoney.api.schemas import (
     PayeeIn,
     PayeeOut,
     PeriodTableOut,
+    ReconcileIn,
+    ReconcileStateName,
     RegisterPage,
     ReportInterval,
     SessionOut,
+    SetSplitStateIn,
     SyncPageOut,
     TransactionIn,
     TransactionOut,
@@ -633,6 +636,29 @@ class OfflineClient(LedgerClient):
                 book,
                 cmd.DeleteTransaction(transaction_id=UUID(op.path.rsplit("/", 1)[1])),
             )
+        if op.name == "set_split_state":
+            parts = op.path.split("/")
+            mark = SetSplitStateIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.SetSplitReconcileState(
+                    transaction_id=UUID(parts[-4]),
+                    split_id=UUID(parts[-2]),
+                    state=mark.state.to_domain(),
+                    on=mark.on,
+                ),
+            )
+        if op.name == "reconcile_account":
+            statement = ReconcileIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.ReconcileAccount(
+                    account_id=UUID(op.path.rsplit("/", 2)[1]),
+                    split_ids=tuple(statement.split_ids),
+                    state=statement.state.to_domain(),
+                    statement_date=statement.statement_date,
+                ),
+            )
         if op.name == "create_payee":
             payee = PayeeIn.model_validate(body)
             return self._execute(
@@ -709,6 +735,49 @@ class OfflineClient(LedgerClient):
                 f"/books/{book_id}/transactions/{transaction_id}",
                 None,
                 f"delete transaction {transaction_id}",
+            ),
+        )
+
+    def set_split_state(
+        self,
+        book_id: UUID,
+        transaction_id: UUID,
+        split_id: UUID,
+        state: ReconcileStateName,
+        on: date | None = None,
+    ) -> TransactionOut:
+        body = SetSplitStateIn(state=state, on=on)
+        entity = self._write(
+            book_id,
+            _Op(
+                "set_split_state",
+                "POST",
+                f"/books/{book_id}/transactions/{transaction_id}/splits/{split_id}/reconcile",
+                body.model_dump(mode="json"),
+                f"mark split {state.value}",
+            ),
+        )
+        return TransactionOut.of(entity)
+
+    def reconcile_account(
+        self,
+        book_id: UUID,
+        account_id: UUID,
+        split_ids: list[UUID],
+        state: ReconcileStateName,
+        statement_date: date,
+    ) -> None:
+        body = ReconcileIn(
+            split_ids=split_ids, state=state, statement_date=statement_date
+        )
+        self._write(
+            book_id,
+            _Op(
+                "reconcile_account",
+                "POST",
+                f"/books/{book_id}/accounts/{account_id}/reconcile",
+                body.model_dump(mode="json"),
+                f"reconcile {len(split_ids)} split(s) {state.value} at {statement_date}",
             ),
         )
 

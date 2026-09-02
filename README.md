@@ -587,8 +587,8 @@ report hands back the `Conversion` objects it used.
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · importers other
 than KMyMoney (OFX, CSV) · attachments · tags · a UI for payee management ·
-the desktop app's account/commodity management and reconciliation (the web app
-has both; see [The web frontend](#the-web-frontend)).
+the desktop app's account/commodity management (the web app has it; see
+[The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
 
@@ -680,8 +680,11 @@ python -m pymoney_desktop            # or: make -C desktop run
 ```
 
 A PySide6 client with the web app's core functionality -- books, the account
-tree with balances, registers, posting, editing and deleting transactions with
-payees created on the spot, and under **Reports** the balance sheet, income
+tree with balances, registers (with the reconciliation column), posting, editing
+and deleting transactions with payees created on the spot, search (Ctrl+F),
+reconciliation (**Mark** for one row, **Reconcile…** to tick a whole statement
+and mark it in one command; FROZEN offered to owners only, as on the web, and
+queued and replayed like every other write when offline), and under **Reports** the balance sheet, income
 statement and holdings with the same options as on the web (valuation date or
 period presets, reporting currency, closed accounts, strict mode, the rates used
 and what could not be valued, CSV export with the same columns) -- and one thing

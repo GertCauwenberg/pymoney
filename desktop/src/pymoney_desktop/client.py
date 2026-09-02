@@ -42,6 +42,7 @@ from pymoney.api.schemas import (
     PayeeIn,
     PayeeOut,
     PeriodTableOut,
+    ReconcileStateName,
     RegisterPage,
     ReportInterval,
     TransactionIn,
@@ -290,6 +291,30 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def delete_transaction(self, book_id: UUID, transaction_id: UUID) -> None: ...
+
+    @abstractmethod
+    def set_split_state(
+        self,
+        book_id: UUID,
+        transaction_id: UUID,
+        split_id: UUID,
+        state: ReconcileStateName,
+        on: date | None = None,
+    ) -> TransactionOut:
+        """Move one split to another reconciliation state. RECONCILED can be
+        walked back; FROZEN cannot, and the server accepts it from owners only."""
+
+    @abstractmethod
+    def reconcile_account(
+        self,
+        book_id: UUID,
+        account_id: UUID,
+        split_ids: list[UUID],
+        state: ReconcileStateName,
+        statement_date: date,
+    ) -> None:
+        """Mark a batch of an account's splits against one statement: one
+        request, one revision."""
 
     @abstractmethod
     def create_payee(self, book_id: UUID, body: PayeeIn) -> PayeeOut: ...

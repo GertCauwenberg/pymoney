@@ -33,6 +33,7 @@ from pymoney.api.schemas import (
     PayeeIn,
     PayeeOut,
     PeriodTableOut,
+    ReconcileStateName,
     RegisterPage,
     ReportInterval,
     SessionOut,
@@ -394,6 +395,43 @@ class RemoteClient(LedgerClient):
     def delete_transaction(self, book_id: UUID, transaction_id: UUID) -> None:
         self._call(
             "DELETE", f"/books/{book_id}/transactions/{transaction_id}", book_id=book_id
+        )
+        self._written(book_id)
+
+    def set_split_state(
+        self,
+        book_id: UUID,
+        transaction_id: UUID,
+        split_id: UUID,
+        state: ReconcileStateName,
+        on: date | None = None,
+    ) -> TransactionOut:
+        payload = self._call(
+            "POST",
+            f"/books/{book_id}/transactions/{transaction_id}/splits/{split_id}/reconcile",
+            {"state": state.value, "on": None if on is None else on.isoformat()},
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return TransactionOut.model_validate(payload)
+
+    def reconcile_account(
+        self,
+        book_id: UUID,
+        account_id: UUID,
+        split_ids: list[UUID],
+        state: ReconcileStateName,
+        statement_date: date,
+    ) -> None:
+        self._call(
+            "POST",
+            f"/books/{book_id}/accounts/{account_id}/reconcile",
+            {
+                "split_ids": [str(s) for s in split_ids],
+                "state": state.value,
+                "statement_date": statement_date.isoformat(),
+            },
+            book_id=book_id,
         )
         self._written(book_id)
 

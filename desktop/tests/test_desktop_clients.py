@@ -801,3 +801,58 @@ def test_search_finds_the_same_through_either_client(server, tmp_path, kind):
         client.search(book_id, SearchCriteria())
     assert refused.value.status == 422
     client.close()
+
+
+@pytest.mark.parametrize("kind", ["remote", "offline"])
+def test_reconciling_through_either_client(server, tmp_path, kind):
+    from pymoney.api.schemas import ReconcileStateName as S
+
+    api, book_id, checking, food = server
+    client, transport = make_client(kind, api.http, tmp_path)
+    client.login(EMAIL, PASSWORD)
+    first = client.post_transaction(book_id, txn(checking, food, memo="Lunch"))
+    second = client.post_transaction(
+        book_id, txn(checking, food, value="-40.00", memo="Dinner")
+    )
+    if kind == "offline":
+        # The server books the legs itself, so the split ids it settles on
+        # replace the replica's when the pull comes back: re-read before
+        # naming a split, as the UI does after every write.
+        client.sync()
+        first, second = (client.transaction(book_id, t.id) for t in (first, second))
+    split = next(s for s in first.splits if s.account_id == checking)
+
+    # One split, walked up and back down.
+    marked = client.set_split_state(
+        book_id, first.id, split.id, S.CLEARED, date(2026, 2, 28)
+    )
+    assert next(s for s in marked.splits if s.id == split.id).reconcile_state is S.CLEARED
+    back = client.set_split_state(book_id, first.id, split.id, S.NOT_RECONCILED)
+    assert (
+        next(s for s in back.splits if s.id == split.id).reconcile_state
+        is S.NOT_RECONCILED
+    )
+
+    # A statement: both checking legs at once, offline first if offline.
+    if kind == "offline":
+        transport.plugged = False
+    ids = [
+        next(s for s in t.splits if s.account_id == checking).id for t in (first, second)
+    ]
+    client.reconcile_account(book_id, checking, ids, S.RECONCILED, date(2026, 2, 28))
+    page = client.register(book_id, checking)
+    assert {r.reconcile_state.value for r in page.items} == {"RECONCILED"}
+    if kind == "offline":
+        # The two marks and the statement all wait in the outbox, in order.
+        assert client.status().queued == 3
+        transport.plugged = True
+        assert client.sync().queued == 0
+    # The server has it, whichever way it got there.
+    api.login(EMAIL)
+    rows = api.get(f"/books/{book_id}/accounts/{checking}/register").json()["items"]
+    assert all(r["reconcile_state"] == "RECONCILED" for r in rows)
+    # And a reconciled transaction is locked for editing, as everywhere.
+    with pytest.raises(ApiError) as refused:
+        client.delete_transaction(book_id, first.id)
+    assert refused.value.status == 409
+    client.close()

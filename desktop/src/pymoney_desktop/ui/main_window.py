@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import traceback
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -19,23 +20,26 @@ from pymoney.api.schemas import (
     CommodityOut,
     PayeeIn,
     PayeeOut,
+    ReconcileStateName,
     RegisterRowOut,
     TransactionOut,
 )
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QBrush, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QHeaderView,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QToolBar,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -44,12 +48,21 @@ from PySide6.QtWidgets import (
 
 from ..client import ApiError, LedgerClient, OfflineError
 from ..i18n import _, current_locale
-from .theme import amount_brush
+from .theme import ACCENT, amount_brush
 from .transaction_dialog import TransactionDialog
 
 __all__ = ["Executor", "MainWindow", "SyncExecutor", "ThreadedExecutor"]
 
 CREDIT_NORMAL = {"LIABILITY", "EQUITY", "INCOME"}
+
+# The reconciliation column, as the web app shows it (ReconcileMark.tsx).
+RECONCILE_MARKS = {"NOT_RECONCILED": "", "CLEARED": "C", "RECONCILED": "R", "FROZEN": "F"}
+RECONCILE_LABELS = {
+    "NOT_RECONCILED": "Not reconciled",
+    "CLEARED": "Cleared",
+    "RECONCILED": "Reconciled",
+    "FROZEN": "Frozen",
+}
 
 
 # Thousands and decimal separators per language; the digits never go through a float.
@@ -169,6 +182,26 @@ class MainWindow(QMainWindow):
         self.edit_button = QPushButton(_("Edit"))
         self.edit_button.clicked.connect(self.edit_transaction)
         bar.addWidget(self.edit_button)
+        # Reconciliation: one row's mark, or a whole statement at once.
+        self.mark_button = QToolButton()
+        self.mark_button.setText(_("Mark"))
+        self.mark_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.mark_menu = QMenu(self.mark_button)
+        self.mark_actions: dict[str, QAction] = {}
+        for state in ("NOT_RECONCILED", "CLEARED", "RECONCILED", "FROZEN"):
+            action = QAction(_(RECONCILE_LABELS[state]), self)
+            action.setData(state)
+            action.triggered.connect(lambda _=False, s=state: self.mark_selected(s))
+            self.mark_menu.addAction(action)
+            self.mark_actions[state] = action
+        self.mark_button.setMenu(self.mark_menu)
+        bar.addWidget(self.mark_button)
+        self.reconcile_button = QPushButton(_("Reconcile…"))
+        self.reconcile_button.setToolTip(
+            _("Tick the entries on a statement and mark them all at once")
+        )
+        self.reconcile_button.clicked.connect(self.reconcile_account)
+        bar.addWidget(self.reconcile_button)
         self.search_button = QPushButton(_("Search…"))
         self.search_button.setShortcut(QKeySequence.StandardKey.Find)
         self.search_button.setToolTip(
@@ -195,9 +228,9 @@ class MainWindow(QMainWindow):
             lambda current, _: self._account_chosen(current)
         )
 
-        self.register = QTableWidget(0, 6)
+        self.register = QTableWidget(0, 7)
         self.register.setHorizontalHeaderLabels(
-            [_("Date"), _("No."), _("Payee"), _("Memo"), _("Amount"), _("Balance")]
+            [_("Date"), _("No."), _("Payee"), _("Memo"), "R", _("Amount"), _("Balance")]
         )
         self.register.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeMode.Stretch
@@ -205,6 +238,9 @@ class MainWindow(QMainWindow):
         self.register.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.register.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.register.doubleClicked.connect(lambda _index: self.edit_transaction())
+        # Edit, Delete and Mark follow the selection; without this they only
+        # caught up on the next reload.
+        self.register.itemSelectionChanged.connect(self._enable_actions)
         self.register_title = QLabel(_("Choose an account"))
         right = QWidget()
         right_layout = QVBoxLayout(right)
@@ -378,6 +414,7 @@ class MainWindow(QMainWindow):
                 row.number,
                 payees.get(row.payee_id, "") if row.payee_id else "",
                 row.memo,
+                RECONCILE_MARKS[row.reconcile_state.value],
                 format_amount(row.quantity, sign=sign),
                 format_amount(row.running_balance, sign=sign)
                 if row.running_balance
@@ -385,14 +422,20 @@ class MainWindow(QMainWindow):
             ]
             for col, text in enumerate(cells):
                 item = QTableWidgetItem(text)
-                if col >= 4:
+                if col == 4:
+                    # The one-letter column every ledger has had since paper.
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    item.setToolTip(_(RECONCILE_LABELS[row.reconcile_state.value]))
+                    if row.reconcile_state.value in ("RECONCILED", "FROZEN"):
+                        item.setForeground(QBrush(QColor(ACCENT)))
+                if col >= 5:
                     item.setTextAlignment(
                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                     )
                     # The minus sign is in the text; vermillion only repeats it.
                     signed = (
                         row.quantity.minor
-                        if col == 4
+                        if col == 5
                         else (row.running_balance.minor if row.running_balance else 0)
                     ) * sign
                     brush = amount_brush(signed)
@@ -416,6 +459,58 @@ class MainWindow(QMainWindow):
         self._enable_actions()
         if wanted is not None and self._selected_row() is not None and self._can_write():
             self.edit_transaction()
+
+    # -- reconciliation ---------------------------------------------------------------------
+    def mark_selected(self, state: str) -> None:
+        """Move the selected row's split to ``state``."""
+        row = self._selected_row()
+        if row is None or self.book is None or not self._can_write():
+            return
+        if state == "FROZEN" and not self._is_owner():
+            return
+        book_id = self.book.id
+        wanted = ReconcileStateName(state)
+        on = None if wanted is ReconcileStateName.NOT_RECONCILED else date.today()
+        self.executor.run(
+            lambda: self.client.set_split_state(
+                book_id, row.transaction_id, row.split_id, wanted, on
+            ),
+            lambda _result: self._reload_book(),
+            self._failed(_("Could not change the reconciliation state")),
+        )
+
+    def reconcile_account(self) -> None:
+        """Tick the entries on a statement; mark them in one request."""
+        account = self.current_account
+        if account is None or self.book is None or not self._can_write():
+            return
+        from .reconcile import ReconcileDialog
+
+        book_id = self.book.id
+        dialog = ReconcileDialog(
+            account,
+            self.rows,
+            {p.id: p.name for p in self.payees},
+            can_freeze=self._is_owner(),
+            parent=self,
+        )
+        if (
+            self.run_dialog(dialog) != QDialog.DialogCode.Accepted
+            or not dialog.selected_ids()
+        ):
+            return
+        split_ids, state, statement_date = (
+            dialog.selected_ids(),
+            dialog.state(),
+            dialog.statement_date(),
+        )
+        self.executor.run(
+            lambda: self.client.reconcile_account(
+                book_id, account.id, split_ids, state, statement_date
+            ),
+            lambda _result: self._reload_book(),
+            self._failed(_("Could not reconcile")),
+        )
 
     # -- search -------------------------------------------------------------------------
     def open_search(self) -> QMainWindow | None:
@@ -476,6 +571,9 @@ class MainWindow(QMainWindow):
             (c for c in self.commodities if c.id == self.book.base_currency_id), None
         )
 
+    def _is_owner(self) -> bool:
+        return self.book is not None and self.book.role == "owner"
+
     def _can_write(self) -> bool:
         return self.book is not None and self.book.role in ("editor", "owner")
 
@@ -495,6 +593,16 @@ class MainWindow(QMainWindow):
         )
         self.edit_button.setEnabled(writable and selected)
         self.delete_button.setEnabled(writable and selected)
+        row = self._selected_row()
+        frozen = row is not None and row.reconcile_state.value == "FROZEN"
+        self.mark_button.setEnabled(writable and selected and not frozen)
+        # FROZEN has no way back, so it is the owner's alone (the server checks too).
+        self.mark_actions["FROZEN"].setVisible(self._is_owner())
+        self.reconcile_button.setEnabled(
+            writable
+            and self.current_account is not None
+            and not self.current_account.placeholder
+        )
 
     def _selected_row(self) -> RegisterRowOut | None:
         index = self.register.currentRow()
