@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 
 import type { BookContext } from "../pages/BookShell";
@@ -14,6 +14,13 @@ export function useBookContext(): BookContext {
  */
 export function useReportParams<T extends Record<string, string | boolean>>(defaults: T) {
   const [search, setSearch] = useSearchParams();
+  // React Router's functional setSearchParams hands the updater the params of
+  // the *last render*, not the last call -- so two updates in one tick (clear
+  // one field, type into the next) would each start from the same stale
+  // state and the first would be lost. Compose through a ref instead, which
+  // is refreshed on every render and advanced by every update.
+  const latest = useRef(search);
+  latest.current = search;
 
   const params = useMemo(() => {
     const out = { ...defaults } as Record<string, string | boolean>;
@@ -27,18 +34,14 @@ export function useReportParams<T extends Record<string, string | boolean>>(defa
 
   const update = useCallback(
     (patch: Partial<T>) => {
-      setSearch(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          for (const [key, value] of Object.entries(patch)) {
-            const d = defaults[key];
-            if (value === undefined || value === d) next.delete(key);
-            else next.set(key, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
-          }
-          return next;
-        },
-        { replace: true },
-      );
+      const next = new URLSearchParams(latest.current);
+      for (const [key, value] of Object.entries(patch)) {
+        const d = defaults[key];
+        if (value === undefined || value === d) next.delete(key);
+        else next.set(key, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
+      }
+      latest.current = next;
+      setSearch(next, { replace: true });
     },
     [setSearch, defaults],
   );
