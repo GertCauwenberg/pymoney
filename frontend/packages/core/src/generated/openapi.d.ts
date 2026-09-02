@@ -818,6 +818,28 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/books/{book_id}/transactions/search": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Find transactions
+         * @description Every criterion narrows; they combine with AND. At least one is needed.
+         *     Results come newest first, at most `limit` (default 100, at most 500); a
+         *     `has_more` of true means the search should be narrowed.
+         */
+        readonly get: operations["search_transactions_route_books__book_id__transactions_search_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/books/import/kmymoney": {
         readonly parameters: {
             readonly query?: never;
@@ -2338,6 +2360,21 @@ export interface components {
              * @description Pass as `cursor` for the next page. Null when exhausted.
              */
             readonly next_cursor?: string | null;
+        };
+        /**
+         * TransactionSearchOut
+         * @description What a search found, newest first.
+         */
+        readonly TransactionSearchOut: {
+            /**
+             * Has More
+             * @description True when the limit cut the list short; narrow the search.
+             */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["TransactionOut"][];
+            /** Limit */
+            readonly limit: number;
         };
         /**
          * TransactionUpdateIn
@@ -6327,6 +6364,84 @@ export interface operations {
                 content?: never;
             };
             /** @description Only an owner may mark a split FROZEN: it can never be undone, and the transaction can never again be edited or deleted by anyone. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly search_transactions_route_books__book_id__transactions_search_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly account_id?: string | null;
+                /** @description Exactly this amount: shorthand for min = max. */
+                readonly amount?: (number | string) | null;
+                /** @description Largest absolute amount. */
+                readonly amount_max?: (number | string) | null;
+                /** @description Smallest absolute amount, major units; matches a split's quantity or value. */
+                readonly amount_min?: (number | string) | null;
+                /** @description Inclusive post date. */
+                readonly end?: string | null;
+                /** @description The account's whole subtree. */
+                readonly include_children?: boolean;
+                readonly limit?: number | null;
+                readonly payee_id?: string | null;
+                /** @description Case-insensitive substring of a memo or number, on the transaction or any split. */
+                readonly q?: string | null;
+                /** @description Inclusive post date. */
+                readonly start?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TransactionSearchOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
             readonly 403: {
                 headers: {
                     readonly [name: string]: unknown;

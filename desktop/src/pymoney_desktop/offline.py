@@ -71,6 +71,7 @@ from pymoney.api.schemas import (
     SyncPageOut,
     TransactionIn,
     TransactionOut,
+    TransactionSearchOut,
     TransactionUpdateIn,
     UserOut,
 )
@@ -82,6 +83,7 @@ from pymoney.api.views import (
     net_worth_series_out,
     period_table_out,
     register_page,
+    search_transactions,
 )
 from pymoney.core import commands as cmd
 from pymoney.core.book import Book
@@ -92,6 +94,8 @@ from pymoney.core.ids import new_id
 from pymoney.core.posting import LegSpec
 from pymoney.core.price import ValuationPolicy
 from pymoney.core.reports import account_tree
+from pymoney.core.rounding import to_fraction
+from pymoney.core.store import TransactionSearch
 from pymoney.store import create_engine, create_schema, open_book, schema
 from pymoney.store.types import Uuid
 from sqlalchemy import Column, Integer, MetaData, String, Table, Text, delete, select
@@ -105,6 +109,7 @@ from .client import (
     QueuedCommand,
     Rejection,
     ReportOptions,
+    SearchCriteria,
 )
 from .replica import apply_batch
 from .transport import Transport, raise_for_problem
@@ -520,6 +525,28 @@ class OfflineClient(LedgerClient):
                 include_children=False,
                 after=after,
                 size=limit,
+            )
+        )
+
+    def search(self, book_id: UUID, criteria: SearchCriteria) -> TransactionSearchOut:
+        book = self._ready(book_id)
+        amount_min = criteria.amount or criteria.amount_min
+        amount_max = criteria.amount or criteria.amount_max
+        query = TransactionSearch(
+            text=criteria.text,
+            amount_min=None if amount_min is None else to_fraction(amount_min),
+            amount_max=None if amount_max is None else to_fraction(amount_max),
+            payee_id=criteria.payee_id,
+            start=criteria.start,
+            end=criteria.end,
+        )
+        return self._guarded(
+            lambda: search_transactions(
+                book,
+                query,
+                account_id=criteria.account_id,
+                include_children=criteria.include_children,
+                limit=criteria.limit,
             )
         )
 

@@ -26,6 +26,7 @@ import type {
   RegisterQuery,
   SetSplitStateIn,
   TransactionIn,
+  TransactionSearchQuery,
   TransactionUpdateIn,
   User,
 } from "../types";
@@ -297,6 +298,17 @@ export function useLedger(
     initialPageParam: null as string | null,
     getNextPageParam: (last) => (last.has_more ? (last.next_cursor ?? null) : null),
     enabled,
+  });
+}
+
+export function useTransactionSearch(bookId: string, query: TransactionSearchQuery | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["books", bookId, "transactions", "search", query] as const,
+    queryFn: () => api.searchTransactions(bookId, query!),
+    // No criteria, no request: the server would refuse an empty search anyway.
+    enabled: query !== null,
+    placeholderData: (previous) => previous,
   });
 }
 

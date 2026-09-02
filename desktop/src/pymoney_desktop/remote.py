@@ -38,11 +38,19 @@ from pymoney.api.schemas import (
     SessionOut,
     TransactionIn,
     TransactionOut,
+    TransactionSearchOut,
     TransactionUpdateIn,
     UserOut,
 )
 
-from .client import ApiError, ConnectionStatus, LedgerClient, OfflineError, ReportOptions
+from .client import (
+    ApiError,
+    ConnectionStatus,
+    LedgerClient,
+    OfflineError,
+    ReportOptions,
+    SearchCriteria,
+)
 from .transport import Transport, raise_for_problem
 
 __all__ = ["RemoteClient"]
@@ -329,6 +337,28 @@ class RemoteClient(LedgerClient):
             f"register:{account_id}:{query}",
             RegisterPage,
             f"/books/{book_id}/accounts/{account_id}/register{query}",
+        )
+
+    def search(self, book_id: UUID, criteria: SearchCriteria) -> TransactionSearchOut:
+        query = _query(
+            {
+                "q": (criteria.text or "").strip() or None,
+                "amount": criteria.amount,
+                "amount_min": criteria.amount_min,
+                "amount_max": criteria.amount_max,
+                "start": criteria.start,
+                "end": criteria.end,
+                "account_id": criteria.account_id,
+                "include_children": criteria.include_children or None,
+                "payee_id": criteria.payee_id,
+                "limit": criteria.limit,
+            }
+        )
+        return self._cached(
+            book_id,
+            f"search:{query}",
+            TransactionSearchOut,
+            f"/books/{book_id}/transactions/search{query}",
         )
 
     def transaction(self, book_id: UUID, transaction_id: UUID) -> TransactionOut:

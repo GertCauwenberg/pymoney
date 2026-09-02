@@ -12,7 +12,7 @@ from datetime import date
 
 import pytest
 
-from pymoney.core import AccountType, EntityKind, LegSpec, new_id
+from pymoney.core import AccountType, EntityKind, LegSpec, TransactionSearch, new_id
 from pymoney.core import commands as c
 from tests.conftest import Chart
 
@@ -156,3 +156,143 @@ class TestSyncRowCap:
         # ...and paging from there continues where it left off.
         nxt = book.pull(page.to_revision, max_rows=1)
         assert nxt.batches[0].revision == page.to_revision + 1
+
+
+class TestSearch:
+    """The SQL pushdown must answer exactly as TransactionSearch.matches does."""
+
+    @staticmethod
+    def _search(book, **kwargs):
+        return book.search(TransactionSearch(**kwargs))
+
+    @staticmethod
+    def _reference(book, query):
+        return tuple(
+            sorted(
+                (t for t in book.store.transactions() if query.matches(t)),
+                key=lambda t: (t.date, t.id.int),
+                reverse=True,
+            )
+        )
+
+    def test_text_is_a_case_insensitive_substring_over_memos_and_numbers(
+        self, funded: Chart
+    ):
+        book = funded.book
+        memos = [t.memo for t in self._search(book, text="SUPER")]
+        assert memos == ["Supermarket"]
+        # Any split memo or number counts too.
+        book.post(
+            date(2026, 1, 28),
+            [
+                LegSpec.of(funded.checking.id, "-5.00", memo="parking meter"),
+                LegSpec.of(funded.fuel.id, number="CHQ-77"),
+            ],
+        )
+        assert [t.date for t in self._search(book, text="PARKING")] == [date(2026, 1, 28)]
+        assert [t.date for t in self._search(book, text="chq-77")] == [date(2026, 1, 28)]
+        # Wildcards are literal characters.
+        assert self._search(book, text="%") == ()
+        assert self._search(book, text="_") == ()
+
+    def test_amounts_match_quantity_or_value_in_their_own_commodity(self, funded: Chart):
+        from fractions import Fraction as F
+
+        book = funded.book
+        # One amount: a range with both ends equal.
+        hit = self._search(book, amount_min=F("84.20"), amount_max=F("84.20"))
+        assert [t.memo for t in hit] == ["Supermarket"]
+        # A range, and it is the absolute size that counts: -61.50 is in [50, 100].
+        found = {t.memo for t in self._search(book, amount_min=F(50), amount_max=F(100))}
+        assert found == {"Supermarket", "Petrol"}
+        # Open-ended.
+        assert {t.memo for t in self._search(book, amount_min=F(3000))} == {
+            "Opening balance",
+            "January salary",
+        }
+        assert {t.memo for t in self._search(book, amount_max=F("61.50"))} == {"Petrol"}
+        # A USD leg is matched in USD, and by its EUR value too.
+        book.post(
+            date(2026, 1, 20),
+            [
+                LegSpec.of(funded.checking.id, "-90.00"),
+                LegSpec.of(funded.usd_account.id, quantity="100.00", price="0.9"),
+            ],
+            memo="dollars",
+        )
+        assert [
+            t.memo for t in self._search(book, amount_min=F(100), amount_max=F(100))
+        ] == ["dollars"]
+        assert [
+            t.memo for t in self._search(book, amount_min=F(90), amount_max=F(90))
+        ] == ["dollars"]
+
+    def test_account_payee_dates_and_combinations(self, funded: Chart):
+        book = funded.book
+        payee = book.add_payee("Shell")
+        book.post(
+            date(2026, 2, 2),
+            [LegSpec.of(funded.card.id, "-40.00"), LegSpec.of(funded.fuel.id)],
+            memo="Petrol again",
+            payee_id=payee.id,
+        )
+        # By account, with and without the subtree.
+        by_assets = book.search(
+            TransactionSearch(), account_id=funded.assets.id, include_children=True
+        )
+        assert len(by_assets) == 3  # opening, supermarket, salary
+        by_card = book.search(TransactionSearch(), account_id=funded.card.id)
+        assert {t.memo for t in by_card} == {"Petrol", "Petrol again"}
+        # By payee (header), by date, and all together.
+        assert [t.memo for t in self._search(book, payee_id=payee.id)] == ["Petrol again"]
+        assert {
+            t.memo
+            for t in self._search(book, start=date(2026, 1, 10), end=date(2026, 1, 31))
+        } == {
+            "Petrol",
+            "January salary",
+        }
+        combined = self._search(
+            book,
+            text="petrol",
+            start=date(2026, 2, 1),
+            account_ids=frozenset({funded.fuel.id}),
+        )
+        assert [t.memo for t in combined] == ["Petrol again"]
+        assert (
+            self._search(book, text="petrol", payee_id=payee.id, start=date(2026, 3, 1))
+            == ()
+        )
+
+    def test_newest_first_and_limited(self, funded: Chart):
+        book = funded.book
+        dates = [t.date for t in self._search(book, start=date(2026, 1, 1))]
+        assert dates == sorted(dates, reverse=True)
+        assert len(self._search(book, start=date(2026, 1, 1), limit=2)) == 2
+
+    def test_the_store_agrees_with_the_reference_predicate(self, funded: Chart):
+        from fractions import Fraction as F
+
+        book = funded.book
+        for query in (
+            TransactionSearch(text="a"),
+            TransactionSearch(amount_min=F(60), amount_max=F(100)),
+            TransactionSearch(start=date(2026, 1, 5), end=date(2026, 1, 12)),
+            TransactionSearch(account_ids=frozenset({funded.checking.id}), text="salary"),
+            TransactionSearch(amount_min=F("0.01")),
+        ):
+            assert book.store.search(query) == self._reference(book, query), query
+
+    def test_an_empty_search_and_a_backwards_range_are_refused(self, funded: Chart):
+        from fractions import Fraction as F
+
+        from pymoney.core import ValidationError
+
+        with pytest.raises(ValidationError, match="at least one criterion"):
+            funded.book.search(TransactionSearch())
+        with pytest.raises(ValidationError, match="smallest amount"):
+            funded.book.search(TransactionSearch(amount_min=F(10), amount_max=F(1)))
+        with pytest.raises(ValidationError, match="after end"):
+            funded.book.search(
+                TransactionSearch(start=date(2026, 2, 1), end=date(2026, 1, 1))
+            )

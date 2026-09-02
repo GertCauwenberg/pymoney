@@ -8,6 +8,7 @@ authorise, parse the query, call a view, stamp the revision.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 from uuid import UUID
 
@@ -23,6 +24,7 @@ from ..core.reports import (
     net_worth_series,
     period_table,
 )
+from ..core.store import TransactionSearch
 from .routers._shared import encode_cursor
 from .schemas import (
     AccountBalanceOut,
@@ -44,6 +46,8 @@ from .schemas import (
     RegisterRowOut,
     RegisterTotals,
     ReportRowOut,
+    TransactionOut,
+    TransactionSearchOut,
 )
 
 __all__ = [
@@ -55,6 +59,7 @@ __all__ = [
     "period_table_out",
     "register_page",
     "report_rows",
+    "search_transactions",
 ]
 
 
@@ -367,4 +372,25 @@ def period_table_out(
         net=amounts(table.net),
         conversions=conversions_out(table.conversions),
         unpriced=[c.code for c in table.unpriced],
+    )
+
+
+def search_transactions(
+    book: Book,
+    query: TransactionSearch,
+    *,
+    account_id: UUID | None,
+    include_children: bool,
+    limit: int,
+) -> TransactionSearchOut:
+    """Run a search and say whether the limit cut it short (one more than asked)."""
+    found = book.search(
+        replace(query, limit=limit + 1),
+        account_id=account_id,
+        include_children=include_children,
+    )
+    return TransactionSearchOut(
+        items=[TransactionOut.of(t) for t in found[:limit]],
+        has_more=len(found) > limit,
+        limit=limit,
     )

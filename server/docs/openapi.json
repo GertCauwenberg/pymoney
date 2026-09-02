@@ -3443,6 +3443,35 @@
         "title": "TransactionPage",
         "type": "object"
       },
+      "TransactionSearchOut": {
+        "additionalProperties": false,
+        "description": "What a search found, newest first.",
+        "properties": {
+          "has_more": {
+            "description": "True when the limit cut the list short; narrow the search.",
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TransactionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "limit"
+        ],
+        "title": "TransactionSearchOut",
+        "type": "object"
+      },
       "TransactionUpdateIn": {
         "additionalProperties": false,
         "description": "Splits are replaced wholesale, never patched.\n\nA partial split edit can leave a transaction unbalanced, and an unbalanced\ntransaction must not exist even for an instant.",
@@ -9871,6 +9900,321 @@
           }
         },
         "summary": "Post a transaction",
+        "tags": [
+          "transactions"
+        ]
+      }
+    },
+    "/books/{book_id}/transactions/search": {
+      "get": {
+        "description": "Every criterion narrows; they combine with AND. At least one is needed.\nResults come newest first, at most `limit` (default 100, at most 500); a\n`has_more` of true means the search should be narrowed.",
+        "operationId": "search_transactions_route_books__book_id__transactions_search_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive substring of a memo or number, on the transaction or any split.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring of a memo or number, on the transaction or any split.",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Smallest absolute amount, major units; matches a split's quantity or value.",
+            "in": "query",
+            "name": "amount_min",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ],
+                  "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
+                  "examples": [
+                    "12.34",
+                    "-1000",
+                    "1/3"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Smallest absolute amount, major units; matches a split's quantity or value.",
+              "title": "Amount Min"
+            }
+          },
+          {
+            "description": "Largest absolute amount.",
+            "in": "query",
+            "name": "amount_max",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ],
+                  "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
+                  "examples": [
+                    "12.34",
+                    "-1000",
+                    "1/3"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Largest absolute amount.",
+              "title": "Amount Max"
+            }
+          },
+          {
+            "description": "Exactly this amount: shorthand for min = max.",
+            "in": "query",
+            "name": "amount",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ],
+                  "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
+                  "examples": [
+                    "12.34",
+                    "-1000",
+                    "1/3"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exactly this amount: shorthand for min = max.",
+              "title": "Amount"
+            }
+          },
+          {
+            "description": "Inclusive post date.",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive post date.",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Inclusive post date.",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive post date.",
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
+            }
+          },
+          {
+            "description": "The account's whole subtree.",
+            "in": "query",
+            "name": "include_children",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "The account's whole subtree.",
+              "title": "Include Children",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "payee_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payee Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionSearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Find transactions",
         "tags": [
           "transactions"
         ]

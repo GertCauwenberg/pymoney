@@ -46,6 +46,7 @@ from pymoney.api.schemas import (
     ReportInterval,
     TransactionIn,
     TransactionOut,
+    TransactionSearchOut,
     TransactionUpdateIn,
     UserOut,
 )
@@ -58,7 +59,45 @@ __all__ = [
     "QueuedCommand",
     "Rejection",
     "ReportOptions",
+    "SearchCriteria",
 ]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SearchCriteria:
+    """What to look for: every field set narrows, all combine with AND.
+
+    Amounts are decimal strings in major units (the API's exact form) and
+    bound the absolute size of a split -- its quantity in the account's
+    commodity or its value in the transaction currency; ``amount`` alone means
+    exactly that much. At least one criterion is required.
+    """
+
+    text: str | None = None
+    amount: str | None = None
+    amount_min: str | None = None
+    amount_max: str | None = None
+    start: date | None = None
+    end: date | None = None
+    account_id: UUID | None = None
+    include_children: bool = False
+    payee_id: UUID | None = None
+    limit: int = 100
+
+    @property
+    def is_empty(self) -> bool:
+        return not any(
+            (
+                (self.text or "").strip(),
+                self.amount,
+                self.amount_min,
+                self.amount_max,
+                self.start,
+                self.end,
+                self.account_id,
+                self.payee_id,
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -236,6 +275,10 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def transaction(self, book_id: UUID, transaction_id: UUID) -> TransactionOut: ...
+
+    @abstractmethod
+    def search(self, book_id: UUID, criteria: SearchCriteria) -> TransactionSearchOut:
+        """Transactions matching every criterion, newest first; see SearchCriteria."""
 
     @abstractmethod
     def post_transaction(self, book_id: UUID, body: TransactionIn) -> TransactionOut: ...

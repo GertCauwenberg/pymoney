@@ -716,6 +716,16 @@ class TransactionOut(Out):
         )
 
 
+class TransactionSearchOut(Out):
+    """What a search found, newest first."""
+
+    items: list[TransactionOut]
+    has_more: bool = Field(
+        description="True when the limit cut the list short; narrow the search."
+    )
+    limit: int
+
+
 class TransactionPage(Page):
     items: list[TransactionOut]
 

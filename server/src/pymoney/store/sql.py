@@ -41,7 +41,18 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Engine, Table, and_, bindparam, delete, func, or_, select
+from sqlalchemy import (
+    Engine,
+    Table,
+    and_,
+    bindparam,
+    delete,
+    exists,
+    func,
+    literal,
+    or_,
+    select,
+)
 from sqlalchemy.engine import Connection
 from sqlalchemy.sql import Executable
 
@@ -52,7 +63,7 @@ from ..core.commodity import Commodity
 from ..core.entity import Entity
 from ..core.payee import Payee
 from ..core.price import PriceDB
-from ..core.store import CommandRecord, Store, StoredBook
+from ..core.store import CommandRecord, Store, StoredBook, TransactionSearch
 from ..core.transaction import Transaction
 from . import schema
 from .connections import write_connection
@@ -678,6 +689,98 @@ class SqlStore(Store):
         )
         with self._read() as conn:
             return self._hydrate(conn, list(conn.execute(query)), query)
+
+    def search(self, query: TransactionSearch) -> tuple[Transaction, ...]:
+        """The predicate of :meth:`TransactionSearch.matches`, in SQL.
+
+        Each criterion is one ``EXISTS`` over the splits (or a header test),
+        so the planner can start from whichever is most selective -- the
+        account index, usually -- and the transactions are hydrated as one
+        page. Amounts are compared in integer arithmetic against the
+        commodity's ``minor_unit_factor``: ``|minor| * den >= num * factor``
+        is exact, where a float comparison would not be.
+        """
+        self._ensure_loaded()
+        t, s, c = schema.transactions, schema.splits, schema.commodities
+        conditions: list[Any] = [t.c.book_id == self._book_id]
+        if query.start is not None:
+            conditions.append(t.c.post_date >= query.start)
+        if query.end is not None:
+            conditions.append(t.c.post_date <= query.end)
+        if query.account_ids is not None:
+            wanted = list(query.account_ids)
+            if not wanted:
+                return ()
+            conditions.append(
+                exists().where(s.c.transaction_id == t.c.id, s.c.account_id.in_(wanted))
+            )
+        if query.payee_id is not None:
+            conditions.append(
+                or_(
+                    t.c.payee_id == query.payee_id,
+                    exists().where(
+                        s.c.transaction_id == t.c.id, s.c.payee_id == query.payee_id
+                    ),
+                )
+            )
+        needle = (query.text or "").strip()
+        if needle:
+            # LIKE is case-insensitive on SQLite and case-sensitive on
+            # PostgreSQL; lowering both sides makes the dialects agree. The
+            # user's wildcards are literal characters, not patterns.
+            escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped.casefold()}%"
+
+            def like(column: Any) -> Any:
+                return func.lower(column).like(pattern, escape="\\")
+
+            conditions.append(
+                or_(
+                    like(t.c.memo),
+                    like(t.c.number),
+                    exists().where(
+                        s.c.transaction_id == t.c.id,
+                        or_(like(s.c.memo), like(s.c.number)),
+                    ),
+                )
+            )
+        if query.amount_min is not None or query.amount_max is not None:
+            lo = query.amount_min if query.amount_min is not None else 0
+            hi = query.amount_max
+            quantity_factor = (
+                select(c.c.minor_unit_factor)
+                .where(c.c.id == s.c.quantity_commodity_id)
+                .scalar_subquery()
+            )
+            value_factor = (
+                select(c.c.minor_unit_factor)
+                .where(c.c.id == t.c.currency_id)
+                .scalar_subquery()
+            )
+
+            def within(minor: Any, factor: Any) -> Any:
+                size = func.abs(minor)
+                parts = [size * literal(lo.denominator) >= literal(lo.numerator) * factor]
+                if hi is not None:
+                    parts.append(
+                        size * literal(hi.denominator) <= literal(hi.numerator) * factor
+                    )
+                return and_(*parts)
+
+            conditions.append(
+                exists().where(
+                    s.c.transaction_id == t.c.id,
+                    or_(
+                        within(s.c.quantity_minor, quantity_factor),
+                        within(s.c.value_minor, value_factor),
+                    ),
+                )
+            )
+        stmt = select(t).where(*conditions).order_by(t.c.post_date.desc(), t.c.id.desc())
+        if query.limit is not None:
+            stmt = stmt.limit(query.limit)
+        with self._read() as conn:
+            return self._hydrate(conn, list(conn.execute(stmt)), stmt)
 
     # ====================================================================
     # prices

@@ -23,6 +23,7 @@ from sqlalchemy import Engine
 from ...core import commands as cmd
 from ...core.commands import UNSET
 from ...core.posting import LegSpec
+from ...core.store import TransactionSearch
 from ..deps import (
     CurrentUser,
     IdempotencyKey,
@@ -32,6 +33,7 @@ from ..deps import (
     role_on,
 )
 from ..schemas import (
+    Exact,
     LegIn,
     ReconcileIn,
     ReconcileStateName,
@@ -40,10 +42,11 @@ from ..schemas import (
     TransactionIn,
     TransactionOut,
     TransactionPage,
+    TransactionSearchOut,
     TransactionUpdateIn,
     to_fraction,
 )
-from ..views import register_page
+from ..views import register_page, search_transactions
 from ._shared import cursor_key, decode_cursor, encode_cursor, page_size, set_revision
 
 router = APIRouter(prefix="/books/{book_id}", tags=["transactions"])
@@ -191,6 +194,61 @@ def post_transaction(
     )
     set_revision(response, book, result)
     return TransactionOut.of(result.entity)
+
+
+@router.get(
+    "/transactions/search",
+    response_model=TransactionSearchOut,
+    summary="Find transactions",
+)
+def search_transactions_route(
+    book: ReadableBook,
+    response: Response,
+    q: str | None = Query(
+        default=None,
+        max_length=200,
+        description="Case-insensitive substring of a memo or number, on the transaction or any split.",
+    ),
+    amount_min: Exact | None = Query(
+        default=None,
+        description="Smallest absolute amount, major units; matches a split's quantity or value.",
+    ),
+    amount_max: Exact | None = Query(
+        default=None, description="Largest absolute amount."
+    ),
+    amount: Exact | None = Query(
+        default=None, description="Exactly this amount: shorthand for min = max."
+    ),
+    start: date | None = Query(default=None, description="Inclusive post date."),
+    end: date | None = Query(default=None, description="Inclusive post date."),
+    account_id: UUID | None = Query(default=None),
+    include_children: bool = Query(
+        default=False, description="The account's whole subtree."
+    ),
+    payee_id: UUID | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1),
+) -> TransactionSearchOut:
+    """Every criterion narrows; they combine with AND. At least one is needed.
+    Results come newest first, at most `limit` (default 100, at most 500); a
+    `has_more` of true means the search should be narrowed."""
+    set_revision(response, book)
+    if amount is not None:
+        amount_min = amount_max = amount
+    query = TransactionSearch(
+        text=q,
+        amount_min=None if amount_min is None else to_fraction(amount_min),
+        amount_max=None if amount_max is None else to_fraction(amount_max),
+        payee_id=payee_id,
+        start=start,
+        end=end,
+    )
+    return search_transactions(
+        book,
+        query,
+        account_id=account_id,
+        include_children=include_children,
+        limit=page_size(limit, 100, 500),
+    )
 
 
 @router.get(

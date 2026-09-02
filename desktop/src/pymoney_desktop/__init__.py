@@ -19,6 +19,7 @@ from .client import (
     QueuedCommand,
     Rejection,
     ReportOptions,
+    SearchCriteria,
 )
 from .offline import OfflineClient
 from .remote import RemoteClient
@@ -34,6 +35,7 @@ __all__ = [
     "Rejection",
     "RemoteClient",
     "ReportOptions",
+    "SearchCriteria",
     "Transport",
     "UrllibTransport",
 ]

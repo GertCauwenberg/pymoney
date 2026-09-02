@@ -57,6 +57,8 @@ import type {
   Session,
   Transaction,
   TransactionIn,
+  TransactionSearchQuery,
+  TransactionSearchResult,
   TransactionUpdateIn,
   User,
 } from "./types";
@@ -477,6 +479,14 @@ export class ApiClient {
     return this.get<RegisterPage>(
       `/books/${bookId}/accounts/${accountId}/register${queryString(query)}`,
     );
+  }
+
+  /**
+   * Find transactions. Every criterion narrows (AND); at least one is needed.
+   * Newest first; `has_more` means the limit cut the list short.
+   */
+  searchTransactions(bookId: string, query: TransactionSearchQuery): Promise<TransactionSearchResult> {
+    return this.get<TransactionSearchResult>(`/books/${bookId}/transactions/search${queryString(query)}`);
   }
 
   transaction(bookId: string, transactionId: string): Promise<Transaction> {

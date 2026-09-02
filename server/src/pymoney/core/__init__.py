@@ -111,6 +111,7 @@ from .rounding import (
     to_fraction,
 )
 from .settings import BookSettings
+from .store import TransactionSearch
 from .sync import RevisionBatch, SyncPage
 from .transaction import ReconcileState, Split, Transaction
 
@@ -170,6 +171,7 @@ __all__ = [  # noqa: RUF022
     "BookSettings",
     "RevisionBatch",
     "SyncPage",
+    "TransactionSearch",
     # commands
     "Command",
     "CommandResult",

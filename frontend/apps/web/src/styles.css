@@ -1021,3 +1021,14 @@ a.btn--link {
 .period-table tbody tr:hover {
   background: var(--row-hover);
 }
+
+/* ---- search -------------------------------------------------------------- */
+.search-form__text {
+  min-width: 16rem;
+}
+.search-summary {
+  margin: 0 0 0.5rem;
+}
+.search-results td.muted {
+  font-size: 0.9em;
+}

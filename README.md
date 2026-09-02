@@ -392,6 +392,17 @@ operations each get their own endpoint (`/accounts/{id}/rename`, `/move`,
 of failing; one generic PATCH would be five unrelated failure modes behind a body
 where every field is optional.
 
+**Finding a transaction** is `GET /transactions/search`: a word from a memo or
+number, an exact amount or a range (matched against a leg's quantity in its own
+commodity *or* its value in the transaction currency, so 84.20 finds the
+supermarket entry either way you think of it), a date range, an account (with or
+without its sub-accounts), a payee -- any combination, all ANDed, newest first,
+with `has_more` when the limit cut the list short. The predicate is pushed down
+to SQL in exact integer arithmetic and held to the same answers as the Python
+reference implementation by the store contract tests. Both clients have a
+search screen over it (the web app's **Search** tab; the desktop's Ctrl+F), and
+a hit opens the transaction.
+
 **Every write accepts `Idempotency-Key`.** Any string, hashed deterministically
 -- together with the caller's identity, so one user's key can never replay
 another's request -- into a command id. A replay returns the original result

@@ -30,6 +30,7 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import date
+from fractions import Fraction
 from typing import Any
 from uuid import UUID
 
@@ -42,7 +43,14 @@ from .price import PriceDB
 from .settings import BookSettings
 from .transaction import Transaction
 
-__all__ = ["ChangeLogView", "CommandRecord", "MemoryStore", "Store", "StoredBook"]
+__all__ = [
+    "ChangeLogView",
+    "CommandRecord",
+    "MemoryStore",
+    "Store",
+    "StoredBook",
+    "TransactionSearch",
+]
 
 _ENTITY_KINDS = (
     EntityKind.COMMODITY,
@@ -50,6 +58,89 @@ _ENTITY_KINDS = (
     EntityKind.PAYEE,
     EntityKind.TRANSACTION,
 )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class TransactionSearch:
+    """What a user is looking for. Every field narrows; all combine with AND.
+
+    ``text`` is a case-insensitive substring of the transaction's memo or
+    number, or of any split's memo or number. ``amount_min``/``amount_max``
+    bound the *absolute* size of a split, in major units, and match a split
+    whose quantity (in its account's commodity) or whose value (in the
+    transaction currency) falls in the range -- so "84.20" finds the supermarket
+    entry whether you think of it as the money that left the account or the
+    expense it became, and a single amount is a range with both ends equal.
+    ``account_ids`` and ``payee_id`` match on any split (or the header, for the
+    payee). Results come newest first, ``limit`` at most.
+    """
+
+    text: str | None = None
+    amount_min: Fraction | None = None
+    amount_max: Fraction | None = None
+    account_ids: frozenset[UUID] | None = None
+    payee_id: UUID | None = None
+    start: date | None = None
+    end: date | None = None
+    limit: int | None = None
+
+    @property
+    def is_empty(self) -> bool:
+        """True when nothing narrows: the store would return the whole ledger."""
+        return (
+            not (self.text or "").strip()
+            and self.amount_min is None
+            and self.amount_max is None
+            and self.account_ids is None
+            and self.payee_id is None
+            and self.start is None
+            and self.end is None
+        )
+
+    def matches(self, transaction: Transaction) -> bool:
+        """The reference implementation, in Python, for stores without SQL.
+
+        The SQL store pushes the same predicate down; the contract tests hold
+        the two to the same answers.
+        """
+        t = transaction
+        if self.start is not None and t.date < self.start:
+            return False
+        if self.end is not None and t.date > self.end:
+            return False
+        if self.account_ids is not None and not any(
+            s.account_id in self.account_ids for s in t.splits
+        ):
+            return False
+        if (
+            self.payee_id is not None
+            and t.payee_id != self.payee_id
+            and not any(s.payee_id == self.payee_id for s in t.splits)
+        ):
+            return False
+        needle = (self.text or "").strip().casefold()
+        if needle:
+            haystacks = [
+                t.memo,
+                t.number,
+                *(s.memo for s in t.splits),
+                *(s.number for s in t.splits),
+            ]
+            if not any(needle in h.casefold() for h in haystacks):
+                return False
+        if self.amount_min is not None or self.amount_max is not None:
+            lo = self.amount_min if self.amount_min is not None else Fraction(0)
+            hi = self.amount_max
+
+            def within(value: Fraction) -> bool:
+                return value >= lo and (hi is None or value <= hi)
+
+            if not any(
+                within(abs(s.quantity.as_fraction)) or within(abs(s.value.as_fraction))
+                for s in t.splits
+            ):
+                return False
+        return True
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -231,6 +322,15 @@ class Store(ABC):
     @abstractmethod
     def transactions_for_payee(self, payee_id: UUID) -> tuple[Transaction, ...]:
         """Transactions referencing a payee, on the header or on any split."""
+
+    @abstractmethod
+    def search(self, query: TransactionSearch) -> tuple[Transaction, ...]:
+        """Transactions matching every criterion of ``query``, newest first.
+
+        Must agree with :meth:`TransactionSearch.matches` on every transaction;
+        a SQL store pushes the predicate down so a search costs a query, not a
+        scan of the ledger through Python.
+        """
 
     # -- prices ------------------------------------------------------------
     @property
@@ -566,6 +666,21 @@ class MemoryStore(Store):
             if t.payee_id == payee_id or any(s.payee_id == payee_id for s in t.splits)
         ]
         out.sort(key=lambda t: (t.date, t.id.int))
+        return tuple(out)
+
+    def search(self, query: TransactionSearch) -> tuple[Transaction, ...]:
+        table = self._entities[EntityKind.TRANSACTION]
+        if query.account_ids is not None:
+            ids: set[UUID] = set()
+            for account_id in query.account_ids:
+                ids |= self._txns_by_account.get(account_id, set())
+            candidates: Iterable[Transaction] = (table[i] for i in ids)
+        else:
+            candidates = table.values()
+        out = [t for t in candidates if query.matches(t)]
+        out.sort(key=lambda t: (t.date, t.id.int), reverse=True)
+        if query.limit is not None:
+            out = out[: query.limit]
         return tuple(out)
 
     # -- prices ------------------------------------------------------------

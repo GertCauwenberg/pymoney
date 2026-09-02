@@ -19,6 +19,7 @@ import { PeriodTableReport } from "./reports/PeriodTableReport";
 import { HoldingsReport } from "./reports/HoldingsReport";
 import { IncomeStatementReport } from "./reports/IncomeStatementReport";
 import { AccountRegisterPage } from "./ledger/AccountRegisterPage";
+import { SearchPage } from "./ledger/SearchPage";
 import { TransactionPage } from "./ledger/TransactionPage";
 
 export function App() {
@@ -49,6 +50,7 @@ export function App() {
           <Route path="accounts" element={<AccountsPage />} />
           <Route path="commodities" element={<CommoditiesPage />} />
           <Route path="prices" element={<PricesPage />} />
+          <Route path="search" element={<SearchPage />} />
           <Route path="accounts/:accountId" element={<AccountRegisterPage />} />
           <Route path="transactions/:transactionId" element={<TransactionPage />} />
         </Route>

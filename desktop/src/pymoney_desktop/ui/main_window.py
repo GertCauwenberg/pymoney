@@ -20,9 +20,10 @@ from pymoney.api.schemas import (
     PayeeIn,
     PayeeOut,
     RegisterRowOut,
+    TransactionOut,
 )
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -168,6 +169,15 @@ class MainWindow(QMainWindow):
         self.edit_button = QPushButton(_("Edit"))
         self.edit_button.clicked.connect(self.edit_transaction)
         bar.addWidget(self.edit_button)
+        self.search_button = QPushButton(_("Search…"))
+        self.search_button.setShortcut(QKeySequence.StandardKey.Find)
+        self.search_button.setToolTip(
+            _("Find transactions by text, amount, date, account or payee (Ctrl+F)")
+        )
+        self.search_button.clicked.connect(self.open_search)
+        bar.addWidget(self.search_button)
+        self.search_window: QMainWindow | None = None
+        self._select_after_load: UUID | None = None
         self.delete_button = QPushButton(_("Delete"))
         self.delete_button.clicked.connect(self.delete_transaction)
         bar.addWidget(self.delete_button)
@@ -358,6 +368,7 @@ class MainWindow(QMainWindow):
     def _register_loaded(self, page) -> None:
         account = self.current_account
         sign = natural_sign(account.account_class) if account else 1
+        wanted, self._select_after_load = self._select_after_load, None
         payees = {p.id: p.name for p in self.payees}
         self.rows = list(page.items)
         self.register.setRowCount(len(self.rows))
@@ -393,7 +404,69 @@ class MainWindow(QMainWindow):
             self.register_title.setText(
                 f"{account.path} · {_('balance')} {format_amount(closing, sign=sign)} {closing.commodity}"
             )
+        if wanted is not None:
+            # Arrived here from a search result: put it in front of the user.
+            for i, row in enumerate(self.rows):
+                if row.transaction_id == wanted:
+                    self.register.selectRow(i)
+                    cell = self.register.item(i, 0)
+                    if cell is not None:
+                        self.register.scrollToItem(cell)
+                    break
         self._enable_actions()
+        if wanted is not None and self._selected_row() is not None and self._can_write():
+            self.edit_transaction()
+
+    # -- search -------------------------------------------------------------------------
+    def open_search(self) -> QMainWindow | None:
+        """The search window for the current book; one at a time, brought to the front."""
+        if self.book is None:
+            return None
+        from .search import open_search
+
+        if self.search_window is not None and self.search_window.isVisible():
+            self.search_window.raise_()
+            self.search_window.activateWindow()
+            return self.search_window
+        self.search_window = open_search(
+            self.client,
+            self.book.id,
+            self.accounts,
+            self.payees,
+            on_open=self.show_transaction,
+            executor=self.executor,
+            parent=self,
+        )
+        return self.search_window
+
+    def show_transaction(self, transaction: TransactionOut) -> None:
+        """Navigate to a transaction: its first account's register, the row
+        selected -- and, for someone who may edit, the transaction opened."""
+        if self.book is None or not transaction.splits:
+            return
+        account_id = transaction.splits[0].account_id
+        items: dict[UUID, QTreeWidgetItem] = {}
+
+        def collect(item: QTreeWidgetItem | None) -> None:
+            if item is None:
+                return
+            items[item.data(0, Qt.ItemDataRole.UserRole)] = item
+            for i in range(item.childCount()):
+                collect(item.child(i))
+
+        root = self.tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            collect(root.child(i))
+        item = items.get(account_id)
+        if item is None:
+            return
+        self._select_after_load = transaction.id
+        self.tree.blockSignals(True)
+        self.tree.setCurrentItem(item)
+        self.tree.blockSignals(False)
+        self._account_chosen(item)
+        self.raise_()
+        self.activateWindow()
 
     # -- writing -------------------------------------------------------------------------
     def _currency(self) -> CommodityOut | None:
@@ -409,6 +482,7 @@ class MainWindow(QMainWindow):
     def _enable_actions(self) -> None:
         for action in self.report_actions:
             action.setEnabled(self.book is not None)
+        self.search_button.setEnabled(self.book is not None)
         writable = self._can_write()
         self.new_button.setEnabled(
             writable

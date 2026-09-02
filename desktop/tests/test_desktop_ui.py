@@ -473,3 +473,82 @@ def test_the_desktop_speaks_dutch_when_told(qtbot, api: Client, tmp_path):
     finally:
         set_locale("en")
         client.close()
+
+
+class TestSearch:
+    def test_the_search_window_finds_and_opens_a_transaction(self, window):
+        from datetime import date
+
+        from pymoney.api.schemas import TransactionIn
+
+        win, _api, book_id, visa, food, _transport = window
+        # Two entries on the card, through the client, so the replica has them.
+        for amount, memo, when in (
+            ("-62.50", "Dinner", "2026-03-14"),
+            ("-8.00", "Coffee", "2026-03-20"),
+        ):
+            win.client.post_transaction(
+                book_id,
+                TransactionIn.model_validate(
+                    {
+                        "date": when,
+                        "legs": [
+                            {"account_id": str(visa), "value": amount},
+                            {"account_id": str(food), "value": None},
+                        ],
+                        "memo": memo,
+                    }
+                ),
+            )
+        win.load()
+        search = win.open_search()
+        assert search is not None and win.search_button.isEnabled()
+        # Opening it again brings the same window forward rather than a second one.
+        assert win.open_search() is search
+
+        # Nothing filled in: refused locally, no request made.
+        search.search()
+        assert "at least one" in search.status.text()
+
+        search.text.setText("din")
+        search.search()
+        assert [t.memo for t in search.results] == ["Dinner"]
+        assert search.table.rowCount() == 1
+        assert search.table.item(0, 3).text() == "Visa → Restaurants"
+        assert search.table.item(0, 4).text() == "62.50 EUR"
+        assert search.status.text() == "One transaction matches."
+
+        # An amount range and a date, combined.
+        search.clear()
+        assert search.table.rowCount() == 0
+        search.amount_min.setText("5")
+        search.amount_max.setText("100")
+        search.use_start.setChecked(True)
+        search.start.setDate(_qdate(date(2026, 3, 15)))
+        search.search()
+        assert [t.memo for t in search.results] == ["Coffee"]
+
+        # A nonsense amount is the server's refusal, shown, not a crash.
+        search.amount_min.setText("abc")
+        search.search()
+        assert search.last_error is not None and search.results == []
+
+        # Opening a result: the main window shows the card's register with the
+        # row selected and, since the owner may edit, opens the transaction.
+        opened: list = []
+        win.run_dialog = lambda dialog: opened.append(dialog.windowTitle()) or 0  # type: ignore[method-assign]
+        search.clear()
+        search.text.setText("coffee")
+        search.search()
+        search.table.selectRow(0)
+        search.open_selected()
+        assert win.current_account is not None and win.current_account.name == "Visa"
+        selected = win._selected_row()
+        assert selected is not None and selected.memo == "Coffee"
+        assert opened == ["Edit transaction"]
+
+
+def _qdate(value):
+    from PySide6.QtCore import QDate
+
+    return QDate(value.year, value.month, value.day)

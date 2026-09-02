@@ -38,7 +38,7 @@ from .payee import Payee
 from .posting import LegSpec
 from .price import Price, PriceDB, ValuationPolicy
 from .settings import BookSettings
-from .store import ChangeLogView, CommandRecord, MemoryStore, Store
+from .store import ChangeLogView, CommandRecord, MemoryStore, Store, TransactionSearch
 from .sync import RevisionBatch, SyncPage
 from .transaction import ReconcileState, Split, Transaction
 
@@ -350,6 +350,41 @@ class Book:
                 limit=None if limit is None else limit + 1,
             )
         )
+
+    def search(
+        self,
+        query: TransactionSearch,
+        *,
+        account_id: UUID | None = None,
+        include_children: bool = False,
+    ) -> tuple[Transaction, ...]:
+        """Transactions matching ``query``, newest first.
+
+        ``account_id`` is the convenient form of ``query.account_ids``: one
+        account, or with ``include_children`` its whole subtree. An empty query
+        is refused rather than answered with the entire ledger -- that is what
+        the register is for.
+        """
+        if account_id is not None:
+            accounts = (
+                self.subtree(account_id)
+                if include_children
+                else (self.account(account_id),)
+            )
+            query = replace(query, account_ids=frozenset(a.id for a in accounts))
+        if query.payee_id is not None:
+            self.payee(query.payee_id)
+        if (
+            query.amount_min is not None
+            and query.amount_max is not None
+            and query.amount_min > query.amount_max
+        ):
+            raise ValidationError("the smallest amount is larger than the largest")
+        if query.start is not None and query.end is not None and query.start > query.end:
+            raise ValidationError(f"start {query.start} is after end {query.end}")
+        if query.is_empty:
+            raise ValidationError("a search needs at least one criterion")
+        return self._store.search(query)
 
     def register(
         self,

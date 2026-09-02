@@ -617,6 +617,62 @@ class TestTransactions:
         assert response.status_code == 200
         assert owner.delete(f"{base}/transactions/{posted['id']}").status_code == 409
 
+    def test_search(self, ledger: Ledger):
+        """Memo text, an amount or a range, dates, an account, a payee -- and all
+        of them together. Newest first; has_more says when to narrow."""
+        client = ledger.client
+        base = f"/books/{ledger.book_id}/transactions/search"
+        payee = client.post(
+            f"/books/{ledger.book_id}/payees", json={"name": "Shell"}
+        ).json()
+        client.post_transaction(
+            "2026-02-02",
+            [
+                {"account_id": ledger.checking, "value": "-40.00"},
+                {"account_id": ledger.fuel},
+            ],
+            memo="Petrol",
+            payee_id=payee["id"],
+        )
+
+        def memos(**params):
+            response = client.get(base, params=params)
+            assert response.status_code == 200, response.text
+            body = response.json()
+            return [t["memo"] for t in body["items"]], body["has_more"]
+
+        assert memos(q="super") == (["Supermarket"], False)
+        assert memos(amount="84.20") == (["Supermarket"], False)
+        assert memos(amount_min="40", amount_max="100") == (
+            ["Petrol", "Supermarket"],
+            False,
+        )
+        assert memos(amount_min="1000") == (["Salary", "Opening balance"], False)
+        assert memos(start="2026-02-01") == (["Petrol"], False)
+        assert memos(account_id=ledger.fuel) == (["Petrol"], False)
+        assert memos(payee_id=payee["id"]) == (["Petrol"], False)
+        assert memos(
+            q="petrol",
+            amount="40",
+            start="2026-01-01",
+            end="2026-12-31",
+            account_id=ledger.checking,
+            payee_id=payee["id"],
+        ) == (["Petrol"], False)
+        assert memos(q="petrol", start="2026-03-01") == ([], False)
+        # The limit is honoured and announced.
+        assert memos(start="2026-01-01", limit=2) == (["Petrol", "Salary"], True)
+        # Nothing to search for: refused, not "everything".
+        assert client.get(base).status_code == 422
+        # A float is not an amount.
+        assert client.get(base, params={"amount": "84.2"}).status_code == 200
+        assert (
+            client.get(base, params={"amount_min": "10", "amount_max": "1"}).status_code
+            == 422
+        )
+        # Viewers may search too.
+        assert client.get(base, params={"q": "x"}).status_code == 200
+
     def test_delete(self, ledger: Ledger):
         posted = ledger.client.post_transaction(
             "2026-02-01",

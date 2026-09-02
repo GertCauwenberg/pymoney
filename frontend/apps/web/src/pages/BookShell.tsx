@@ -57,6 +57,9 @@ export function BookShell() {
           <NavLink to="reports/income-statement">{t("Income statement")}</NavLink>
           <NavLink to="reports/holdings">{t("Holdings")}</NavLink>
           <NavLink to="reports/charts">{t("Charts")}</NavLink>
+          <NavLink to="search" className="tabs__aside" title={t("Find transactions")}>
+            {t("Search")}
+          </NavLink>
           <NavLink to="accounts" end className="tabs__aside">
             {t("Accounts")}
           </NavLink>

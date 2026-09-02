@@ -773,3 +773,31 @@ class TestReports:
             options=ReportOptions(as_of=date(2026, 2, 28)),
         )
         assert all(r.account_id != old for r in hidden.rows)
+
+
+@pytest.mark.parametrize("kind", ["remote", "offline"])
+def test_search_finds_the_same_through_either_client(server, tmp_path, kind):
+    from pymoney_desktop import SearchCriteria
+
+    api, book_id, checking, food = server
+    client, _ = make_client(kind, api.http, tmp_path)
+    client.login(EMAIL, PASSWORD)
+    client.post_transaction(book_id, txn(checking, food, memo="Lunch"))
+    client.post_transaction(book_id, txn(checking, food, value="-40.00", memo="Dinner"))
+    if kind == "offline":
+        client.sync()
+
+    def memos(**kw):
+        found = client.search(book_id, SearchCriteria(**kw))
+        return [t.memo for t in found.items], found.has_more
+
+    assert memos(text="lun") == (["Lunch"], False)
+    assert memos(amount="40") == (["Dinner"], False)
+    assert memos(amount_min="10", amount_max="50") == (["Dinner", "Lunch"], False)
+    assert memos(account_id=food, start=date(2026, 2, 1)) == (["Dinner", "Lunch"], False)
+    assert memos(account_id=food, include_children=True, text="x") == ([], False)
+    assert memos(text="n", limit=1) == (["Dinner"], True)
+    with pytest.raises(ApiError) as refused:
+        client.search(book_id, SearchCriteria())
+    assert refused.value.status == 422
+    client.close()

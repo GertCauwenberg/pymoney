@@ -45,6 +45,7 @@ export type RegisterTotals = Schemas["RegisterTotals"];
 export type Transaction = Schemas["TransactionOut"];
 export type TransactionIn = Schemas["TransactionIn"];
 export type TransactionUpdateIn = Schemas["TransactionUpdateIn"];
+export type TransactionSearchResult = Schemas["TransactionSearchOut"];
 export type LegIn = Schemas["LegIn"];
 export type Split = Schemas["SplitOut"];
 export type Payee = Schemas["PayeeOut"];
@@ -78,6 +79,7 @@ export type PeriodTableQuery = Query<"get_period_table_books__book_id__reports_p
 export type AccountsQuery = Query<"list_accounts_books__book_id__accounts_get">;
 export type CommoditiesQuery = Query<"list_commodities_books__book_id__commodities_get">;
 export type RegisterQuery = Query<"register_books__book_id__accounts__account_id__register_get">;
+export type TransactionSearchQuery = Query<"search_transactions_route_books__book_id__transactions_search_get">;
 export type PayeesQuery = Query<"list_payees_books__book_id__payees_get">;
 export type PricesQuery = Query<"list_prices_books__book_id__prices_get">;
 
