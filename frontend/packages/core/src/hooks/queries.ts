@@ -381,6 +381,7 @@ export type AccountChange =
   | { kind: "rename"; accountId: string; name: string }
   | { kind: "move"; accountId: string; parentId: string | null }
   | { kind: "closed"; accountId: string; closed: boolean }
+  | { kind: "merge"; sourceId: string; targetId: string }
   | { kind: "delete"; accountId: string };
 
 export function useChangeAccount(bookId: string) {
@@ -399,6 +400,8 @@ export function useChangeAccount(bookId: string) {
           return api.moveAccount(bookId, change.accountId, change.parentId);
         case "closed":
           return api.setAccountClosed(bookId, change.accountId, change.closed);
+        case "merge":
+          return api.mergeAccount(bookId, change.targetId, change.sourceId);
         case "delete":
           await api.deleteAccount(bookId, change.accountId);
           return null;

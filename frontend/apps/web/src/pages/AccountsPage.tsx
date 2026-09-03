@@ -295,6 +295,8 @@ function AccountEditor({
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [placeholder, setPlaceholder] = useState(existing?.placeholder ?? false);
   const [closed, setClosed] = useState(existing?.closed ?? false);
+  const [mergeTarget, setMergeTarget] = useState("");
+  const [confirmingMerge, setConfirmingMerge] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   // Editing a different account: start again from its fields.
@@ -311,6 +313,8 @@ function AccountEditor({
     setNotes(existing.notes);
     setPlaceholder(existing.placeholder);
     setClosed(existing.closed);
+    setMergeTarget("");
+    setConfirmingMerge(false);
     setError(null);
   }, [existing]);
 
@@ -324,6 +328,34 @@ function AccountEditor({
   const clash = accounts.find(
     (a) => a.id !== existing?.id && (a.parent_id ?? "") === parentId && a.name.trim().toLowerCase() === name.trim().toLowerCase(),
   );
+
+  // Merge candidates: the server's rules, said up front -- same class, same
+  // commodity, not itself or a descendant, and able to take the postings.
+  const mergeTargets = existing
+    ? accounts
+        .filter(
+          (a) =>
+            a.id !== existing.id &&
+            a.account_class === existing.account_class &&
+            a.commodity_id === existing.commodity_id &&
+            !excluded.has(a.id) &&
+            !a.placeholder &&
+            !a.closed,
+        )
+        .sort((a, b) => a.path.localeCompare(b.path))
+    : [];
+
+  const merge = async () => {
+    if (!existing || !mergeTarget) return;
+    setError(null);
+    try {
+      await change.mutateAsync({ kind: "merge", sourceId: existing.id, targetId: mergeTarget });
+      onDone();
+    } catch (err) {
+      setConfirmingMerge(false);
+      setError(err);
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -444,6 +476,50 @@ function AccountEditor({
       </div>
       {existing && parentId && byId.get(parentId)?.id !== existing.parent_id && (
         <p className="muted">{t("Moving keeps every posting; only the path changes.")}</p>
+      )}
+      {existing && mergeTargets.length > 0 && (
+        <div className="account-editor__merge">
+          <Field
+            label={t("Merge into")}
+            hint={t("Every posting and sub-account moves to the chosen account; this one disappears. Frozen periods are never rewritten.")}
+          >
+            <select
+              value={mergeTarget}
+              onChange={(e) => {
+                setMergeTarget(e.target.value);
+                setConfirmingMerge(false);
+              }}
+            >
+              <option value="">{t("— choose an account —")}</option>
+              {mergeTargets.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.path}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {mergeTarget &&
+            (confirmingMerge ? (
+              <div className="actions actions--inline">
+                <span className="muted">
+                  {t("Merge {source} into {target}? There is no undo.", {
+                    source: existing.path,
+                    target: byId.get(mergeTarget)?.path ?? "?",
+                  })}
+                </span>
+                <button type="button" className="btn btn--small btn--danger" disabled={change.isPending} onClick={() => void merge()}>
+                  {t("Yes, merge")}
+                </button>
+                <button type="button" className="btn btn--small" onClick={() => setConfirmingMerge(false)}>
+                  {t("No")}
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="btn btn--danger" disabled={change.isPending} onClick={() => setConfirmingMerge(true)}>
+                {t("Merge…")}
+              </button>
+            ))}
+        </div>
       )}
       <div className="actions">
         <button type="submit" className="btn btn--primary" disabled={change.isPending || !name.trim() || !!clash}>

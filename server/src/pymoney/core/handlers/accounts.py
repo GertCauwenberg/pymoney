@@ -192,6 +192,31 @@ def merge_accounts(book: Book, command: cmd.MergeAccounts) -> Account:
             f"cannot merge {book.path(source)!r} into its own descendant"
         )
 
+    # A merge moves the source's postings onto the target, so the target must
+    # be an account that accepts postings -- the same rule posting itself
+    # enforces. A merge of an empty account (a pure subtree reshuffle) may
+    # still land on a placeholder: no posting arrives.
+    transactions = book.store.transactions(account_ids=[source.id])
+    if transactions and not target.accepts_postings:
+        why = "a placeholder" if target.placeholder else "closed"
+        raise ValidationError(
+            f"cannot merge {book.path(source)!r} into {book.path(target)!r}: "
+            f"the target is {why} and accepts no postings, and the source has "
+            f"{len(transactions)} transaction(s) to move"
+        )
+    # A frozen split is a closed accounting period (decision #11): what its
+    # books said, including which account a leg was on, is never rewritten.
+    frozen = [
+        t
+        for t in transactions
+        if any(s.is_locked and s.reconcile_state.is_final for s in t.splits)
+    ]
+    if frozen:
+        raise ValidationError(
+            f"cannot merge {book.path(source)!r}: {len(frozen)} of its "
+            f"transaction(s) are in a frozen period, which is never rewritten"
+        )
+
     source_path = book.path(source)
     note = f"merged from {source_path!r}"
 
@@ -204,7 +229,7 @@ def merge_accounts(book: Book, command: cmd.MergeAccounts) -> Account:
             note=note,
         )
 
-    for transaction in book.store.transactions(account_ids=[source.id]):
+    for transaction in transactions:
         splits = tuple(
             replace(s, account_id=target.id) if s.account_id == source.id else s
             for s in transaction.splits

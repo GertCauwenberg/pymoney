@@ -350,6 +350,36 @@ class TestPayees:
         )
         assert posted.json()["payee_id"] == payee["id"]
 
+    def test_merge_checks_the_target_and_frozen_periods(self, ledger: Ledger):
+        client = ledger.client
+        base = f"/books/{ledger.book_id}"
+        shelf = client.account("Shelf", "EXPENSE", placeholder=True)
+        # Groceries has a posting: a placeholder cannot take it.
+        refused = client.post(
+            f"{base}/accounts/{shelf['id']}/merge", json={"source_id": ledger.groceries}
+        )
+        assert (
+            refused.status_code == 422
+            and "placeholder" in refused.json()["error"]["message"]
+        )
+        # Freeze the grocery leg: the period is closed, the merge is refused whole.
+        register = client.get(f"{base}/accounts/{ledger.groceries}/register").json()
+        row = register["items"][0]
+        client.post(
+            f"{base}/transactions/{row['transaction_id']}/splits/{row['split_id']}/reconcile",
+            json={"state": "FROZEN", "on": "2026-01-31"},
+        )
+        refused = client.post(
+            f"{base}/accounts/{ledger.fuel}/merge", json={"source_id": ledger.groceries}
+        )
+        assert refused.status_code == 422
+        assert "frozen period" in refused.json()["error"]["message"]
+        # The other way round still works: Fuel has nothing frozen.
+        merged = client.post(
+            f"{base}/accounts/{ledger.groceries}/merge", json={"source_id": ledger.fuel}
+        )
+        assert merged.status_code == 200
+
     def test_search(self, ledger: Ledger):
         for name in ("Amazon", "Amazon EU", "Butcher"):
             ledger.client.post(f"/books/{ledger.book_id}/payees", json={"name": name})
@@ -616,6 +646,36 @@ class TestTransactions:
         )
         assert response.status_code == 200
         assert owner.delete(f"{base}/transactions/{posted['id']}").status_code == 409
+
+    def test_merge_checks_the_target_and_frozen_periods(self, ledger: Ledger):
+        client = ledger.client
+        base = f"/books/{ledger.book_id}"
+        shelf = client.account("Shelf", "EXPENSE", placeholder=True)
+        # Groceries has a posting: a placeholder cannot take it.
+        refused = client.post(
+            f"{base}/accounts/{shelf['id']}/merge", json={"source_id": ledger.groceries}
+        )
+        assert (
+            refused.status_code == 422
+            and "placeholder" in refused.json()["error"]["message"]
+        )
+        # Freeze the grocery leg: the period is closed, the merge is refused whole.
+        register = client.get(f"{base}/accounts/{ledger.groceries}/register").json()
+        row = register["items"][0]
+        client.post(
+            f"{base}/transactions/{row['transaction_id']}/splits/{row['split_id']}/reconcile",
+            json={"state": "FROZEN", "on": "2026-01-31"},
+        )
+        refused = client.post(
+            f"{base}/accounts/{ledger.fuel}/merge", json={"source_id": ledger.groceries}
+        )
+        assert refused.status_code == 422
+        assert "frozen period" in refused.json()["error"]["message"]
+        # The other way round still works: Fuel has nothing frozen.
+        merged = client.post(
+            f"{base}/accounts/{ledger.groceries}/merge", json={"source_id": ledger.fuel}
+        )
+        assert merged.status_code == 200
 
     def test_search(self, ledger: Ledger):
         """Memo text, an amount or a range, dates, an account, a payee -- and all

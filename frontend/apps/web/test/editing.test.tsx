@@ -436,6 +436,47 @@ describe("the chart of accounts", () => {
     await waitFor(() => expect(calls.filter((c) => c.method === "DELETE")).toHaveLength(2));
   });
 
+  it("merges one account into another, behind a confirmation", async () => {
+    const user = userEvent.setup();
+    const { fetch, calls } = server({
+      ...reads,
+      "POST /books/b1/accounts/chk/merge": ({ body }) => ({ body: accounts[1] }),
+    });
+    mount(fetch, "/books/b1/accounts?edit=old");
+    const form = await screen.findByRole("form", { name: "Edit Old" });
+    // Candidates: same class and commodity, open, no placeholders, not itself:
+    // Checking and the Dollar Wallet is out (USD), Assets is out (placeholder).
+    const picker = within(form).getByLabelText("Merge into");
+    expect(within(picker).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "— choose an account —",
+      "Assets:Checking",
+    ]);
+    await user.selectOptions(picker, "chk");
+    await user.click(within(form).getByRole("button", { name: "Merge…" }));
+    expect(within(form).getByText(/There is no undo/)).toBeInTheDocument();
+    expect(calls.some((c) => c.path.endsWith("/merge"))).toBe(false);
+    await user.click(within(form).getByRole("button", { name: "Yes, merge" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/books/b1/accounts/chk/merge")).toBe(true));
+    expect(calls.find((c) => c.path.endsWith("/merge"))!.body).toEqual({ source_id: "old" });
+  });
+
+  it("shows the server's refusal of a merge", async () => {
+    const user = userEvent.setup();
+    const { fetch } = server({
+      ...reads,
+      "POST /books/b1/accounts/chk/merge": () => ({
+        status: 422,
+        body: { error: { type: "ValidationError", message: "cannot merge 'Assets:Old': 2 of its transaction(s) are in a frozen period, which is never rewritten", status: 422 } },
+      }),
+    });
+    mount(fetch, "/books/b1/accounts?edit=old");
+    const form = await screen.findByRole("form", { name: "Edit Old" });
+    await user.selectOptions(within(form).getByLabelText("Merge into"), "chk");
+    await user.click(within(form).getByRole("button", { name: "Merge…" }));
+    await user.click(within(form).getByRole("button", { name: "Yes, merge" }));
+    expect(await screen.findByText(/frozen period/)).toBeInTheDocument();
+  });
+
   it("is read-only for editors and viewers", async () => {
     const { fetch } = server(reads);
     mount(fetch, "/books/b1/accounts?edit=chk", "editor");

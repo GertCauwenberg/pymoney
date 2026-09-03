@@ -119,6 +119,7 @@
   "Entered": "Ingevoerd",
   "Equity": "Eigen vermogen",
   "Every criterion narrows the search; fill in one or more.": "Elk criterium verfijnt de zoekopdracht; vul er een of meer in.",
+  "Every posting and sub-account moves to the chosen account; this one disappears. Frozen periods are never rewritten.": "Elke boeking en subrekening verhuist naar de gekozen rekening; deze verdwijnt. Bevroren perioden worden nooit herschreven.",
   "Everything goes: every account, transaction, price and the whole history, for everyone it is shared with. There is no undo and no backup on the server. If you only want out, revoke your own access instead.": "Alles verdwijnt: elke rekening, transactie, koers en de hele geschiedenis, voor iedereen met wie het boek gedeeld is. Er is geen ongedaan maken en geen reservekopie op de server. Wilt u er alleen zelf uit, trek dan uw eigen toegang in.",
   "Exchange rates and security prices, each with its source and the moment it became known. A price you enter wins over a fetched quote for the same day.": "Wisselkoersen en effectenkoersen, elk met hun bron en het moment waarop ze bekend werden. Een koers die u zelf invoert gaat vóór een opgehaalde notering van dezelfde dag.",
   "Expand": "Uitklappen",
@@ -212,6 +213,9 @@
   "Market value": "Marktwaarde",
   "Memo": "Memo",
   "Memo of leg {n}": "Memo van regel {n}",
+  "Merge into": "Samenvoegen met",
+  "Merge {source} into {target}? There is no undo.": "{source} samenvoegen met {target}? Dit kan niet ongedaan worden gemaakt.",
+  "Merge…": "Samenvoegen…",
   "Minor units": "Kleinste eenheden",
   "Money into an account is positive, money out of it negative. Leave one amount blank and it takes whatever balances the entry.": "Geld dat een rekening binnenkomt is positief, geld dat eruit gaat negatief. Laat één bedrag leeg en het neemt wat nodig is om de boeking in evenwicht te brengen.",
   "Money into an account is positive, out of it negative. Leave one amount blank and it takes whatever balances the entry.": "Geld dat een rekening binnenkomt is positief, geld dat eruit gaat negatief. Laat één bedrag leeg en het neemt wat nodig is om de boeking in evenwicht te brengen.",
@@ -388,6 +392,7 @@
   "Year to date": "Dit jaar tot nu",
   "Yearly": "Jaarlijks",
   "Yes, delete": "Ja, verwijderen",
+  "Yes, merge": "Ja, samenvoegen",
   "Yes, revoke": "Ja, intrekken",
   "You are logged in as": "U bent aangemeld als",
   "Your books": "Uw boeken",
@@ -430,5 +435,6 @@
   "{count} waiting for the server": "{count} wachten op de server",
   "{n} selected, totalling": "{n} geselecteerd, samen",
   "{n} transactions match.": "{n} transacties voldoen.",
-  "{report} in {currency}": "{report} in {currency}"
+  "{report} in {currency}": "{report} in {currency}",
+  "— choose an account —": "— kies een rekening —"
 }

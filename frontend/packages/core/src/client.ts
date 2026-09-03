@@ -442,6 +442,11 @@ export class ApiClient {
     return this.post<Account>(`/books/${bookId}/accounts/${accountId}/move`, { parent_id: parentId });
   }
 
+  /** Merge `sourceId` into `targetId`: postings and children move, the source goes. */
+  mergeAccount(bookId: string, targetId: string, sourceId: string): Promise<Account> {
+    return this.post<Account>(`/books/${bookId}/accounts/${targetId}/merge`, { source_id: sourceId });
+  }
+
   setAccountClosed(bookId: string, accountId: string, closed: boolean): Promise<Account> {
     return this.post<Account>(`/books/${bookId}/accounts/${accountId}/closed`, { closed });
   }

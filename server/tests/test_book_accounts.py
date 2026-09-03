@@ -630,6 +630,77 @@ class TestMergeAccounts:
                 c.MergeAccounts(source_id=chart.fuel.id, target_id=chart.groceries.id)
             )
 
+    def test_the_target_must_accept_postings(self, funded: Chart):
+        """A merge moves postings; a placeholder or a closed target could never
+        have taken them one at a time, and must not get them in one go."""
+        book = funded.book
+        shelf = book.add_account(
+            "Shelf", AccountType.EXPENSE, placeholder=True, parent=funded.expenses
+        )
+        with pytest.raises(ValidationError, match="a placeholder"):
+            book.execute(
+                c.MergeAccounts(source_id=funded.groceries.id, target_id=shelf.id)
+            )
+        retired = book.add_account("Retired", AccountType.EXPENSE, parent=funded.expenses)
+        book.execute(c.SetAccountClosed(account_id=retired.id, closed=True))
+        with pytest.raises(ValidationError, match="closed"):
+            book.execute(
+                c.MergeAccounts(source_id=funded.groceries.id, target_id=retired.id)
+            )
+        # An empty source is a pure subtree reshuffle: a placeholder may take it.
+        empty = book.add_account("Empty", AccountType.EXPENSE, parent=funded.expenses)
+        child = book.add_account("Child", AccountType.EXPENSE, parent=empty)
+        book.execute(c.MergeAccounts(source_id=empty.id, target_id=shelf.id))
+        assert book.path(child.id) == "Expenses:Shelf:Child"
+
+    def test_a_frozen_period_is_never_rewritten(self, funded: Chart):
+        """Decision #11: a frozen split's books, including which account a leg
+        was on, are final. A merge that would rewrite one is refused whole."""
+        book = funded.book
+        target = book.add_account("Food", AccountType.EXPENSE, parent=funded.expenses)
+        frozen = book.transactions(account_id=funded.groceries.id)[0]
+        split = frozen.splits_for(funded.groceries.id)[0]
+        book.execute(
+            c.SetSplitReconcileState(
+                transaction_id=frozen.id,
+                split_id=split.id,
+                state=ReconcileState.FROZEN,
+                on=date(2026, 1, 31),
+            )
+        )
+        with pytest.raises(ValidationError, match="frozen period"):
+            book.execute(
+                c.MergeAccounts(source_id=funded.groceries.id, target_id=target.id)
+            )
+        # The frozen split is untouched and the source still exists.
+        assert book.account(funded.groceries.id).name == "Groceries"
+        # RECONCILED is not final: the figures and the mark survive a merge.
+        book.execute(
+            c.SetSplitReconcileState(
+                transaction_id=frozen.id,
+                split_id=split.id,
+                state=ReconcileState.FROZEN,  # stays frozen; use another account
+                on=date(2026, 1, 31),
+            )
+        )
+        reconciled = book.post(
+            date(2026, 1, 21),
+            [LegSpec.of(funded.checking.id, "-5.00"), LegSpec.of(funded.fuel.id)],
+        )
+        fuel_split = reconciled.splits_for(funded.fuel.id)[0]
+        book.execute(
+            c.SetSplitReconcileState(
+                transaction_id=reconciled.id,
+                split_id=fuel_split.id,
+                state=ReconcileState.RECONCILED,
+                on=date(2026, 1, 31),
+            )
+        )
+        other = book.add_account("Transport", AccountType.EXPENSE, parent=funded.expenses)
+        book.execute(c.MergeAccounts(source_id=funded.fuel.id, target_id=other.id))
+        moved = book.transaction(reconciled.id).splits_for(other.id)[0]
+        assert moved.reconcile_state is ReconcileState.RECONCILED
+
     def test_a_failed_merge_changes_nothing(self, chart: Chart):
         """Atomicity: the partially-moved child must be rolled back."""
         book = chart.book
