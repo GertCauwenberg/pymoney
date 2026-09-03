@@ -747,16 +747,17 @@ class SqlStore(Store):
         if query.amount_min is not None or query.amount_max is not None:
             lo = query.amount_min if query.amount_min is not None else 0
             hi = query.amount_max
-            quantity_factor = (
-                select(c.c.minor_unit_factor)
-                .where(c.c.id == s.c.quantity_commodity_id)
-                .scalar_subquery()
-            )
-            value_factor = (
-                select(c.c.minor_unit_factor)
-                .where(c.c.id == t.c.currency_id)
-                .scalar_subquery()
-            )
+            # The two commodities whose minor_unit_factor scales the comparison
+            # are *joined* inside the EXISTS, under aliases, rather than looked
+            # up by scalar subqueries. A scalar subquery here would correlate
+            # only against the EXISTS's own FROM (splits), not against the outer
+            # `transactions` row two levels up -- so a subquery on the
+            # transaction's currency came out as `FROM commodities, transactions`,
+            # one row per transaction in the book. PostgreSQL refuses that
+            # (CardinalityViolation); SQLite quietly takes the first row, which
+            # is why only the PostgreSQL suite caught it.
+            quantity_commodity = c.alias("quantity_commodity")
+            currency = c.alias("transaction_currency")
 
             def within(minor: Any, factor: Any) -> Any:
                 size = func.abs(minor)
@@ -770,9 +771,13 @@ class SqlStore(Store):
             conditions.append(
                 exists().where(
                     s.c.transaction_id == t.c.id,
+                    quantity_commodity.c.id == s.c.quantity_commodity_id,
+                    currency.c.id == t.c.currency_id,
                     or_(
-                        within(s.c.quantity_minor, quantity_factor),
-                        within(s.c.value_minor, value_factor),
+                        within(
+                            s.c.quantity_minor, quantity_commodity.c.minor_unit_factor
+                        ),
+                        within(s.c.value_minor, currency.c.minor_unit_factor),
                     ),
                 )
             )

@@ -226,6 +226,41 @@ class TestSearch:
         assert [
             t.memo for t in self._search(book, amount_min=F(90), amount_max=F(90))
         ] == ["dollars"]
+        # A 0-decimal currency: the quantity's factor (1) and the value's (100)
+        # differ, which is exactly what a mis-correlated factor lookup got
+        # wrong -- PostgreSQL refused it, SQLite silently used the wrong row.
+        yen = book.add_account("Yen Wallet", AccountType.CASH, commodity=funded.jpy)
+        book.post(
+            date(2026, 1, 21),
+            [
+                LegSpec.of(funded.checking.id, "-8.00"),
+                LegSpec.of(yen.id, quantity="1000", price="0.008"),
+            ],
+            memo="yen",
+        )
+        assert [
+            t.memo for t in self._search(book, amount_min=F(1000), amount_max=F(1000))
+        ] == ["yen"]
+        assert [t.memo for t in self._search(book, amount_min=F(8), amount_max=F(8))] == [
+            "yen"
+        ]
+        # And a transaction *denominated* in the 0-decimal currency: its value
+        # factor is 1 while every other transaction's is 100, so a lookup that
+        # grabs the wrong transaction's factor misses this by two orders of
+        # magnitude -- on SQLite as well as PostgreSQL.
+        jar = book.add_account("Yen Jar", AccountType.CASH, commodity=funded.jpy)
+        book.post(
+            date(2026, 1, 22),
+            [LegSpec.of(yen.id, "-250"), LegSpec.of(jar.id)],
+            currency=funded.jpy,
+            memo="yen jar",
+        )
+        assert [
+            t.memo for t in self._search(book, amount_min=F(250), amount_max=F(250))
+        ] == ["yen jar"]
+        # ...and 250 yen is not 2.50 of anything: the wrong factor (100 instead
+        # of 1) would claim it is. This is the false positive SQLite produced.
+        assert self._search(book, amount_min=F("2.5"), amount_max=F("2.5")) == ()
 
     def test_account_payee_dates_and_combinations(self, funded: Chart):
         book = funded.book
