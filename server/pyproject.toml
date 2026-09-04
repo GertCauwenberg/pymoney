@@ -7,7 +7,7 @@ name = "pymoney-core"
 version = "0.1.0"
 description = "PyMoney: the double-entry accounting core, its stores, and the HTTP API"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = "GPL-3.0-only"
 authors = [{ name = "Gert Cauwenberg" }]
 keywords = ["accounting", "double-entry", "finance", "ledger", "multi-currency"]
