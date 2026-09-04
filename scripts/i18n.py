@@ -44,6 +44,7 @@ def label_keys() -> set[str]:
         "frontend/apps/web/src/pages/CommoditiesPage.tsx",
         "frontend/apps/web/src/ledger/ReconcileMark.tsx",
         "frontend/apps/web/src/reports/NetWorthReport.tsx",
+        "frontend/apps/web/src/components/HistoryTable.tsx",
         "desktop/src/pymoney_desktop/ui/reports.py",
         "desktop/src/pymoney_desktop/ui/charts.py",
     ):

@@ -1,5 +1,5 @@
 import { useT } from "@pymoney/core/hooks";
-import { formatAmount, naturalSign } from "@pymoney/core";
+import { formatAmount, naturalSign, parseDecimal } from "@pymoney/core";
 import type { Account, Amount, ReconcileState, RegisterRow } from "@pymoney/core";
 import { useAccount, useAccounts, useCommodities, useLedger, usePayees, useReconcileAccount } from "@pymoney/core/hooks";
 import { useMemo, useState } from "react";
@@ -35,6 +35,7 @@ export function AccountRegisterPage() {
   const [reconciling, setReconciling] = useState(false);
   const [statementDate, setStatementDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [targetState, setTargetState] = useState<ReconcileState>("RECONCILED");
+  const [statementBalance, setStatementBalance] = useState("");
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
 
   const account = useAccount(bookId, accountId);
@@ -89,6 +90,27 @@ export function AccountRegisterPage() {
     });
   const selectedRows = rows.filter((r) => selected.has(r.split_id));
   const selectedSum = selectedRows.reduce((acc, r) => acc + BigInt(r.quantity.minor), 0n);
+  // The one question a paper statement answers: does the ending balance match?
+  // Reconciled balance = everything before the window + every row already
+  // reconciled or frozen + what is ticked now; the statement says what it
+  // should be, and the difference is what is missing or wrong.
+  const reconciledBalance = (() => {
+    if (!totals?.opening) return null;
+    const settled = rows
+      .filter((r) => r.account_id === accountId && (selected.has(r.split_id) || r.reconcile_state === "RECONCILED" || r.reconcile_state === "FROZEN"))
+      .reduce((acc, r) => acc + BigInt(r.quantity.minor), 0n);
+    return BigInt(totals.opening.minor) + settled;
+  })();
+  // The statement prints the natural sign (a card's debt positive); stored
+  // balances carry the raw one, so flip for credit-normal accounts.
+  const classSign = cls === "ASSET" || cls === "EXPENSE" ? 1n : -1n;
+  const statedMinor = (() => {
+    if (!account.data || !statementBalance.trim()) return null;
+    const commodity = commodities.data?.find((c) => c.id === account.data!.commodity_id);
+    const parsed = parseDecimal(statementBalance, commodity?.minor_unit_factor ?? 100);
+    return parsed === null ? null : parsed * classSign;
+  })();
+  const difference = statedMinor !== null && reconciledBalance !== null ? statedMinor - reconciledBalance : null;
   const applyReconcile = () =>
     reconcile.mutate(
       { split_ids: [...selected], state: targetState, statement_date: statementDate },
@@ -195,12 +217,24 @@ export function AccountRegisterPage() {
                 {role === "owner" && <option value="FROZEN">{t("Frozen")}</option>}
               </select>
             </Field>
+            <Field label={t("Statement ending balance")} hint={t("As printed; the difference tells you what is missing.")}>
+              <input type="text" inputMode="decimal" className="input--amount" value={statementBalance} onChange={(e) => setStatementBalance(e.target.value)} />
+            </Field>
             <span className="reconcile-bar__sum">
               {t("{n} selected, totalling", { n: selected.size })}{" "}
               {selectedRows[0] ? (
                 <Money amount={sign({ ...selectedRows[0].quantity, minor: Number(selectedSum) }) as Amount} strong />
               ) : (
                 <span className="muted">—</span>
+              )}
+              {difference !== null && totals?.opening && (
+                <span className={`reconcile-bar__difference ${difference === 0n ? "reconcile-bar__difference--ok" : "reconcile-bar__difference--off"}`} role="status">
+                  {" · "}
+                  {difference === 0n
+                    ? t("matches the statement")
+                    : t("differs from the statement by")}{" "}
+                  {difference !== 0n && <Money amount={{ ...totals.opening, minor: Number(difference * classSign) }} strong />}
+                </span>
               )}
             </span>
             <div className="actions">

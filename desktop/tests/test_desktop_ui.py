@@ -631,3 +631,67 @@ class TestReconciliation:
 
 
 from datetime import date  # noqa: E402
+
+
+class TestQuickEntryAndStatementCheck:
+    def test_the_payees_default_account_fills_the_blank_leg(self, window):
+        from pymoney.api.schemas import PayeeIn
+
+        from pymoney_desktop.ui.transaction_dialog import TransactionDialog
+
+        win, _api, book_id, _visa, food, _transport = window
+        win.client.create_payee(
+            book_id, PayeeIn(name="Trattoria", default_account_id=food)
+        )
+        win.load()
+        currency = win._currency()
+        assert currency is not None
+        dialog = TransactionDialog(
+            win.accounts, win.payees, currency, default_account_id=None
+        )
+        dialog.payee.setCurrentIndex(dialog.payee.findText("Trattoria"))
+        second = dialog.legs.cellWidget(1, 0)
+        assert second.currentData() == str(food)
+        # Only a blank leg is filled: choosing again does not overwrite a choice.
+        visa_index = (
+            second.findText(win.accounts[0].path)
+            if second.findText(win.accounts[0].path) >= 0
+            else 1
+        )
+        second.setCurrentIndex(visa_index)
+        chosen = second.currentData()
+        dialog.payee.setCurrentIndex(0)
+        dialog.payee.setCurrentIndex(dialog.payee.findText("Trattoria"))
+        assert second.currentData() == chosen
+
+    def test_the_statement_balance_check(self, window):
+        from pymoney_desktop.ui.reconcile import ReconcileDialog
+
+        win, _api, book_id, visa, food, _transport = window
+        TestReconciliation._post(
+            None, win, book_id, visa, food, "-62.50", "Dinner", "2026-03-14"
+        )
+        TestReconciliation._post(
+            None, win, book_id, visa, food, "-8.00", "Coffee", "2026-03-20"
+        )
+        win.load()
+        select_account(win, "Visa")
+        dialog = ReconcileDialog(
+            win.current_account, win.rows, {}, opening_minor=win.register_opening_minor
+        )
+        assert dialog.difference() is None
+        # Tick the dinner only; the card statement says 62.50 owed: a match.
+        from PySide6.QtCore import Qt
+
+        dialog.table.item(0, 0).setCheckState(Qt.CheckState.Checked)
+        dialog.stated.setText("62.50")
+        assert dialog.difference() == 0
+        assert "matches the statement" in dialog.summary.text()
+        # The statement says 70.50: the coffee is missing, and the summary says by how much.
+        dialog.stated.setText("70.50")
+        assert (
+            dialog.difference() == -800 * 1
+        )  # raw sign: the card stores -70.50, we have -62.50
+        assert "differs from the statement by 8.00" in dialog.summary.text()
+        dialog.stated.setText("abc")
+        assert dialog.difference() is None

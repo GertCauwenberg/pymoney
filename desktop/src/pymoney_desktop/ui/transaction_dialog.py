@@ -97,9 +97,12 @@ class TransactionDialog(QDialog):
         self.new_payee.setPlaceholderText(_("Name of the new payee"))
         self.new_payee.setVisible(False)
         form.addRow("", self.new_payee)
+        self._payee_by_id = {str(p.id): p for p in payees}
         self.payee.currentIndexChanged.connect(
             lambda _: self.new_payee.setVisible(self.payee.currentData() == NEW_PAYEE)
         )
+        if existing is None:
+            self.payee.currentIndexChanged.connect(lambda _: self._prefill_from_payee())
         self.memo = QLineEdit(draft.memo)
         form.addRow(_("Memo"), self.memo)
         self.number = QLineEdit(draft.number)
@@ -192,6 +195,20 @@ class TransactionDialog(QDialog):
             self.legs.removeRow(row)
             del self._keep[row]
             self._refresh_footer()
+
+    def _prefill_from_payee(self) -> None:
+        """The payee's default account goes into the first leg that has none --
+        only into a blank one, so nothing the user chose is overwritten."""
+        payee = self._payee_by_id.get(self.payee.currentData() or "")
+        if payee is None or payee.default_account_id is None:
+            return
+        for row in range(1, self.legs.rowCount()):
+            combo = self.legs.cellWidget(row, 0)
+            if isinstance(combo, QComboBox) and not combo.currentData():
+                index = combo.findData(str(payee.default_account_id))
+                if index >= 0:
+                    combo.setCurrentIndex(index)
+                return
 
     def _cell(self, row: int, col: int) -> str:
         item = self.legs.item(row, col)

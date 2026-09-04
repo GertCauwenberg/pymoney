@@ -1038,3 +1038,15 @@ a.btn--link {
   padding-top: 0.75rem;
   border-top: 1px dashed var(--border-strong);
 }
+
+.reconcile-bar__difference--ok {
+  color: var(--positive);
+  font-weight: 600;
+}
+.reconcile-bar__difference--off {
+  color: var(--negative);
+  font-weight: 600;
+}
+.history__command {
+  font-size: 0.8em;
+}

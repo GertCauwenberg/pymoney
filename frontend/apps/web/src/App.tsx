@@ -9,6 +9,7 @@ import { BooksPage } from "./pages/BooksPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ActivatePage, ForgotPasswordPage, ResetPasswordPage } from "./pages/PasswordPages";
 import { NotFound } from "./pages/NotFound";
+import { HistoryPage } from "./pages/HistoryPage";
 import { PayeesPage } from "./pages/PayeesPage";
 import { SettingsShell } from "./pages/SettingsShell";
 import { SharingPage } from "./pages/SharingPage";
@@ -61,6 +62,7 @@ export function App() {
             <Route path="commodities" element={<CommoditiesPage />} />
             <Route path="prices" element={<PricesPage />} />
             <Route path="sharing" element={<SharingPage />} />
+            <Route path="history" element={<HistoryPage />} />
           </Route>
           {/* The old addresses keep working: bookmarks and links from before the Settings tab. */}
           <Route path="sharing" element={<Navigate to="../settings/sharing" replace />} />

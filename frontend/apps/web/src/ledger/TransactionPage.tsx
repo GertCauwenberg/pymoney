@@ -1,11 +1,12 @@
 import { useT } from "@pymoney/core/hooks";
 import { formatRate } from "@pymoney/core";
 import type { ReconcileState, Split } from "@pymoney/core";
-import { useAccounts, useCommodities, useDeleteTransaction, usePayees, useSetSplitState, useTransaction } from "@pymoney/core/hooks";
+import { useAccounts, useCommodities, useDeleteTransaction, useHistory, usePayees, useSetSplitState, useTransaction } from "@pymoney/core/hooks";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
+import { HistoryTable } from "../components/HistoryTable";
 import { Loading } from "../components/Loading";
 import { Money } from "../components/Money";
 import { useBookContext } from "../reports/useReportParams";
@@ -32,6 +33,7 @@ export function TransactionPage() {
   const commodities = useCommodities(bookId);
   const remove = useDeleteTransaction(bookId);
   const mark = useSetSplitState(bookId);
+  const history = useHistory(bookId, { entity_id: transactionId });
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -227,6 +229,19 @@ export function TransactionPage() {
           </tr>
         </tfoot>
       </table>
+
+      <details className="valuation history-panel">
+        <summary>
+          {tr("History")}
+          {history.data && history.data[0] && (
+            <span className="muted">
+              {" "}
+              · {tr("last changed by {who}", { who: history.data[0].actor || "—" })}
+            </span>
+          )}
+        </summary>
+        {history.data && <HistoryTable changes={history.data} linkTransactions={false} />}
+      </details>
     </article>
   );
 }

@@ -165,6 +165,7 @@ class MainWindow(QMainWindow):
         self.commodities: list[CommodityOut] = []
         self.payees: list[PayeeOut] = []
         self.rows: list[RegisterRowOut] = []
+        self.register_opening_minor = 0
         self.current_account: AccountOut | None = None
 
         bar = QToolBar("Main")
@@ -407,6 +408,9 @@ class MainWindow(QMainWindow):
         wanted, self._select_after_load = self._select_after_load, None
         payees = {p.id: p.name for p in self.payees}
         self.rows = list(page.items)
+        self.register_opening_minor = (
+            page.totals.opening.minor if page.totals.opening else 0
+        )
         self.register.setRowCount(len(self.rows))
         for i, row in enumerate(self.rows):
             cells = [
@@ -491,6 +495,7 @@ class MainWindow(QMainWindow):
             account,
             self.rows,
             {p.id: p.name for p in self.payees},
+            opening_minor=self.register_opening_minor,
             can_freeze=self._is_owner(),
             parent=self,
         )

@@ -313,6 +313,14 @@ export function useTransactionSearch(bookId: string, query: TransactionSearchQue
   });
 }
 
+export function useHistory(bookId: string, query: { entity_id?: string; limit?: number } = {}) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["books", bookId, "history", query] as const,
+    queryFn: () => api.history(bookId, query),
+  });
+}
+
 export function useTransaction(bookId: string, transactionId: string) {
   const api = useApi();
   return useQuery({

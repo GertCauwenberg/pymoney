@@ -14,6 +14,7 @@ payload.
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
@@ -129,6 +130,46 @@ def integrity(book: ReadableBook, response: Response) -> list[str]:
     """Cheap insurance after a bulk load. An empty list is a clean bill."""
     set_revision(response, book)
     return list(book.check_integrity())
+
+
+@router.get(
+    "/history",
+    response_model=list[ChangeOut],
+    summary="Who changed what, and when",
+)
+def history(
+    book: ReadableBook,
+    response: Response,
+    entity_id: UUID | None = Query(
+        default=None,
+        description="Only the changes to one entity (a transaction, an account...).",
+    ),
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> list[ChangeOut]:
+    """The change log as people read it: newest first. Every command is one
+    revision; the note says what a rename, move or merge did. The full
+    protocol-shaped version, with the entities, is GET /changes."""
+    set_revision(response, book)
+    if entity_id is not None:
+        changes = book.changelog.for_entity(entity_id)
+    else:
+        # Every revision has at least one row, so the last `limit` revisions
+        # hold at least `limit` rows: no need to read the whole log.
+        changes = book.changelog.since(max(0, book.revision - limit))
+    newest_first = sorted(changes, key=lambda c: (c.revision, c.at), reverse=True)[:limit]
+    return [
+        ChangeOut(
+            revision=c.revision,
+            at=c.at,
+            kind=c.kind.value,
+            entity_id=c.entity_id,
+            op=c.op.value,
+            command=c.command,
+            actor=c.actor,
+            note=c.note,
+        )
+        for c in newest_first
+    ]
 
 
 __all__ = ["router"]

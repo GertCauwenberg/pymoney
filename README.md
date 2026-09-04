@@ -773,7 +773,11 @@ without the picture can use), drill-down from any report row to the account's re
 from any register row to the transaction, and -- by role -- posting, editing and
 deleting transactions with payees created on the spot, and under **Settings**:
 payees (add, edit, merge duplicates, delete the unused), commodities and prices,
-and fetching quotes (editors), and the chart of accounts and sharing (owners). `make -C frontend check` is what CI runs; it fails if the
+and fetching quotes (editors), the chart of accounts and sharing (owners), and
+the book's **History** -- who changed what, and when; a transaction page shows
+its own. Posting is quick: choosing a payee fills its default account and the
+amount of its last transaction into blank fields. Reconciling takes the
+statement's ending balance and says live whether the ticked entries match it. `make -C frontend check` is what CI runs; it fails if the
 generated types no longer match the committed OpenAPI document. `make -C frontend e2e` runs
 the Playwright walkthroughs -- a real browser against the real API and app,
 from registering to posting and deleting a transaction; see

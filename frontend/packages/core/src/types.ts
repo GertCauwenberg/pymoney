@@ -46,6 +46,7 @@ export type Transaction = Schemas["TransactionOut"];
 export type TransactionIn = Schemas["TransactionIn"];
 export type TransactionUpdateIn = Schemas["TransactionUpdateIn"];
 export type TransactionSearchResult = Schemas["TransactionSearchOut"];
+export type Change = Schemas["ChangeOut"];
 export type LegIn = Schemas["LegIn"];
 export type Split = Schemas["SplitOut"];
 export type Payee = Schemas["PayeeOut"];

@@ -20,6 +20,7 @@ import type {
   BalanceSheetQuery,
   Book,
   BookIn,
+  Change,
   Commodity,
   CommodityIn,
   CommodityPatch,
@@ -516,6 +517,11 @@ export class ApiClient {
    */
   searchTransactions(bookId: string, query: TransactionSearchQuery): Promise<TransactionSearchResult> {
     return this.get<TransactionSearchResult>(`/books/${bookId}/transactions/search${queryString(query)}`);
+  }
+
+  /** Who changed what, newest first; for one entity when `entityId` is given. */
+  history(bookId: string, query: { entity_id?: string; limit?: number } = {}): Promise<Change[]> {
+    return this.get<Change[]>(`/books/${bookId}/history${queryString(query)}`);
   }
 
   transaction(bookId: string, transactionId: string): Promise<Transaction> {

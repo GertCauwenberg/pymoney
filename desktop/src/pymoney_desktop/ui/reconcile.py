@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -47,6 +48,7 @@ class ReconcileDialog(QDialog):
         rows: list[RegisterRowOut],
         payees: dict[UUID, str],
         *,
+        opening_minor: int = 0,
         can_freeze: bool = False,
         today: date | None = None,
         parent: QWidget | None = None,
@@ -54,6 +56,9 @@ class ReconcileDialog(QDialog):
         super().__init__(parent)
         self.account = account
         self.sign = natural_sign(account.account_class)
+        self.opening_minor = opening_minor
+        """Balance before the first row shown, in the account's own commodity."""
+        self.all_rows = [r for r in rows if r.account_id == account.id]
         self.setWindowTitle(_("Reconcile against a statement"))
         self.setMinimumWidth(720)
         self.resize(820, 560)
@@ -85,6 +90,15 @@ class ReconcileDialog(QDialog):
             self.state_box.addItem(_("Frozen"), "FROZEN")
         self.state_box.setCurrentIndex(1)
         form.addRow(_("Mark as"), self.state_box)
+        # The one question a paper statement answers: does the ending balance
+        # match? Reconciled balance = everything before the rows shown + every
+        # row already reconciled or frozen + what is ticked; the difference is
+        # what is missing or wrong.
+        self.stated = QLineEdit()
+        self.stated.setPlaceholderText(_("as printed on the statement"))
+        self.stated.setMaximumWidth(160)
+        self.stated.textChanged.connect(lambda _t: self._refresh())
+        form.addRow(_("Statement ending balance"), self.stated)
 
         self.warning = QLabel(
             _("Frozen is final: these entries can never be edited or deleted again.")
@@ -199,5 +213,51 @@ class ReconcileDialog(QDialog):
             text = f"{format_amount(amount, sign=self.sign)} {amount.commodity}"
         else:
             text = "—"
-        self.summary.setText(_("{n} selected, totalling", n=len(picked)) + f" {text}")
+        summary = _("{n} selected, totalling", n=len(picked)) + f" {text}"
+        difference = self.difference()
+        if difference is not None:
+            if difference == 0:
+                summary += " · " + _("matches the statement")
+            else:
+                shown = self.all_rows[0].quantity.model_copy(update={"minor": difference})
+                summary += (
+                    " · "
+                    + _("differs from the statement by")
+                    + f" {format_amount(shown, sign=self.sign)}"
+                )
+        self.summary.setText(summary)
+        self.summary.setStyleSheet(
+            ""
+            if difference is None
+            else ("color: #00664f" if difference == 0 else "color: #bc4700")
+        )
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(picked))
+
+    def reconciled_minor(self) -> int:
+        """What the account's reconciled balance will be once the ticked rows are marked."""
+        chosen = set(self.selected_ids())
+        settled = sum(
+            r.quantity.minor
+            for r in self.all_rows
+            if r.split_id in chosen or r.reconcile_state.value in ("RECONCILED", "FROZEN")
+        )
+        return self.opening_minor + settled
+
+    def difference(self) -> int | None:
+        """Stated minus reconciled, in stored (raw) sign; None without a statement figure."""
+        text = self.stated.text().strip().replace(",", ".")
+        if not text or not self.all_rows:
+            return None
+        scale = self.all_rows[0].quantity.scale
+        digits = len(str(scale)) - 1
+        try:
+            whole, _, frac = text.partition(".")
+            if len(frac) > digits:
+                return None
+            minor = int(whole or "0") * scale + (
+                int(frac.ljust(digits, "0")) if frac else 0
+            ) * (-1 if whole.startswith("-") else 1)
+        except ValueError:
+            return None
+        # The statement prints the natural sign; stored balances carry the raw one.
+        return minor * self.sign - self.reconciled_minor()

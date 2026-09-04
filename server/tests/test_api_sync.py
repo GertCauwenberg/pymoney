@@ -384,6 +384,31 @@ class TestChanges:
         assert ledger.client.get(f"/books/{ledger.book_id}/integrity").json() == []
 
 
+class TestHistory:
+    def test_newest_first_per_book_and_per_entity(self, ledger: Ledger):
+        client = ledger.client
+        base = f"/books/{ledger.book_id}"
+        posted = client.post_transaction(
+            "2026-02-01",
+            [
+                {"account_id": ledger.checking, "value": "-10.00"},
+                {"account_id": ledger.groceries},
+            ],
+        ).json()
+        client.patch(f"{base}/transactions/{posted['id']}", json={"memo": "edited"})
+        client.post(f"{base}/accounts/{ledger.fuel}/rename", json={"name": "Petrol"})
+        everything = client.get(f"{base}/history").json()
+        revisions = [c["revision"] for c in everything]
+        assert revisions == sorted(revisions, reverse=True)
+        assert everything[0]["command"] == "RenameAccount"
+        assert everything[0]["note"] == "renamed from 'Fuel'"
+        assert everything[0]["actor"] == "owner@example.invalid"
+        one = client.get(f"{base}/history", params={"entity_id": posted["id"]}).json()
+        assert [c["op"] for c in one] == ["UPDATE", "CREATE"]
+        assert all(c["entity_id"] == posted["id"] for c in one)
+        assert len(client.get(f"{base}/history", params={"limit": 2}).json()) == 2
+
+
 class TestReports:
     def test_balance_sheet(self, ledger: Ledger):
         body = ledger.client.get(

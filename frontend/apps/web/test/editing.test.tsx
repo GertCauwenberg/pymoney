@@ -488,6 +488,61 @@ describe("the chart of accounts", () => {
   });
 });
 
+describe("quick entry from the payee", () => {
+  it("fills the blank category from the payee's default account and the amount from its last transaction", async () => {
+    const user = userEvent.setup();
+    const withDefault = [{ ...payees[0], default_account_id: "food" }];
+    const { fetch } = server({
+      ...reads,
+      "GET /books/b1/payees": () => ({ body: withDefault }),
+      "GET /books/b1/transactions/search": () => ({ body: { items: [transaction()], has_more: false, limit: 1 } }),
+    });
+    mount(fetch, "/books/b1/accounts/chk");
+    await user.click(await screen.findByRole("button", { name: "New transaction" }));
+    const form = screen.getByRole("form", { name: "New transaction" });
+    await user.selectOptions(within(form).getByLabelText("Payee"), "p1");
+    await waitFor(() => expect(within(form).getByLabelText("Account of leg 2")).toHaveValue("food"));
+    // The last transaction with Acme Payroll on this account was -84.20.
+    await waitFor(() => expect(within(form).getByLabelText("Amount of leg 1")).toHaveValue("-84.20"));
+  });
+
+  it("never overwrites what was typed", async () => {
+    const user = userEvent.setup();
+    const { fetch } = server({
+      ...reads,
+      "GET /books/b1/payees": () => ({ body: [{ ...payees[0], default_account_id: "food" }] }),
+      "GET /books/b1/transactions/search": () => ({ body: { items: [transaction()], has_more: false, limit: 1 } }),
+    });
+    mount(fetch, "/books/b1/accounts/chk");
+    await user.click(await screen.findByRole("button", { name: "New transaction" }));
+    const form = screen.getByRole("form", { name: "New transaction" });
+    await user.type(within(form).getByLabelText("Amount of leg 1"), "-5");
+    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "wallet");
+    await user.selectOptions(within(form).getByLabelText("Payee"), "p1");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(within(form).getByLabelText("Amount of leg 1")).toHaveValue("-5");
+    expect(within(form).getByLabelText("Account of leg 2")).toHaveValue("wallet");
+  });
+});
+
+describe("history", () => {
+  it("shows who changed a transaction", async () => {
+    const { fetch } = server({
+      ...reads,
+      "GET /books/b1/history": () => ({
+        body: [
+          { revision: 9, at: "2026-03-01T10:00:00Z", kind: "TRANSACTION", entity_id: "t1", op: "UPDATE", command: "UpdateTransaction", actor: "anna@example.org", note: "" },
+          { revision: 4, at: "2026-02-01T10:00:00Z", kind: "TRANSACTION", entity_id: "t1", op: "CREATE", command: "PostTransaction", actor: "bob@example.org", note: "" },
+        ],
+      }),
+    });
+    mount(fetch, "/books/b1/transactions/t1");
+    expect(await screen.findByText(/last changed by anna@example.org/)).toBeInTheDocument();
+    expect(screen.getByText("bob@example.org")).toBeInTheDocument();
+    expect(screen.getByText(/transaction created/)).toBeInTheDocument();
+  });
+});
+
 describe("reconciling", () => {
   const registerRow = (i: number, state: string) => ({
     transaction_id: `t${i}`,
@@ -533,8 +588,18 @@ describe("reconciling", () => {
     // Editors cannot freeze: the option is the server's refusal, so it is not offered.
     expect(within(bar).queryByRole("option", { name: "Frozen" })).toBeNull();
 
+    // The statement says 30.00 went out (a CHECKING account: debit-normal, shown
+    // raw): opening 0 + the ticked -10.00 = -10.00 -> off by 20.00 until the
+    // second row is ticked too.
+    // Reconciled so far: the pre-ticked -10.00 plus the frozen -30.00 = -40.00.
+    // A statement saying -60.00 is off by the unticked -20.00 row.
+    await user.type(within(bar).getByLabelText("Statement ending balance"), "-60");
+    const difference = () => bar.querySelector(".reconcile-bar__difference")!;
+    expect(difference()).toHaveTextContent("differs from the statement by");
+    expect(difference()).toHaveTextContent("-20.00");
     await user.click(boxes[1]!);
     expect(within(bar).getByText(/2 selected/)).toBeInTheDocument();
+    expect(difference()).toHaveTextContent("matches the statement");
     await user.click(within(bar).getByRole("button", { name: "Mark them" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path.endsWith("/reconcile"))).toBe(true));
     const sent = calls.find((c) => c.method === "POST" && c.path.endsWith("/reconcile"))!.body as {

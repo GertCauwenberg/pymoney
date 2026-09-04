@@ -9,10 +9,11 @@ import {
   newDraft,
   postableAccounts,
   today,
+  minorToDecimal,
   validateDraft,
 } from "@pymoney/core";
 import type { Account, Commodity, DraftProblem, Payee, Transaction, TransactionDraft } from "@pymoney/core";
-import { useCreatePayee, useCreateTransaction, useUpdateTransaction } from "@pymoney/core/hooks";
+import { useApi, useCreatePayee, useCreateTransaction, useUpdateTransaction } from "@pymoney/core/hooks";
 import { useMemo, useState, type FormEvent } from "react";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -59,6 +60,7 @@ export function TransactionForm({
   onCancel: () => void;
 }) {
   const t = useT();
+  const api = useApi();
   const [draft, setDraft] = useState<TransactionDraft>(() =>
     existing ? draftFromTransaction(existing, currency.id) : newDraft(defaultAccountId ?? "", today()),
   );
@@ -78,6 +80,39 @@ export function TransactionForm({
   const sortedPayees = useMemo(() => [...payees].sort((a, b) => a.name.localeCompare(b.name)), [payees]);
 
   const problems = validateDraft(draft, accountsById, currency, commoditiesById);
+
+  /**
+   * Choosing a payee fills in what is predictable, never what is typed:
+   * the category leg from the payee's default account, and the amount of its
+   * last transaction on this account -- both only into blank fields, so a
+   * half-filled form is never overwritten. Two clicks fewer on the most
+   * repeated action there is.
+   */
+  const prefillFromPayee = async (payeeId: string) => {
+    if (!payeeId || payeeId === NEW_PAYEE || existing) return;
+    const payee = payees.find((p) => p.id === payeeId);
+    if (payee?.default_account_id && accountsById.has(payee.default_account_id)) {
+      setDraft((d) => {
+        const blank = d.legs.findIndex((leg, i) => i > 0 && !leg.account_id);
+        if (blank < 0) return d;
+        return { ...d, legs: d.legs.map((leg, i) => (i === blank ? { ...leg, account_id: payee.default_account_id! } : leg)) };
+      });
+    }
+    try {
+      const last = await api.searchTransactions(bookId, { payee_id: payeeId, limit: 1 });
+      const previous = last.items[0];
+      if (!previous) return;
+      const split = previous.splits.find((sp) => sp.account_id === defaultAccountId) ?? previous.splits[0];
+      if (!split || split.value.commodity_id !== currency.id) return;
+      setDraft((d) => {
+        const first = d.legs[0];
+        if (!first || first.value.trim() !== "" || first.account_id !== split.account_id) return d;
+        return { ...d, legs: d.legs.map((leg, i) => (i === 0 ? { ...leg, value: minorToDecimal(split.value.minor, split.value.scale) } : leg)) };
+      });
+    } catch {
+      // A prefill is a convenience; a failed lookup is not an error.
+    }
+  };
   const balance = draftBalance(draft, currency);
   const creatingPayee = payeeChoice === NEW_PAYEE;
   const payeeProblem = creatingPayee && newPayeeName.trim() === "" ? t("Give the new payee a name.") : null;
@@ -139,6 +174,7 @@ export function TransactionForm({
             onChange={(e) => {
               setPayeeChoice(e.target.value);
               if (e.target.value !== NEW_PAYEE) setNewPayeeName("");
+              void prefillFromPayee(e.target.value);
             }}
           >
             <option value="">—</option>
