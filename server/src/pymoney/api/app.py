@@ -202,13 +202,15 @@ def create_app(
     if settings.create_schema:
         create_schema(engine)
 
+    # One registry for the life of the application. It used to be built twice:
+    # once here, for a TestClient used without a context manager, and again at
+    # startup, which silently replaced the first -- dropping whatever it held
+    # (open books, their locks, the idempotency caches) and never closing its
+    # connections. The lifespan now starts and stops; it does not construct.
+    registry = BookRegistry(engine, clock=clock)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.settings = settings
-        app.state.engine = engine
-        app.state.registry = BookRegistry(engine, clock=clock)
-        app.state.quotes = quotes_service
-        app.state.mailer = mailer
         for warning in settings.production_warnings():
             # Logged, not silent: someone should see this before a user does.
             print(f"pymoney: WARNING: {warning}")
@@ -216,7 +218,6 @@ def create_app(
             print(f"pymoney: WARNING: quote provider {problem}")
         scheduler: QuoteScheduler | None = None
         if settings.quote_interval_minutes > 0:
-            registry: BookRegistry = app.state.registry
             scheduler = QuoteScheduler(
                 quotes_service,
                 book_ids=registry.known_ids,
@@ -241,7 +242,12 @@ def create_app(
                 maintenance.stop()
             if scheduler is not None:
                 scheduler.stop()
-            app.state.registry.close()
+            # The stopped schedulers stay on app.state: "ran, now stopped" is
+            # worth more to a test or an operator than nothing at all.
+            # Close the books and hand their connections back; the registry
+            # itself stays usable (a closed book is simply reopened on demand),
+            # so a client that outlives the lifespan still finds a working app.
+            registry.close()
             if owns_engine:
                 engine.dispose()
 
@@ -255,18 +261,18 @@ def create_app(
         root_path=settings.root_path,
         responses=COMMON_RESPONSES,
     )
-    # Also set outside the lifespan, so a TestClient used without a context
-    # manager still finds them.
+    # All state is set here, once, and only here. The lifespan adds the two
+    # background schedulers while it runs, and nothing else. So a TestClient
+    # used without a context manager -- no lifespan at all -- sees exactly the
+    # objects the running server sees.
     app.state.settings = settings
     app.state.engine = engine
-    app.state.registry = BookRegistry(engine, clock=clock)
+    app.state.registry = registry
     app.state.quotes = quotes_service
     app.state.quote_scheduler = None
     app.state.mailer = mailer
     app.state.maintenance = None
-    # Counters live for the life of the process, like the book registry: set
-    # once here, not per lifespan, so a restart is the only thing that resets
-    # them.
+    # Counters live for the life of the process, like the book registry.
     app.state.throttle = AuthThrottle(settings)
 
     install_error_handlers(app)

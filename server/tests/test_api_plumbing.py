@@ -177,6 +177,57 @@ class TestAppFactory:
             assert scheduler.interval.total_seconds() == 3600
         assert not scheduler.running
 
+    def test_one_registry_for_the_life_of_the_app(self, tmp_path):
+        """create_app used to build a registry for 'a TestClient without a
+        context manager' and then a second one at startup that replaced it --
+        dropping the first's open books, their locks and idempotency caches,
+        and never closing its connections. One registry, before, during and
+        after the lifespan; a book opened before startup is the book served
+        afterwards; the scheduler drives that same registry."""
+        from fastapi.testclient import TestClient
+
+        from pymoney.quotes import ProviderRegistry, QuoteService
+        from tests.test_quotes import no_http
+
+        settings = Settings(
+            database_url=f"sqlite+pysqlite:///{tmp_path / 'one.sqlite'}",
+            create_schema=True,
+            cookie_secure=False,
+            allow_registration=True,
+            require_activation=False,
+            quote_interval_minutes=60,
+            maintenance_interval_minutes=0,
+        )
+        app = create_app(
+            settings=settings,
+            quotes_service=QuoteService(ProviderRegistry([]), http=no_http),
+        )
+        before = app.state.registry
+        # Used without a context manager: no lifespan, yet everything is there.
+        bare = Client(http=TestClient(app))
+        bare.register("one@example.invalid")
+        book_id = bare.make_book()
+        from uuid import UUID
+
+        with before.open(UUID(book_id)) as opened:
+            book_before = opened
+
+        with TestClient(app) as http:
+            assert app.state.registry is before
+            # The startup did not throw the open book away: same object, same
+            # lock, same idempotency cache.
+            with app.state.registry.open(UUID(book_id)) as opened:
+                assert opened is book_before
+            assert app.state.quote_scheduler is not None
+            # The scheduler reaches books through the very same registry.
+            assert app.state.quote_scheduler._open_book.__self__ is before
+            assert http.get("/health").json()["books"] == 1
+        # After shutdown the registry is the same, closed of books, and still
+        # serves a client that outlives the lifespan.
+        assert app.state.registry is before
+        assert repr(before) == "BookRegistry(0 open)"
+        assert bare.get(f"/books/{book_id}").status_code == 200
+
     def test_the_scheduler_can_be_turned_off(self, tmp_path):
         from fastapi.testclient import TestClient
 
