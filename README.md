@@ -586,8 +586,8 @@ report hands back the `Conversion` objects it used.
 
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · importers other
-than KMyMoney (OFX, CSV) · attachments · tags · a UI for payee management ·
-the desktop app's account/commodity management (the web app has it; see
+than KMyMoney (OFX, CSV) · attachments · tags · the desktop app's account,
+payee and commodity management (the web app has them under **Settings**; see
 [The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
@@ -771,9 +771,9 @@ spreadsheet view of income and expenses per month, quarter or year -- all drawn
 from the same report payloads, in plain SVG, with a legend or table a reader
 without the picture can use), drill-down from any report row to the account's register and
 from any register row to the transaction, and -- by role -- posting, editing and
-deleting transactions with payees created on the spot, managing commodities and
-prices, and fetching quotes (editors), and managing the chart of accounts
-(owners). `make -C frontend check` is what CI runs; it fails if the
+deleting transactions with payees created on the spot, and under **Settings**:
+payees (add, edit, merge duplicates, delete the unused), commodities and prices,
+and fetching quotes (editors), and the chart of accounts and sharing (owners). `make -C frontend check` is what CI runs; it fails if the
 generated types no longer match the committed OpenAPI document. `make -C frontend e2e` runs
 the Playwright walkthroughs -- a real browser against the real API and app,
 from registering to posting and deleting a transaction; see

@@ -76,12 +76,18 @@ export async function createFirstBook(page: Page, name: string, currency: string
   return match[1]!;
 }
 
-/** Owner only: the Accounts tab's "New account" form. */
+/** Open one of the Settings sub-tabs: Accounts, Payees, Commodities, Prices, Sharing. */
+export async function settings(page: Page, tab: string): Promise<void> {
+  await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: tab }).click();
+}
+
+/** Owner only: the Accounts settings' "New account" form. */
 export async function createAccount(
   page: Page,
   account: { name: string; type: string; parent?: string; description?: string },
 ): Promise<void> {
-  await page.getByRole("link", { name: "Accounts" }).click();
+  await settings(page, "Accounts");
   await page.getByRole("button", { name: "New account" }).click();
   const form = page.getByRole("form", { name: "New account" });
   await form.getByLabel("Name").fill(account.name);

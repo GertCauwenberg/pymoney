@@ -34,7 +34,7 @@ export function SharingPage() {
   const [newRole, setNewRole] = useState<Role>("viewer");
   const book = useBook(bookId);
 
-  if (role !== "owner") return <Navigate to="../reports/balance-sheet" replace />;
+  if (role !== "owner") return <Navigate to="../../reports/balance-sheet" replace />;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -49,7 +49,7 @@ export function SharingPage() {
       <header className="report-page__header">
         <div>
           <p className="breadcrumbs muted">
-            <Link to="../reports/balance-sheet">{t("Reports")}</Link> › Sharing
+            <Link to="../../reports/balance-sheet">{t("Reports")}</Link> › {t("Settings")} › {t("Sharing")}
           </p>
           <h1>{t("Sharing")}</h1>
           <p className="muted">{t("Who can see this book, and what they may do.")}</p>

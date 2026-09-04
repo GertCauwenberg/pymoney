@@ -4,13 +4,13 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { createFirstBook, register, uniqueEmail } from "./helpers";
+import { createFirstBook, register, settings, uniqueEmail } from "./helpers";
 
 test("add a manual currency and a hand-entered price", async ({ page }) => {
   await register(page, uniqueEmail("dan"), "Dan");
   await createFirstBook(page, "Dan's books", "EUR");
 
-  await page.getByRole("link", { name: "Commodities" }).click();
+  await settings(page, "Commodities");
   await expect(page.getByRole("row").filter({ hasText: "EUR" })).toContainText("base currency");
   await page.getByRole("button", { name: "New commodity" }).click();
   const form = page.getByRole("form", { name: "New commodity" });
@@ -27,7 +27,7 @@ test("add a manual currency and a hand-entered price", async ({ page }) => {
   await expect(usd).toContainText("US Dollar");
   await expect(usd).toContainText("manual");
 
-  await page.getByRole("link", { name: "Prices" }).click();
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Prices" }).click();
   await expect(page.getByText(/No commodity has a quote source yet/)).toBeVisible();
   await page.getByRole("button", { name: "Add price" }).click();
   const price = page.getByRole("form", { name: "Add price" });

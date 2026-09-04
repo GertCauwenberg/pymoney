@@ -37,6 +37,7 @@ import type {
   NetWorthSeries,
   Payee,
   PayeeIn,
+  PayeePatch,
   ReconcileIn,
   SetSplitStateIn,
   PayeesQuery,
@@ -477,6 +478,20 @@ export class ApiClient {
 
   payees(bookId: string, query: PayeesQuery = {}): Promise<Payee[]> {
     return this.get<Payee[]>(`/books/${bookId}/payees${queryString(query)}`);
+  }
+
+  patchPayee(bookId: string, payeeId: string, body: PayeePatch): Promise<Payee> {
+    return this.patch<Payee>(`/books/${bookId}/payees/${payeeId}`, body);
+  }
+
+  /** Merge `sourceIds` into `targetId`: every reference moves, the sources go. */
+  mergePayees(bookId: string, targetId: string, sourceIds: string[], keepMatchKeys = true): Promise<Payee> {
+    return this.post<Payee>(`/books/${bookId}/payees/${targetId}/merge`, { source_ids: sourceIds, keep_match_keys: keepMatchKeys });
+  }
+
+  /** Only an unused payee can go; the server refuses (409) otherwise. */
+  deletePayee(bookId: string, payeeId: string): Promise<void> {
+    return this.delete(`/books/${bookId}/payees/${payeeId}`);
   }
 
   createPayee(bookId: string, body: PayeeIn): Promise<Payee> {

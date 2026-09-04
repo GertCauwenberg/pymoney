@@ -60,20 +60,9 @@ export function BookShell() {
           <NavLink to="search" className="tabs__aside" title={t("Find transactions")}>
             {t("Search")}
           </NavLink>
-          <NavLink to="accounts" end className="tabs__aside">
-            {t("Accounts")}
+          <NavLink to="settings" className="tabs__aside" title={t("Accounts, payees, commodities, prices and sharing")}>
+            {t("Settings")}
           </NavLink>
-          <NavLink to="commodities" className="tabs__aside">
-            {t("Commodities")}
-          </NavLink>
-          <NavLink to="prices" className="tabs__aside">
-            {t("Prices")}
-          </NavLink>
-          {book.data.role === "owner" && (
-            <NavLink to="sharing" className="tabs__aside">
-              {t("Sharing")}
-            </NavLink>
-          )}
         </nav>
         <div className="topbar__user">
           <LanguageSwitch />

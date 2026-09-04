@@ -56,6 +56,7 @@ export type QuoteProvider = Schemas["QuoteProviderOut"];
 export type QuoteFetchIn = Schemas["QuoteFetchIn"];
 export type QuoteRun = Schemas["QuoteRunOut"];
 export type PayeeIn = Schemas["PayeeIn"];
+export type PayeePatch = Schemas["PayeePatch"];
 export type ReconcileState = Schemas["ReconcileStateName"];
 export type ReconcileIn = Schemas["ReconcileIn"];
 export type SetSplitStateIn = Schemas["SetSplitStateIn"];

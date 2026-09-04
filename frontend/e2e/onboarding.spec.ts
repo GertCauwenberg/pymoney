@@ -4,7 +4,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { createFirstBook, login, logout, register, uniqueEmail } from "./helpers";
+import { createFirstBook, login, logout, register, settings, uniqueEmail } from "./helpers";
 
 test("a new user registers, creates the first book and shares it read-only", async ({ page }) => {
   const alice = uniqueEmail("alice");
@@ -17,7 +17,8 @@ test("a new user registers, creates the first book and shares it read-only", asy
   await expect(page.locator(".topbar__book")).toHaveText("Smith Family");
   await expect(page.getByText(/This book has no accounts yet/)).toBeVisible();
 
-  // Owner-only tabs are there for her.
+  // Owner-only settings are there for her.
+  await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("link", { name: "Sharing" })).toBeVisible();
 
   // Share with Bob as a viewer.
@@ -41,8 +42,8 @@ test("a new user registers, creates the first book and shares it read-only", asy
   await expect(page.getByRole("heading", { name: "Balance sheet" })).toBeVisible();
   await expect(page.locator(".topbar__book")).toHaveText("Smith Family");
   // A viewer: no sharing, and the chart of accounts is read-only.
+  await settings(page, "Accounts");
   await expect(page.getByRole("link", { name: "Sharing" })).toHaveCount(0);
-  await page.getByRole("link", { name: "Accounts" }).click();
   await expect(page.getByText(/Only the book's owners can change it/)).toBeVisible();
   await expect(page.getByRole("button", { name: "New account" })).toHaveCount(0);
   await logout(page);

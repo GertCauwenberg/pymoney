@@ -137,7 +137,7 @@ export function AccountRegisterPage() {
             </button>
           )}
           {role === "owner" && (
-            <Link to={`../accounts?edit=${accountId}`} className="btn">
+            <Link to={`../settings/accounts?edit=${accountId}`} className="btn">
               {t("Edit account")}
             </Link>
           )}

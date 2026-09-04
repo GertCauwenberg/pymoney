@@ -4,7 +4,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { createFirstBook, linkFromMail, logout, register, uniqueEmail, PASSWORD } from "./helpers";
+import { PASSWORD, createFirstBook, linkFromMail, logout, register, settings, uniqueEmail } from "./helpers";
 
 test("a pending account cannot log in until the link is followed", async ({ page }) => {
   const email = uniqueEmail("pending");
@@ -87,7 +87,7 @@ test("an owner deletes the book by typing its name, then leaves", async ({ page 
 
   // Delete the book from its Sharing page: the name must be typed exactly.
   await page.getByRole("link", { name: "Short-lived" }).click();
-  await page.getByRole("link", { name: "Sharing" }).click();
+  await settings(page, "Sharing");
   await page.getByRole("button", { name: "Delete this book…" }).click();
   const confirm = page.getByRole("button", { name: "Delete it, irreversibly" });
   await page.getByLabel(/Type the book's name/).fill("short-lived");

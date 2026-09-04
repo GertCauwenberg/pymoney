@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { RequireAuth } from "./components/RequireAuth";
 import { AccountsPage } from "./pages/AccountsPage";
@@ -9,6 +9,8 @@ import { BooksPage } from "./pages/BooksPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ActivatePage, ForgotPasswordPage, ResetPasswordPage } from "./pages/PasswordPages";
 import { NotFound } from "./pages/NotFound";
+import { PayeesPage } from "./pages/PayeesPage";
+import { SettingsShell } from "./pages/SettingsShell";
 import { SharingPage } from "./pages/SharingPage";
 import { BalanceSheetReport } from "./reports/BalanceSheetReport";
 import { CategoryPieReport } from "./reports/CategoryPieReport";
@@ -21,6 +23,12 @@ import { IncomeStatementReport } from "./reports/IncomeStatementReport";
 import { AccountRegisterPage } from "./ledger/AccountRegisterPage";
 import { SearchPage } from "./ledger/SearchPage";
 import { TransactionPage } from "./ledger/TransactionPage";
+
+/** A redirect that carries the query string along (`accounts?edit=…`). */
+function RedirectKeepingSearch({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${to}${search}`} replace />;
+}
 
 export function App() {
   return (
@@ -46,10 +54,19 @@ export function App() {
             <Route path="by-period" element={<PeriodTableReport />} />
             <Route path="holdings" element={<HoldingsPieReport />} />
           </Route>
-          <Route path="sharing" element={<SharingPage />} />
-          <Route path="accounts" element={<AccountsPage />} />
-          <Route path="commodities" element={<CommoditiesPage />} />
-          <Route path="prices" element={<PricesPage />} />
+          <Route path="settings" element={<SettingsShell />}>
+            <Route index element={<Navigate to="accounts" replace />} />
+            <Route path="accounts" element={<AccountsPage />} />
+            <Route path="payees" element={<PayeesPage />} />
+            <Route path="commodities" element={<CommoditiesPage />} />
+            <Route path="prices" element={<PricesPage />} />
+            <Route path="sharing" element={<SharingPage />} />
+          </Route>
+          {/* The old addresses keep working: bookmarks and links from before the Settings tab. */}
+          <Route path="sharing" element={<Navigate to="../settings/sharing" replace />} />
+          <Route path="accounts" element={<RedirectKeepingSearch to="../settings/accounts" />} />
+          <Route path="commodities" element={<Navigate to="../settings/commodities" replace />} />
+          <Route path="prices" element={<Navigate to="../settings/prices" replace />} />
           <Route path="search" element={<SearchPage />} />
           <Route path="accounts/:accountId" element={<AccountRegisterPage />} />
           <Route path="transactions/:transactionId" element={<TransactionPage />} />

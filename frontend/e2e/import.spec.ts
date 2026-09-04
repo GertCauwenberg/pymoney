@@ -5,7 +5,7 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 
-import { register, uniqueEmail } from "./helpers";
+import { register, settings, uniqueEmail } from "./helpers";
 
 const FIXTURE = resolve(__dirname, "../../server/tests/fixtures/household.kmy.xml");
 
@@ -28,8 +28,8 @@ test("a new user imports a KMyMoney file instead of creating a book by hand", as
 
   // Inside the imported book, as its owner: the balance KMyMoney showed.
   await expect(page.locator(".topbar__book")).toHaveText("Our old books");
+  await settings(page, "Accounts");
   await expect(page.getByRole("link", { name: "Sharing" })).toBeVisible();
-  await page.getByRole("link", { name: "Accounts" }).click();
   await expect(page.getByRole("link", { name: "Current Account", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Current Account", exact: true }).click();
   await expect(page.locator("tfoot .money")).toHaveText("8,007.73 EUR");

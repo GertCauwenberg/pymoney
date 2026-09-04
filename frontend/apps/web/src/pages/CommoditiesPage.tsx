@@ -58,7 +58,7 @@ export function CommoditiesPage() {
       <header className="report-page__header">
         <div>
           <p className="breadcrumbs muted">
-            <Link to="../reports/balance-sheet">{t("Reports")}</Link> › Commodities
+            <Link to="../../reports/balance-sheet">{t("Reports")}</Link> › {t("Settings")} › {t("Commodities")}
           </p>
           <h1>{t("Commodities")}</h1>
           <p className="muted">

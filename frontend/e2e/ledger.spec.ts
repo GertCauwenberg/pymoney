@@ -5,7 +5,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { createAccount, createFirstBook, register, uniqueEmail } from "./helpers";
+import { createAccount, createFirstBook, register, settings, uniqueEmail } from "./helpers";
 
 test("enter a credit-card transaction against a restaurant account, edit it, see it in the reports, delete it", async ({
   page,
@@ -76,7 +76,7 @@ test("enter a credit-card transaction against a restaurant account, edit it, see
   await expect(page.getByRole("row").filter({ hasText: /^Expenses/ }).locator(".money")).toHaveText("62.50 EUR");
 
   // Back to the card, into the transaction, and delete it.
-  await page.getByRole("link", { name: "Accounts" }).click();
+  await settings(page, "Accounts");
   await page.getByRole("link", { name: "Visa", exact: true }).click();
   await page.locator(".register__row").getByRole("link", { name: "2026-03-14" }).click();
   await page.getByRole("button", { name: "Delete" }).click();

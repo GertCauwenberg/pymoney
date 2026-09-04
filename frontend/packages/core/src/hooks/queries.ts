@@ -16,6 +16,7 @@ import type {
   LoginIn,
   NetWorthQuery,
   PayeeIn,
+  PayeePatch,
   PayeesQuery,
   PeriodTableQuery,
   PriceIn,
@@ -404,6 +405,34 @@ export function useChangeAccount(bookId: string) {
           return api.mergeAccount(bookId, change.targetId, change.sourceId);
         case "delete":
           await api.deleteAccount(bookId, change.accountId);
+          return null;
+      }
+    },
+    onSuccess: invalidate,
+  });
+}
+
+/** Every change to a payee, behind one hook. */
+export type PayeeChange =
+  | { kind: "create"; body: PayeeIn }
+  | { kind: "patch"; payeeId: string; body: PayeePatch }
+  | { kind: "merge"; targetId: string; sourceIds: string[] }
+  | { kind: "delete"; payeeId: string };
+
+export function useChangePayee(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: async (change: PayeeChange) => {
+      switch (change.kind) {
+        case "create":
+          return api.createPayee(bookId, change.body);
+        case "patch":
+          return api.patchPayee(bookId, change.payeeId, change.body);
+        case "merge":
+          return api.mergePayees(bookId, change.targetId, change.sourceIds);
+        case "delete":
+          await api.deletePayee(bookId, change.payeeId);
           return null;
       }
     },

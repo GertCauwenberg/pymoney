@@ -37,7 +37,9 @@ function mount(fetch: typeof globalThis.fetch, path: string, role = "owner") {
           <Route path="/books" element={<BooksPage />} />
           <Route path="/books/:bookId" element={<Outlet context={context} />}>
             <Route index element={<Navigate to="reports/balance-sheet" replace />} />
-            <Route path="sharing" element={<SharingPage />} />
+            <Route path="settings">
+              <Route path="sharing" element={<SharingPage />} />
+            </Route>
             <Route path="reports/balance-sheet" element={<p>report for {context.bookId}</p>} />
           </Route>
         </Routes>
@@ -149,7 +151,7 @@ describe("SharingPage", () => {
         return { body: { book_id: "b1", ...g } };
       },
     });
-    mount(fetch, "/books/b1/sharing");
+    mount(fetch, "/books/b1/settings/sharing");
     expect(await screen.findByText("bob@example.com")).toBeInTheDocument();
     expect(screen.getByText("(you)")).toBeInTheDocument();
     // Alice is the only owner: she cannot demote or remove herself.
@@ -175,7 +177,7 @@ describe("SharingPage", () => {
         body: { error: { type: "HTTPException", message: "this is the last owner; grant another owner first", status: 409 } },
       }),
     });
-    mount(fetch, "/books/b1/sharing");
+    mount(fetch, "/books/b1/settings/sharing");
     await screen.findByText("bob@example.com");
     await user.click(screen.getAllByRole("button", { name: "Revoke" })[1]!);
     expect(screen.getByText("Revoke access?")).toBeInTheDocument();
@@ -186,7 +188,7 @@ describe("SharingPage", () => {
 
   it("is not for editors", async () => {
     const { fetch, calls } = server({ "GET /auth/me": () => ({ body: me }) });
-    mount(fetch, "/books/b1/sharing", "editor");
+    mount(fetch, "/books/b1/settings/sharing", "editor");
     expect(await screen.findByText("report for b1")).toBeInTheDocument();
     expect(calls.some((c) => c.path.includes("/grants"))).toBe(false);
   });

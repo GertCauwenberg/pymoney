@@ -65,7 +65,7 @@ export function PricesPage() {
       <header className="report-page__header">
         <div>
           <p className="breadcrumbs muted">
-            <Link to="../reports/balance-sheet">{t("Reports")}</Link> › Prices
+            <Link to="../../reports/balance-sheet">{t("Reports")}</Link> › {t("Settings")} › {t("Prices")}
           </p>
           <h1>{t("Prices")}</h1>
           <p className="muted">

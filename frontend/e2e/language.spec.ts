@@ -24,7 +24,8 @@ test("the language follows the user across logins, and the numbers follow the la
   await expect(page.getByRole("heading", { name: "Balans" })).toBeVisible();
 
   // Dutch number formatting on a register.
-  await page.getByRole("link", { name: "Rekeningen" }).click();
+  await page.getByRole("link", { name: "Instellingen" }).click();
+  await page.getByRole("navigation", { name: "Instellingen" }).getByRole("link", { name: "Rekeningen" }).click();
   await page.getByRole("button", { name: "Nieuwe rekening" }).click();
   const form = page.getByRole("form", { name: "Nieuwe rekening" });
   await form.getByLabel("Naam").fill("Kas");

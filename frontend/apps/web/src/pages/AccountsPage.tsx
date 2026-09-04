@@ -111,7 +111,7 @@ export function AccountsPage() {
       <header className="report-page__header">
         <div>
           <p className="breadcrumbs muted">
-            <Link to="../reports/balance-sheet">{t("Reports")}</Link> › Accounts
+            <Link to="../../reports/balance-sheet">{t("Reports")}</Link> › {t("Settings")} › {t("Accounts")}
           </p>
           <h1>{t("Accounts")}</h1>
           <p className="muted">
@@ -213,7 +213,7 @@ function AccountRow({
       <td>
         <span className="indent" style={{ ["--depth" as string]: depth }}>
           <span className="disclosure disclosure--leaf" aria-hidden="true" />
-          <Link to={`../accounts/${account.id}`} className="account-link" title={account.path}>
+          <Link to={`../../accounts/${account.id}`} className="account-link" title={account.path}>
             {account.name}
           </Link>
           {flags && <span className="muted"> · {flags}</span>}
