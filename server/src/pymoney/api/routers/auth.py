@@ -20,11 +20,12 @@ endpoint is also an oracle:
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import IntegrityError
 
 from ...core.ids import new_id
 from ...i18n import translate
@@ -58,6 +59,13 @@ from ..settings import Settings
 UNPROCESSABLE = 422
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _already_registered() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="that email address is already registered",
+    )
 
 
 def _now() -> datetime:
@@ -287,58 +295,68 @@ def register(
     stored = hash_password(body.password)
     user_id = new_id()
     display_name = body.display_name or email.split("@")[0]
-    with write_transaction(engine) as conn:
-        taken = conn.execute(
-            select(
-                identity.users.c.id,
-                identity.users.c.email,
-                identity.users.c.activated_at,
-                identity.users.c.locale,
-            ).where(identity.users.c.email_key == key)
-        ).one_or_none()
-        if taken is not None and (
-            taken.activated_at is not None or not settings.require_activation
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="that email address is already registered",
-            )
-        if taken is not None:
-            # Pending: the row, its password and its name stay as whoever
-            # registered first chose them; only the link is renewed. Proving
-            # ownership of the mailbox is what activation is for.
-            pending_id, pending_email, pending_locale = (
-                taken.id,
-                taken.email,
-                taken.locale,
-            )
-    if taken is not None:
+
+    def look_up_existing() -> Any:
+        with engine.connect() as conn:
+            return conn.execute(
+                select(
+                    identity.users.c.id,
+                    identity.users.c.email,
+                    identity.users.c.activated_at,
+                    identity.users.c.locale,
+                ).where(identity.users.c.email_key == key)
+            ).one_or_none()
+
+    def resend_to_pending(existing: Any) -> PendingOut:
+        # Pending: the row, its password and its name stay as whoever
+        # registered first chose them; only the link is renewed. Proving
+        # ownership of the mailbox is what activation is for.
         _send_activation(
             mailer,
             settings,
-            pending_email,
-            _issue_token(engine, pending_id, "activate", settings.activation_hours),
-            pending_locale,
+            existing.email,
+            _issue_token(engine, existing.id, "activate", settings.activation_hours),
+            existing.locale,
         )
         response.status_code = status.HTTP_202_ACCEPTED
         return PendingOut(email=email)
-    with write_transaction(engine) as conn:
-        conn.execute(
-            identity.users.insert().values(
-                id=user_id,
-                email=email,
-                email_key=key,
-                display_name=display_name,
-                password_hash=stored.digest,
-                password_salt=stored.salt,
-                password_params=stored.params,
-                active=True,
-                activated_at=None if settings.require_activation else now,
-                locale=body.locale,
-                created_at=now,
-                updated_at=now,
+
+    existing = look_up_existing()
+    if existing is not None:
+        if existing.activated_at is not None or not settings.require_activation:
+            raise _already_registered()
+        return resend_to_pending(existing)
+
+    try:
+        with write_transaction(engine) as conn:
+            conn.execute(
+                identity.users.insert().values(
+                    id=user_id,
+                    email=email,
+                    email_key=key,
+                    display_name=display_name,
+                    password_hash=stored.digest,
+                    password_salt=stored.salt,
+                    password_params=stored.params,
+                    active=True,
+                    activated_at=None if settings.require_activation else now,
+                    locale=body.locale,
+                    created_at=now,
+                    updated_at=now,
+                )
             )
-        )
+    except IntegrityError:
+        # Another registration for this address committed between the check
+        # above and this insert (the unique index on email_key caught it).
+        # Answer exactly as if that row had been the one we first saw, so a
+        # race is a 409 or a 202, never a 500.
+        existing = look_up_existing()
+        if existing is None or (
+            existing.activated_at is not None or not settings.require_activation
+        ):
+            raise _already_registered() from None
+        return resend_to_pending(existing)
+
     if settings.require_activation:
         token = _issue_token(engine, user_id, "activate", settings.activation_hours)
         _send_activation(mailer, settings, email, token, body.locale)

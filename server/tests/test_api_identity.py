@@ -26,6 +26,7 @@ from pymoney.api.mail import (
 from pymoney.api.maintenance import MaintenanceScheduler, purge
 from pymoney.api.settings import Settings
 from pymoney.core.clock import ManualClock
+from pymoney.core.ids import new_id
 from pymoney.store import identity
 from tests.conftest_api import PASSWORD, Client
 
@@ -232,6 +233,70 @@ class TestActivation:
             ).status_code
             == 409
         )
+
+
+class TestRegistrationRace:
+    """The duplicate check and the insert are two transactions, so a second
+    registration for the same address can slip in between. The unique index on
+    `email_key` still catches it; the endpoint must translate that into the
+    same answer the check would have given -- never a 500."""
+
+    def _wedge(self, monkeypatch, *, activated: bool) -> None:
+        """Make the first `write_transaction` in the router insert a conflicting
+        row first, so the genuine INSERT that follows hits the unique index."""
+        from pymoney.api.routers import auth as auth_mod
+
+        real = auth_mod.write_transaction
+        fired = {"done": False}
+
+        def racing(engine):
+            if not fired["done"]:
+                fired["done"] = True
+                now = datetime.now(timezone.utc)
+                with real(engine) as conn:
+                    conn.execute(
+                        identity.users.insert().values(
+                            id=new_id(),
+                            email="rival@example.invalid",
+                            email_key="rival@example.invalid",
+                            display_name="Rival",
+                            password_hash=b"x" * 16,
+                            password_salt=b"y" * 16,
+                            password_params="1,1,1",
+                            active=True,
+                            activated_at=now if activated else None,
+                            locale="en",
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+            return real(engine)
+
+        monkeypatch.setattr(auth_mod, "write_transaction", racing)
+
+    def test_a_lost_race_against_an_activated_row_is_409(self, strict, monkeypatch):
+        client, _mailer = strict
+        self._wedge(monkeypatch, activated=True)
+        response = client.http.post(
+            "/auth/register",
+            json={"email": "Rival@example.invalid", "password": PASSWORD},
+        )
+        assert response.status_code == 409
+        assert "already registered" in response.json()["detail"]
+
+    def test_a_lost_race_against_a_pending_row_resends_the_link_202(
+        self, strict, monkeypatch
+    ):
+        client, mailer = strict
+        self._wedge(monkeypatch, activated=False)
+        response = client.http.post(
+            "/auth/register",
+            json={"email": "Rival@example.invalid", "password": PASSWORD},
+        )
+        assert response.status_code == 202
+        assert response.json() == {"status": "pending", "email": "Rival@example.invalid"}
+        # The link goes to the address as first stored, not as typed this time.
+        assert [m.to for m in mailer.sent] == ["rival@example.invalid"]
 
 
 class TestForgottenPassword:

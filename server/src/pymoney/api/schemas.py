@@ -144,9 +144,36 @@ def _reject_float(value: Any) -> Any:
     return value
 
 
+def _exact(value: Any) -> Any:
+    """Reject a float, and any string that is not an exact, finite number.
+
+    Without this the parse happened later, in :func:`to_fraction` inside a
+    route handler, where ``"1/0"`` raised :class:`ZeroDivisionError` (a sibling
+    of :class:`ValueError`, so *not* caught by the 422 mapping) and surfaced as
+    a 500. Validating here turns every malformed amount into an ordinary 422
+    with the offending field named.
+    """
+    value = _reject_float(value)
+    if isinstance(value, bool):
+        raise ValueError(
+            "send an exact value as a string or an integer, not a boolean"
+        )
+    if isinstance(value, str):
+        try:
+            Fraction(value.strip())
+        except (ValueError, ZeroDivisionError) as exc:
+            raise ValueError(
+                f"{value!r} is not an exact number: give a decimal string "
+                '("12.34"), an integer, or a ratio ("10/3")'
+            ) from exc
+    elif isinstance(value, Decimal) and not value.is_finite():
+        raise ValueError("an exact value must be finite, not NaN or infinity")
+    return value
+
+
 Exact = Annotated[
     Decimal | int | str,
-    BeforeValidator(_reject_float),
+    BeforeValidator(_exact),
     Field(
         examples=["12.34", "-1000", "1/3"],
         description=(
@@ -158,7 +185,7 @@ Exact = Annotated[
 
 RateLike = Annotated[
     Decimal | int | str,
-    BeforeValidator(_reject_float),
+    BeforeValidator(_exact),
     Field(
         examples=["0.9174", "10/9"],
         description="An exact positive rate. A decimal string or a 'num/den' ratio.",
@@ -167,10 +194,20 @@ RateLike = Annotated[
 
 
 def to_fraction(value: Decimal | int | str) -> Fraction:
-    """Wire value to exact rational. ``"10/3"`` and ``"3.33"`` both work."""
-    if isinstance(value, Decimal):
-        return Fraction(value)
-    return Fraction(str(value).strip())
+    """Wire value to exact rational. ``"10/3"`` and ``"3.33"`` both work.
+
+    Inputs are validated by :func:`_exact` before they reach here, but the
+    conversion is defended anyway: a stray ``ZeroDivisionError`` or a non-finite
+    ``Decimal`` must come out as a 422, never a 500.
+    """
+    try:
+        if isinstance(value, Decimal):
+            if not value.is_finite():
+                raise ValueError(f"{value} is not a finite number")
+            return Fraction(value)
+        return Fraction(str(value).strip())
+    except (ValueError, ZeroDivisionError, OverflowError) as exc:
+        raise ValueError(f"{value!r} is not an exact number") from exc
 
 
 # ==========================================================================

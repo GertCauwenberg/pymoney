@@ -25,6 +25,43 @@ class TestExactNumbers:
         assert response.status_code == 422
         assert "not a JSON number" in response.text
 
+    def test_a_malformed_exact_string_is_422_not_500(self, ledger: Ledger):
+        """`"1/0"` parses to a ZeroDivisionError, a sibling of ValueError and so
+        not caught by the 422 mapping; it used to surface as a 500. `"nan"`,
+        `"inf"` and plain gibberish take the same path. Every one is an ordinary
+        rejected input."""
+        for bad in ("1/0", "nan", "inf", "-inf", "", "not a number", "0x10"):
+            response = ledger.client.post_transaction(
+                "2026-02-01",
+                [
+                    {"account_id": ledger.checking, "value": bad},
+                    {"account_id": ledger.groceries},
+                ],
+            )
+            assert response.status_code == 422, (bad, response.status_code)
+            assert "exact number" in response.text or "not a JSON number" in response.text
+
+    def test_a_malformed_amount_query_is_422_not_500(self, ledger: Ledger):
+        response = ledger.client.get(
+            f"/books/{ledger.book_id}/transactions/search", params={"amount": "1/0"}
+        )
+        assert response.status_code == 422
+
+    def test_a_malformed_rate_is_422_not_500(self, ledger: Ledger):
+        usd = ledger.client.post(
+            f"/books/{ledger.book_id}/commodities", json={"code": "USD"}
+        ).json()
+        response = ledger.client.post(
+            f"/books/{ledger.book_id}/prices",
+            json={
+                "base_id": usd["id"],
+                "quote_id": ledger.eur,
+                "rate": "1/0",
+                "effective_date": "2026-01-31",
+            },
+        )
+        assert response.status_code == 422
+
     def test_a_string_amount_is_exact(self, ledger: Ledger):
         response = ledger.client.post_transaction(
             "2026-02-01",

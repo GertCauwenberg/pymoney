@@ -7,7 +7,7 @@ name = "pymoney-core"
 version = "0.1.0"
 description = "PyMoney: the double-entry accounting core, its stores, and the HTTP API"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "GPL-3.0-only"
 authors = [{ name = "Gert Cauwenberg" }]
 keywords = ["accounting", "double-entry", "finance", "ledger", "multi-currency"]
@@ -35,11 +35,14 @@ api = [
     "pymoney-core[store]",
     "fastapi>=0.115",
     "pydantic>=2.9",
-    "anyio<4.11",
     "pydantic-settings>=2.5",
     "uvicorn[standard]>=0.30",
     # File uploads (the KMyMoney import endpoint).
     "python-multipart>=0.0.9",
+    # anyio 4.11 made `anyio.abc.BlockingPortal` a deprecated alias; Starlette's
+    # test client still imports the old name, and our suites run with warnings
+    # as errors, so collection fails. Cap it until Starlette catches up.
+    "anyio<4.11",
 ]
 postgres = ["psycopg[binary]>=3.1", "psycopg2-binary>=2.9"]
 # The desktop client is its own distribution: ../desktop (pymoney-desktop),
