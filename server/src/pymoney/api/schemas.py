@@ -155,9 +155,7 @@ def _exact(value: Any) -> Any:
     """
     value = _reject_float(value)
     if isinstance(value, bool):
-        raise ValueError(
-            "send an exact value as a string or an integer, not a boolean"
-        )
+        raise ValueError("send an exact value as a string or an integer, not a boolean")
     if isinstance(value, str):
         try:
             Fraction(value.strip())
