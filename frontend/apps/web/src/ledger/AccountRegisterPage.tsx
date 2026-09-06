@@ -153,6 +153,11 @@ export function AccountRegisterPage() {
               {t("New transaction")}
             </button>
           )}
+          {canPost && (
+            <Link to="import" className="btn">
+              {t("Import CSV")}
+            </Link>
+          )}
           {canWrite && !reconciling && account.data && !account.data.placeholder && (
             <button type="button" className="btn" onClick={startReconciling}>
               {t("Reconcile")}

@@ -7,11 +7,13 @@ import type {
   AccountsQuery,
   BalanceSheetQuery,
   BookIn,
+  ColumnMapping,
   CommoditiesQuery,
   CommodityIn,
   CommodityPatch,
   GrantIn,
   HoldingsQuery,
+  ImportDecision,
   IncomeStatementQuery,
   LoginIn,
   NetWorthQuery,
@@ -61,6 +63,8 @@ export const keys = {
   prices: (bookId: string, q: Omit<PricesQuery, "cursor">) => ["books", bookId, "prices", q] as const,
   lastQuoteRun: (bookId: string) => ["books", bookId, "quotes", "last"] as const,
   quoteProviders: ["quote-providers"] as const,
+  importMapping: (bookId: string, accountId: string) =>
+    ["books", bookId, "accounts", accountId, "import-mapping"] as const,
 };
 
 /**
@@ -589,6 +593,62 @@ export function useFetchQuotes(bookId: string) {
       qc.setQueryData(keys.lastQuoteRun(bookId), run);
       invalidate();
     },
+  });
+}
+
+// -- CSV statement import ----------------------------------------------------
+//
+// A wizard, not a reactive view: inspect the upload, preview it against the
+// book, commit the reviewed rows. Only the commit changes anything, so only
+// the commit invalidates the book.
+
+export function useInspectCsv(bookId: string) {
+  const api = useApi();
+  return useMutation({ mutationFn: (file: Blob) => api.inspectCsv(bookId, file) });
+}
+
+export function usePreviewCsv(bookId: string, accountId: string) {
+  const api = useApi();
+  return useMutation({
+    mutationFn: ({ file, mapping }: { file: Blob; mapping: ColumnMapping }) =>
+      api.previewCsv(bookId, accountId, file, mapping),
+  });
+}
+
+export function useCommitCsv(bookId: string, accountId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: ({
+      file,
+      mapping,
+      decisions,
+      uncategorisedAccountId,
+    }: {
+      file: Blob;
+      mapping: ColumnMapping;
+      decisions: ImportDecision[];
+      uncategorisedAccountId?: string | undefined;
+    }) => api.commitCsv(bookId, accountId, file, mapping, decisions, uncategorisedAccountId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useImportMapping(bookId: string, accountId: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.importMapping(bookId, accountId),
+    queryFn: () => api.importMapping(bookId, accountId),
+    staleTime: Infinity,
+  });
+}
+
+export function useSaveImportMapping(bookId: string, accountId: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (mapping: ColumnMapping) => api.saveImportMapping(bookId, accountId, mapping),
+    onSuccess: (saved) => qc.setQueryData(keys.importMapping(bookId, accountId), saved),
   });
 }
 

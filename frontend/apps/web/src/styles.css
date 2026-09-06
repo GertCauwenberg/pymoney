@@ -1050,3 +1050,172 @@ a.btn--link {
 .history__command {
   font-size: 0.8em;
 }
+
+/* --- CSV statement import --------------------------------------------------- */
+.import-steps {
+  display: flex;
+  gap: 1.5rem;
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  font-size: 0.9em;
+}
+.import-steps li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+}
+.import-steps li.is-current {
+  color: var(--text);
+  font-weight: 600;
+}
+.import-steps li.is-done {
+  color: var(--accent);
+}
+.import-steps__n {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: 0.85em;
+}
+.import-steps li.is-current .import-steps__n {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.import-mapping__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+.import-mapping__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.import-sample {
+  overflow-x: auto;
+  margin: 1rem 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.import-sample table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+.import-sample th,
+.import-sample td {
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.import-sample th {
+  color: var(--muted);
+  font-weight: 600;
+}
+.import-sample .is-mapped {
+  background: var(--accent-soft);
+}
+.import-sample__role {
+  display: block;
+  font-size: 0.8em;
+  font-weight: 400;
+  color: var(--accent);
+  text-transform: lowercase;
+}
+
+.import-review__table {
+  overflow-x: auto;
+  margin: 0.75rem 0 1rem;
+}
+.import-review__table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.import-review__table th,
+.import-review__table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  text-align: left;
+}
+.import-review__table th.num,
+.import-review__table td.num {
+  text-align: right;
+}
+.import-review__table input[type="text"],
+.import-review__table input:not([type]),
+.import-review__table select {
+  width: 100%;
+  min-width: 9rem;
+}
+.import-review__table tr.is-skipped {
+  opacity: 0.5;
+}
+.import-review__table tr.is-duplicate td,
+.import-review__table tr.is-transfer td {
+  background: color-mix(in srgb, var(--warning-bg) 40%, transparent);
+}
+.import-review__date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.import-review__desc {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-review__new {
+  margin-left: 0.4rem;
+  font-size: 0.75em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.tag {
+  display: inline-block;
+  margin-top: 0.15rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.tag--muted {
+  background: var(--border);
+  color: var(--muted);
+}
+.tag--info {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.import-report__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin: 1rem 0;
+}
+.import-report__stats div {
+  margin: 0;
+}
+.import-report__stats dt {
+  font-size: 0.8em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.import-report__stats dd {
+  margin: 0;
+  font-size: 1.4em;
+  font-weight: 600;
+}

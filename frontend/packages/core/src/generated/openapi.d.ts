@@ -310,6 +310,77 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/books/{book_id}/accounts/{account_id}/import-mapping": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * The CSV column mapping last used for this account
+         * @description ``null`` if no statement has ever been imported into the account.
+         */
+        readonly get: operations["get_import_mapping_books__book_id__accounts__account_id__import_mapping_get"];
+        /**
+         * Save a CSV column mapping for this account
+         * @description For a mapping a user built or fixed without importing in the same
+         *     breath; a successful commit saves the mapping it used anyway.
+         */
+        readonly put: operations["put_import_mapping_books__book_id__accounts__account_id__import_mapping_put"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/accounts/{account_id}/imports/csv/commit": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Post a reviewed statement into the account
+         * @description Re-derives the rows from the file, re-checks for duplicates and
+         *     transfers under the book's lock (the far side of a transfer may have
+         *     arrived since the preview), applies the decisions, and writes the lot in
+         *     one unit of work. A malformed row is reported, not fatal. The mapping is
+         *     saved as this account's.
+         */
+        readonly post: operations["commit_csv_books__book_id__accounts__account_id__imports_csv_commit_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/accounts/{account_id}/imports/csv/preview": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Classify a statement's rows against the book, without posting
+         * @description Each row comes back as ``new``, ``duplicate`` or ``transfer``, with a
+         *     suggested payee and category. Nothing is written; this is the input to the
+         *     review screen.
+         */
+        readonly post: operations["preview_csv_books__book_id__accounts__account_id__imports_csv_preview_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/books/{book_id}/accounts/{account_id}/merge": {
         readonly parameters: {
             readonly query?: never;
@@ -524,6 +595,28 @@ export interface paths {
         readonly get: operations["history_books__book_id__history_get"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/imports/csv/inspect": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Read an uploaded CSV and suggest a column mapping
+         * @description Sniffs the delimiter, the header and any preamble, and guesses which
+         *     column is the date, the amount and the description. Every guess is the
+         *     client's to override before a preview.
+         */
+        readonly post: operations["inspect_csv_books__book_id__imports_csv_inspect_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1136,6 +1229,29 @@ export interface components {
              */
             readonly unpriced: readonly string[];
         };
+        /** Body_commit_csv_books__book_id__accounts__account_id__imports_csv_commit_post */
+        readonly Body_commit_csv_books__book_id__accounts__account_id__imports_csv_commit_post: {
+            /**
+             * Decisions
+             * @description A JSON list of per-row decisions; a row with none takes the proposal's default.
+             */
+            readonly decisions?: string | null;
+            /**
+             * File
+             * @description The reviewed statement as CSV.
+             */
+            readonly file: string;
+            /**
+             * Mapping
+             * @description The column mapping, as JSON.
+             */
+            readonly mapping: string;
+            /**
+             * Uncategorised Account Id
+             * @description Where a posted row with no chosen category balances to. Required if any such row is to be posted.
+             */
+            readonly uncategorised_account_id?: string | null;
+        };
         /** Body_import_kmymoney_file_books_import_kmymoney_post */
         readonly Body_import_kmymoney_file_books_import_kmymoney_post: {
             /**
@@ -1158,6 +1274,27 @@ export interface components {
              * @default false
              */
             readonly skip_prices: boolean;
+        };
+        /** Body_inspect_csv_books__book_id__imports_csv_inspect_post */
+        readonly Body_inspect_csv_books__book_id__imports_csv_inspect_post: {
+            /**
+             * File
+             * @description A bank statement as CSV.
+             */
+            readonly file: string;
+        };
+        /** Body_preview_csv_books__book_id__accounts__account_id__imports_csv_preview_post */
+        readonly Body_preview_csv_books__book_id__accounts__account_id__imports_csv_preview_post: {
+            /**
+             * File
+             * @description The same statement as CSV.
+             */
+            readonly file: string;
+            /**
+             * Mapping
+             * @description A column mapping, as JSON.
+             */
+            readonly mapping: string;
         };
         /** BookIn */
         readonly BookIn: {
@@ -1228,6 +1365,102 @@ export interface components {
             readonly op: string;
             /** Revision */
             readonly revision: number;
+        };
+        /**
+         * ColumnMappingModel
+         * @description Which CSV column is which, and how its values are written.
+         *
+         *     Built once per account (the server suggests a starting point) and then
+         *     remembered, so the next download from the same bank opens ready to review.
+         */
+        readonly ColumnMappingModel: {
+            /**
+             * Amount
+             * @description The signed-amount column.
+             * @default
+             */
+            readonly amount: string;
+            /**
+             * Amount Kind
+             * @description 'signed': one column, a minus for money out. 'debit_credit': a money-out column and a money-in column, each a positive number.
+             * @default signed
+             * @enum {string}
+             */
+            readonly amount_kind: "signed" | "debit_credit";
+            /**
+             * Credit
+             * @description The money-in column.
+             * @default
+             */
+            readonly credit: string;
+            /**
+             * Date
+             * @description The column holding each row's posting date.
+             */
+            readonly date: string;
+            /**
+             * Date Format
+             * @description A strptime pattern (e.g. '%d/%m/%Y'). Empty: detect it from the file.
+             * @default
+             */
+            readonly date_format: string;
+            /**
+             * Debit
+             * @description The money-out column.
+             * @default
+             */
+            readonly debit: string;
+            /**
+             * Decimal
+             * @description The decimal separator used in the amounts.
+             * @default .
+             * @enum {string}
+             */
+            readonly decimal: "." | ",";
+            /**
+             * Delimiter
+             * @default ,
+             */
+            readonly delimiter: string;
+            /**
+             * Description
+             * @description Columns joined into the text the payee matcher reads.
+             */
+            readonly description?: readonly string[];
+            /**
+             * Encoding
+             * @default utf-8
+             */
+            readonly encoding: string;
+            /**
+             * Has Header
+             * @default true
+             */
+            readonly has_header: boolean;
+            /**
+             * Invert
+             * @description Flip every sign, for a bank that lists a withdrawal as positive.
+             * @default false
+             */
+            readonly invert: boolean;
+            /**
+             * Memo
+             * @description A column kept verbatim as the memo.
+             * @default
+             */
+            readonly memo: string;
+            /**
+             * Reference
+             * @description The bank's own unique id for the line, if it has one. With it, duplicate detection is exact across overlapping downloads.
+             * @default
+             */
+            readonly reference: string;
+            /**
+             * Skip Rows
+             * @description Preamble lines above the header.
+             * @default 0
+             */
+            readonly skip_rows: number;
         };
         /** CommodityIn */
         readonly CommodityIn: {
@@ -1336,6 +1569,51 @@ export interface components {
             readonly rate: components["schemas"]["RateOut"];
             /** Sources */
             readonly sources: readonly string[];
+        };
+        /**
+         * CsvInspectOut
+         * @description What one upload looks like, before any mapping is applied.
+         */
+        readonly CsvInspectOut: {
+            /**
+             * Columns
+             * @description Header names, or '1', '2', ... for a file with no header.
+             */
+            readonly columns: readonly string[];
+            /** Delimiter */
+            readonly delimiter: string;
+            /** Encoding */
+            readonly encoding: string;
+            /** Has Header */
+            readonly has_header: boolean;
+            /** Row Count */
+            readonly row_count: number;
+            /**
+             * Sample Rows
+             * @description The first rows, column name to cell, for the mapping screen.
+             */
+            readonly sample_rows: readonly {
+                readonly [key: string]: string;
+            }[];
+            /**
+             * Skip Rows
+             * @description Preamble lines the sniffer skipped.
+             */
+            readonly skip_rows: number;
+            /** @description A starting point, every field of it overridable. */
+            readonly suggested_mapping: components["schemas"]["ColumnMappingModel"];
+        };
+        /** CsvPreviewOut */
+        readonly CsvPreviewOut: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            readonly account_id: string;
+            /** @description The mapping used; echoed so the review screen can save it. */
+            readonly mapping: components["schemas"]["ColumnMappingModel"];
+            /** Proposals */
+            readonly proposals: readonly components["schemas"]["ImportProposalOut"][];
         };
         /** DeleteBookIn */
         readonly DeleteBookIn: {
@@ -1487,6 +1765,77 @@ export interface components {
             readonly message: string;
             /** Source Id */
             readonly source_id: string;
+        };
+        /**
+         * ImportProposalOut
+         * @description One statement row and what the importer proposes to do with it.
+         */
+        readonly ImportProposalOut: {
+            /** @description Signed; positive is money in. */
+            readonly amount: components["schemas"]["AmountOut"];
+            /**
+             * Date
+             * Format: date
+             */
+            readonly date: string;
+            /**
+             * Default Action
+             * @description 'skip' for a duplicate or a recorded transfer, else 'post'.
+             * @enum {string}
+             */
+            readonly default_action: "post" | "skip";
+            /** Description */
+            readonly description: string;
+            /**
+             * Existing Account Id
+             * @description For a transfer: the other account.
+             */
+            readonly existing_account_id?: string | null;
+            /**
+             * Existing Account Path
+             * @default
+             */
+            readonly existing_account_path: string;
+            /**
+             * Existing Transaction Id
+             * @description The duplicate, or the far side of the transfer.
+             */
+            readonly existing_transaction_id?: string | null;
+            /**
+             * Index
+             * @description Position in the file, zero-based.
+             */
+            readonly index: number;
+            /** Memo */
+            readonly memo: string;
+            /** Reference */
+            readonly reference: string;
+            /**
+             * Row Key
+             * @description The row's stable id -- its deduplication key. Pass it back in a decision, and to undo the import later (it becomes the transaction's imported_id).
+             */
+            readonly row_key: string;
+            /**
+             * Status
+             * @description 'new': post it. 'duplicate': already in the book. 'transfer': the other side is already recorded on another of your accounts.
+             * @enum {string}
+             */
+            readonly status: "new" | "duplicate" | "transfer";
+            /** Suggested Category Id */
+            readonly suggested_category_id?: string | null;
+            /** Suggested Payee Id */
+            readonly suggested_payee_id?: string | null;
+            /**
+             * Suggested Payee Name
+             * @description The matched payee's name, or -- with no suggested_payee_id -- a cleaned-up name to offer as a new payee.
+             * @default
+             */
+            readonly suggested_payee_name: string;
+            /**
+             * Suggestion Reason
+             * @description 'match key', 'payee default', 'last used', 'transfer', 'new payee', or '' when the importer had nothing to go on.
+             */
+            readonly suggestion_reason: string;
         };
         /** IncomeStatementOut */
         readonly IncomeStatementOut: {
@@ -2228,6 +2577,54 @@ export interface components {
             readonly reconcile_date: string | null;
             readonly reconcile_state: components["schemas"]["ReconcileStateName"];
             readonly value: components["schemas"]["AmountOut"];
+        };
+        /**
+         * StatementImportOut
+         * @description What a commit did: posted, skipped, and could not post.
+         */
+        readonly StatementImportOut: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            readonly account_id: string;
+            /** Account Path */
+            readonly account_path: string;
+            /**
+             * Ok
+             * @description No row failed to post.
+             */
+            readonly ok: boolean;
+            /** Payees Created */
+            readonly payees_created: number;
+            /** Posted */
+            readonly posted: number;
+            /** Posted Transaction Ids */
+            readonly posted_transaction_ids: readonly string[];
+            /** Problems */
+            readonly problems: readonly components["schemas"]["ImportProblemOut"][];
+            /** Revision After */
+            readonly revision_after: number;
+            /** Revision Before */
+            readonly revision_before: number;
+            /**
+             * Rows
+             * @description Lines read from the file.
+             */
+            readonly rows: number;
+            /** Skipped By User */
+            readonly skipped_by_user: number;
+            /** Skipped Duplicates */
+            readonly skipped_duplicates: number;
+            /** Skipped Transfers */
+            readonly skipped_transfers: number;
+            /** Summary */
+            readonly summary: string;
+            /**
+             * Uncategorised
+             * @description Posted with no category -- in the register, awaiting one.
+             */
+            readonly uncategorised: number;
         };
         /**
          * SyncBatchOut
@@ -3904,6 +4301,276 @@ export interface operations {
             };
         };
     };
+    readonly get_import_mapping_books__book_id__accounts__account_id__import_mapping_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly account_id: string;
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ColumnMappingModel"] | null;
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly put_import_mapping_books__book_id__accounts__account_id__import_mapping_put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly account_id: string;
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ColumnMappingModel"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ColumnMappingModel"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly commit_csv_books__book_id__accounts__account_id__imports_csv_commit_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly account_id: string;
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "multipart/form-data": components["schemas"]["Body_commit_csv_books__book_id__accounts__account_id__imports_csv_commit_post"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["StatementImportOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The file is larger than the server accepts. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly preview_csv_books__book_id__accounts__account_id__imports_csv_preview_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly account_id: string;
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "multipart/form-data": components["schemas"]["Body_preview_csv_books__book_id__accounts__account_id__imports_csv_preview_post"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CsvPreviewOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The file is larger than the server accepts. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     readonly merge_accounts_books__book_id__accounts__account_id__merge_post: {
         readonly parameters: {
             readonly query?: never;
@@ -4911,6 +5578,77 @@ export interface operations {
             };
             /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
             readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly inspect_csv_books__book_id__imports_csv_inspect_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "multipart/form-data": components["schemas"]["Body_inspect_csv_books__book_id__imports_csv_inspect_post"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CsvInspectOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The file is larger than the server accepts. */
+            readonly 413: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

@@ -22,6 +22,7 @@ import { PeriodTableReport } from "./reports/PeriodTableReport";
 import { HoldingsReport } from "./reports/HoldingsReport";
 import { IncomeStatementReport } from "./reports/IncomeStatementReport";
 import { AccountRegisterPage } from "./ledger/AccountRegisterPage";
+import { ImportStatementPage } from "./ledger/ImportStatementPage";
 import { SearchPage } from "./ledger/SearchPage";
 import { TransactionPage } from "./ledger/TransactionPage";
 
@@ -71,6 +72,7 @@ export function App() {
           <Route path="prices" element={<Navigate to="../settings/prices" replace />} />
           <Route path="search" element={<SearchPage />} />
           <Route path="accounts/:accountId" element={<AccountRegisterPage />} />
+          <Route path="accounts/:accountId/import" element={<ImportStatementPage />} />
           <Route path="transactions/:transactionId" element={<TransactionPage />} />
         </Route>
       </Route>

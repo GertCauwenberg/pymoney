@@ -21,14 +21,18 @@ import type {
   Book,
   BookIn,
   Change,
+  ColumnMapping,
   Commodity,
   CommodityIn,
   CommodityPatch,
+  CsvInspect,
+  CsvPreview,
   Grant,
   GrantIn,
   CommoditiesQuery,
   Health,
   Holdings,
+  ImportDecision,
   ImportResult,
   HoldingsQuery,
   IncomeStatement,
@@ -57,6 +61,7 @@ import type {
   RegisterPage,
   RegisterQuery,
   Session,
+  StatementImport,
   Transaction,
   TransactionIn,
   TransactionSearchQuery,
@@ -191,6 +196,11 @@ export function queryString(params: Record<string, QueryValue>): string {
 
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/** A filename for a multipart part: the Blob's own, or a fallback. */
+function fileName(file: Blob, fallback: string): string {
+  return (file as { name?: string }).name || fallback;
+}
+
 export class ApiClient {
   readonly baseUrl: string;
   readonly auth: AuthStore;
@@ -225,6 +235,31 @@ export class ApiClient {
     if (!response.ok) {
       const error = await ApiError.fromResponse(response);
       if (error.status === 401 && options?.notifyUnauthorized !== false) this.onUnauthorized?.();
+      throw error;
+    }
+    if (response.status === 204) return undefined as T;
+    return (await response.json()) as T;
+  }
+
+  /**
+   * A multipart POST, for file uploads. Same auth as {@link request} (a
+   * bearer token, or the CSRF header on a cookie session) but the browser
+   * sets the `Content-Type` itself, boundary and all.
+   */
+  async postForm<T>(path: string, form: FormData): Promise<T> {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const { bearer, csrf } = this.auth.get();
+    if (bearer) headers["Authorization"] = `Bearer ${bearer}`;
+    else if (csrf) headers["X-CSRF-Token"] = csrf;
+    const response = await this.fetchImpl(this.baseUrl + path, {
+      method: "POST",
+      headers,
+      body: form,
+      credentials: this.credentialsMode,
+    });
+    if (!response.ok) {
+      const error = await ApiError.fromResponse(response);
+      if (error.status === 401) this.onUnauthorized?.();
       throw error;
     }
     if (response.status === 204) return undefined as T;
@@ -372,31 +407,69 @@ export class ApiClient {
    */
   async importKmymoney(file: Blob, name: string, options: { roundingAdjustments?: boolean | undefined; skipPrices?: boolean | undefined } = {}): Promise<ImportResult> {
     const form = new FormData();
-    form.append("file", file, (file as { name?: string }).name ?? "upload.kmy");
+    form.append("file", file, fileName(file, "upload.kmy"));
     form.append("name", name);
     if (options.roundingAdjustments !== undefined) form.append("rounding_adjustments", String(options.roundingAdjustments));
     if (options.skipPrices !== undefined) form.append("skip_prices", String(options.skipPrices));
-    const headers: Record<string, string> = { Accept: "application/json" };
-    const { bearer, csrf } = this.auth.get();
-    if (bearer) headers["Authorization"] = `Bearer ${bearer}`;
-    else if (csrf) headers["X-CSRF-Token"] = csrf;
-    const response = await this.fetchImpl(`${this.baseUrl}/books/import/kmymoney`, {
-      method: "POST",
-      headers,
-      body: form,
-      credentials: this.credentialsMode,
-    });
-    if (!response.ok) {
-      const error = await ApiError.fromResponse(response);
-      if (error.status === 401) this.onUnauthorized?.();
-      throw error;
-    }
-    return (await response.json()) as ImportResult;
+    return this.postForm<ImportResult>("/books/import/kmymoney", form);
   }
 
   /** Irreversible. The server wants the book's exact name back as confirmation. */
   deleteBook(bookId: string, name: string): Promise<void> {
     return this.request<void>("DELETE", `/books/${bookId}`, { name });
+  }
+
+  // -- CSV statement import ---------------------------------------------
+  //
+  // Three stateless calls: the file is uploaded each time, so the server
+  // stays the authority on what is in it. A preview classifies; a commit
+  // posts the reviewed set and remembers the column mapping for next week.
+
+  /** Read an uploaded statement: its columns, a few rows, a suggested mapping. */
+  inspectCsv(bookId: string, file: Blob): Promise<CsvInspect> {
+    const form = new FormData();
+    form.append("file", file, fileName(file, "statement.csv"));
+    return this.postForm<CsvInspect>(`/books/${bookId}/imports/csv/inspect`, form);
+  }
+
+  /** Classify every row of the statement against the book. Writes nothing. */
+  previewCsv(bookId: string, accountId: string, file: Blob, mapping: ColumnMapping): Promise<CsvPreview> {
+    const form = new FormData();
+    form.append("file", file, fileName(file, "statement.csv"));
+    form.append("mapping", JSON.stringify(mapping));
+    return this.postForm<CsvPreview>(`/books/${bookId}/accounts/${accountId}/imports/csv/preview`, form);
+  }
+
+  /**
+   * Post the reviewed statement. A row with no decision takes the proposal's
+   * default (a duplicate or a recorded transfer is skipped). Any row left
+   * without a category goes to `uncategorisedAccountId`, so pass one unless
+   * every posted row is categorised.
+   */
+  commitCsv(
+    bookId: string,
+    accountId: string,
+    file: Blob,
+    mapping: ColumnMapping,
+    decisions: ImportDecision[],
+    uncategorisedAccountId?: string,
+  ): Promise<StatementImport> {
+    const form = new FormData();
+    form.append("file", file, fileName(file, "statement.csv"));
+    form.append("mapping", JSON.stringify(mapping));
+    form.append("decisions", JSON.stringify(decisions));
+    if (uncategorisedAccountId) form.append("uncategorised_account_id", uncategorisedAccountId);
+    return this.postForm<StatementImport>(`/books/${bookId}/accounts/${accountId}/imports/csv/commit`, form);
+  }
+
+  /** The column mapping last used for this account, or `null` if never imported to. */
+  importMapping(bookId: string, accountId: string): Promise<ColumnMapping | null> {
+    return this.get<ColumnMapping | null>(`/books/${bookId}/accounts/${accountId}/import-mapping`);
+  }
+
+  /** Save a column mapping for this account without importing in the same breath. */
+  saveImportMapping(bookId: string, accountId: string, mapping: ColumnMapping): Promise<ColumnMapping> {
+    return this.put<ColumnMapping>(`/books/${bookId}/accounts/${accountId}/import-mapping`, mapping);
   }
 
   // -- access control (owners only) ---------------------------------------

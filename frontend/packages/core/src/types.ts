@@ -68,6 +68,33 @@ export type RegisterIn = Schemas["RegisterIn"];
 export type Pending = Schemas["PendingOut"];
 export type Health = Schemas["HealthOut"];
 
+// -- CSV statement import ----------------------------------------------------
+export type ColumnMapping = Schemas["ColumnMappingModel"];
+export type AmountKind = ColumnMapping["amount_kind"];
+export type CsvInspect = Schemas["CsvInspectOut"];
+export type CsvPreview = Schemas["CsvPreviewOut"];
+export type ImportProposal = Schemas["ImportProposalOut"];
+export type ProposalStatus = ImportProposal["status"];
+export type RowAction = ImportProposal["default_action"];
+export type StatementImport = Schemas["StatementImportOut"];
+export type ImportProblem = Schemas["ImportProblemOut"];
+
+/**
+ * One statement row's committed verdict, keyed by its `row_key`. Hand-written,
+ * not generated: it is a field inside a multipart form (a JSON string), not a
+ * request body, so FastAPI never puts it in the contract. Kept in step with
+ * `pymoney.api.schemas.ImportDecisionIn` -- the matching test on the server
+ * side is what catches drift.
+ */
+export interface ImportDecision {
+  row_key: string;
+  action?: RowAction;
+  payee_id?: string | null;
+  new_payee?: string;
+  category_id?: string | null;
+  memo?: string;
+}
+
 type Query<Op extends keyof operations> = NonNullable<
   operations[Op]["parameters"]["query"]
 >;
