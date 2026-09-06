@@ -114,7 +114,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-test-reports-py${{ matrix.python-version }}
           path: |
@@ -299,7 +299,7 @@ jobs:
           CI: "1"
       - name: Upload report and traces
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-report
           path: |
