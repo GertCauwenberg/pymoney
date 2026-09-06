@@ -47,7 +47,7 @@ const SUGGESTED = {
   invert: false,
   description: ["Details"],
   reference: "",
-  memo: "",
+  memo: [],
   skip_rows: 0,
   has_header: true,
   delimiter: ",",
@@ -72,7 +72,7 @@ const PROPOSALS = [
     amount: amount(-4211),
     description: "TESCO STORES 7",
     reference: "",
-    memo: "",
+    memo: "TESCO STORES 7",
     status: "new" as const,
     default_action: "post" as const,
     existing_transaction_id: null,
@@ -90,7 +90,7 @@ const PROPOSALS = [
     amount: amount(-380),
     description: "A NEW CAFE",
     reference: "",
-    memo: "",
+    memo: "A NEW CAFE",
     status: "new" as const,
     default_action: "post" as const,
     existing_transaction_id: null,
@@ -217,16 +217,20 @@ describe("CSV statement import", () => {
     expect(screen.getByText("TESCO STORES 7")).toBeInTheDocument(); // the sample
     await user.click(mapping);
 
-    // 3. the review table: suggestions are pre-filled
-    const tesco = (await screen.findByText("TESCO STORES 7")).closest("tr")!;
+    // 3. the review table: every suggestion is pre-filled, memo included
+    const tesco = screen.getByLabelText("Payee for TESCO STORES 7").closest("tr")!;
+    expect(within(tesco).getByLabelText(/Memo for/)).toHaveValue("TESCO STORES 7");
     expect(within(tesco).getByLabelText(/Payee for/)).toHaveValue("Tesco");
     expect(within(tesco).getByLabelText(/Category for/)).toHaveValue("groceries");
-    const cafe = screen.getByText("A NEW CAFE").closest("tr")!;
+    const cafe = screen.getByLabelText("Payee for A NEW CAFE").closest("tr")!;
+    expect(within(cafe).getByLabelText(/Memo for/)).toHaveValue("A NEW CAFE");
     expect(within(cafe).getByLabelText(/Payee for/)).toHaveValue("New Cafe");
     expect(within(cafe).getByText("new")).toBeInTheDocument(); // a payee to be created
 
-    // Categorise the cafe and import.
+    // Categorise the cafe, reword its memo, and import.
     await user.selectOptions(within(cafe).getByLabelText(/Category for/), "groceries");
+    await user.clear(within(cafe).getByLabelText(/Memo for/));
+    await user.type(within(cafe).getByLabelText(/Memo for/), "coffee with Sam");
     await user.click(screen.getByRole("button", { name: "Import 2 transaction(s)" }));
 
     // 4. the report
@@ -237,8 +241,8 @@ describe("CSV statement import", () => {
     expect(committed[0]!.file).toBe("statement.csv");
     expect(committed[0]!.mapping).toMatchObject({ date: "Date", amount: "Amount" });
     expect(committed[0]!.decisions).toEqual([
-      { row_key: "csv:tesco", action: "post", payee_id: "p-tesco", new_payee: "", category_id: "groceries" },
-      { row_key: "csv:cafe", action: "post", payee_id: null, new_payee: "New Cafe", category_id: "groceries" },
+      { row_key: "csv:tesco", action: "post", payee_id: "p-tesco", new_payee: "", category_id: "groceries", memo: "TESCO STORES 7" },
+      { row_key: "csv:cafe", action: "post", payee_id: null, new_payee: "New Cafe", category_id: "groceries", memo: "coffee with Sam" },
     ]);
     // The mapping is remembered for next week (by the explicit save and the commit).
     expect(calls.some((c) => c.method === "PUT" && c.path.endsWith("/import-mapping"))).toBe(true);
@@ -296,6 +300,60 @@ describe("CSV statement import", () => {
 
     expect(await screen.findByText(/is not an amount/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Review transactions" })).toBeInTheDocument();
+  });
+
+  it("joins several columns into the memo, and keeps every row's memo editable", async () => {
+    const user = userEvent.setup();
+    let previewMapping: { description?: string[]; memo?: string[] } | undefined;
+    const { fetch } = server({
+      "POST /books/b1/imports/csv/inspect": () => ({
+        body: {
+          columns: ["Date", "Type", "Counterparty", "Note", "Amount"],
+          sample_rows: [
+            { Date: "2026-02-03", Type: "POS", Counterparty: "LIDL", Note: "store 88", Amount: "-9.00" },
+          ],
+          row_count: 1,
+          encoding: "utf-8",
+          delimiter: ",",
+          has_header: true,
+          skip_rows: 0,
+          suggested_mapping: { ...SUGGESTED, description: ["Counterparty"], memo: [] },
+        },
+      }),
+      "POST /books/b1/accounts/checking/imports/csv/preview": ({ form }) => {
+        previewMapping = JSON.parse(String(form!.get("mapping")));
+        return {
+          body: {
+            account_id: "checking",
+            mapping: { ...SUGGESTED, description: ["Counterparty"], memo: ["Type", "Counterparty", "Note"] },
+            proposals: [
+              {
+                ...PROPOSALS[1],
+                row_key: "csv:lidl",
+                description: "LIDL",
+                memo: "POS LIDL store 88",
+                suggested_payee_id: null,
+                suggested_payee_name: "",
+                suggested_category_id: "groceries",
+                suggestion_reason: "last used",
+              },
+            ],
+          },
+        };
+      },
+    });
+    mount(fetch);
+
+    await user.upload(await screen.findByLabelText("Statement file"), upload());
+    // Add two columns to the memo; the picker takes several.
+    await user.selectOptions(await screen.findByLabelText(/^Memo$/), ["Type", "Counterparty", "Note"]);
+    await user.click(screen.getByRole("button", { name: "Review transactions" }));
+
+    expect(previewMapping!.memo).toEqual(["Type", "Counterparty", "Note"]);
+    // Even with no payee matched, the bank's wording is there to post against.
+    const memo = await screen.findByLabelText(/Memo for/);
+    expect(memo).toHaveValue("POS LIDL store 88");
+    expect(screen.getByLabelText(/Payee for/)).toHaveValue("");
   });
 
   it("refuses to import with only viewer access", async () => {

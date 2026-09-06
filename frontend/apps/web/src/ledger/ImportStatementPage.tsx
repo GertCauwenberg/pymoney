@@ -205,18 +205,22 @@ function UploadStep({
   );
 }
 
-/** True if every column the mapping relies on is present in the file. */
-function both(mapping: ColumnMapping, columns: Set<string>): boolean {
-  const used = [
+/** Every column name the mapping relies on. */
+function usedColumns(mapping: ColumnMapping): string[] {
+  return [
     mapping.date,
     mapping.amount,
     mapping.debit,
     mapping.credit,
     mapping.reference,
-    mapping.memo,
+    ...(mapping.memo ?? []),
     ...(mapping.description ?? []),
   ].filter(Boolean);
-  return used.every((name) => columns.has(name));
+}
+
+/** True if every column the mapping relies on is present in the file. */
+function both(mapping: ColumnMapping, columns: Set<string>): boolean {
+  return usedColumns(mapping).every((name) => columns.has(name));
 }
 
 // ===========================================================================
@@ -252,6 +256,24 @@ function MappingStep({
   const columnSelect = (value: string, onChange: (v: string) => void, withNone = true) => (
     <select value={value || NONE} onChange={(e) => onChange(pick(e.target.value))}>
       {withNone && <option value={NONE}>{t("— none —")}</option>}
+      {columns.map((c) => (
+        <option key={c} value={c}>
+          {c}
+        </option>
+      ))}
+    </select>
+  );
+
+  /** Pick one or more columns, kept in file order. Ctrl/Cmd-click for several. */
+  const columnMultiSelect = (value: readonly string[], onChange: (cols: string[]) => void) => (
+    <select
+      multiple
+      size={Math.min(Math.max(columns.length, 2), 5)}
+      value={[...value]}
+      onChange={(e) =>
+        onChange(columns.filter((c) => [...e.target.selectedOptions].some((o) => o.value === c)))
+      }
+    >
       {columns.map((c) => (
         <option key={c} value={c}>
           {c}
@@ -305,14 +327,14 @@ function MappingStep({
             <option value=",">{t("Comma (1.234,56)")}</option>
           </select>
         </Field>
-        <Field label={t("Description")} hint={t("What the payee match runs against; choose the most descriptive column.")}>
-          {columnSelect((draft.description ?? [])[0] ?? "", (v) => set({ description: v ? [v] : [] }))}
+        <Field label={t("Description")} hint={t("What the payee match reads. Pick one column, or several to join.")}>
+          {columnMultiSelect(draft.description ?? [], (description) => set({ description }))}
+        </Field>
+        <Field label={t("Memo")} hint={t("Kept as the transaction's memo. Left empty, the description is used.")}>
+          {columnMultiSelect(draft.memo ?? [], (memo) => set({ memo }))}
         </Field>
         <Field label={t("Bank reference")} hint={t("The bank's own id for each line. With one, re-imports never double up.")}>
           {columnSelect(draft.reference, (reference) => set({ reference }))}
-        </Field>
-        <Field label={t("Extra memo")} hint={t("Kept verbatim as the transaction's memo.")}>
-          {columnSelect(draft.memo, (memo) => set({ memo }))}
         </Field>
       </div>
       <Toggle
@@ -357,8 +379,8 @@ function SamplePreview({
     if (column === mapping.debit) return t("out");
     if (column === mapping.credit) return t("in");
     if ((mapping.description ?? []).includes(column)) return t("description");
+    if ((mapping.memo ?? []).includes(column)) return t("memo");
     if (column === mapping.reference) return t("reference");
-    if (column === mapping.memo) return t("memo");
     return null;
   };
   return (
@@ -398,6 +420,7 @@ function SamplePreview({
 // ===========================================================================
 interface RowState {
   skip: boolean;
+  memo: string;
   payee: string;
   categoryId: string;
 }
@@ -438,6 +461,10 @@ function ReviewStep({
         p.row_key,
         {
           skip: p.default_action === "skip",
+          // The server has already folded the bank's description into the
+          // memo when no memo column was mapped, so this is never blank for
+          // a row that had any text at all.
+          memo: p.memo,
           payee: p.suggested_payee_name,
           categoryId: p.suggested_category_id ?? "",
         },
@@ -464,6 +491,7 @@ function ReviewStep({
         payee_id: existing ? existing.id : null,
         new_payee: existing || !name ? "" : name,
         category_id: row.categoryId || null,
+        memo: row.memo.trim(),
       };
     });
 
@@ -498,7 +526,7 @@ function ReviewStep({
               <th>{t("Post")}</th>
               <th>{t("Date")}</th>
               <th className="num">{t("Amount")}</th>
-              <th>{t("Description")}</th>
+              <th>{t("Memo")}</th>
               <th>{t("Payee")}</th>
               <th>{t("Category")}</th>
             </tr>
@@ -506,6 +534,7 @@ function ReviewStep({
           <tbody>
             {preview.proposals.map((p) => {
               const row = rows[p.row_key]!;
+              const who = p.description || p.memo || p.date;
               return (
                 <tr key={p.row_key} className={row.skip ? "is-skipped" : `is-${p.status}`}>
                   <td>
@@ -523,13 +552,19 @@ function ReviewStep({
                   <td className="num">
                     <Money amount={p.amount} />
                   </td>
-                  <td className="import-review__desc" title={p.description}>
-                    {p.description || <span className="muted">—</span>}
+                  <td>
+                    <input
+                      aria-label={t("Memo for {description}", { description: who })}
+                      value={row.memo}
+                      disabled={row.skip}
+                      title={p.description}
+                      onChange={(e) => set(p.row_key, { memo: e.target.value })}
+                    />
                   </td>
                   <td>
                     <input
                       list="import-payees"
-                      aria-label={t("Payee for {description}", { description: p.description || p.date })}
+                      aria-label={t("Payee for {description}", { description: who })}
                       value={row.payee}
                       disabled={row.skip}
                       onChange={(e) => set(p.row_key, { payee: e.target.value })}
@@ -540,7 +575,7 @@ function ReviewStep({
                   </td>
                   <td>
                     <select
-                      aria-label={t("Category for {description}", { description: p.description || p.date })}
+                      aria-label={t("Category for {description}", { description: who })}
                       value={row.categoryId}
                       disabled={row.skip}
                       onChange={(e) => set(p.row_key, { categoryId: e.target.value })}

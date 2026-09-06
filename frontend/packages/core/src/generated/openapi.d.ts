@@ -1424,7 +1424,7 @@ export interface components {
             readonly delimiter: string;
             /**
              * Description
-             * @description Columns joined into the text the payee matcher reads.
+             * @description Columns joined into the text the payee matcher reads. Falls back to `memo` when empty, so one text column need only be mapped once.
              */
             readonly description?: readonly string[];
             /**
@@ -1445,10 +1445,9 @@ export interface components {
             readonly invert: boolean;
             /**
              * Memo
-             * @description A column kept verbatim as the memo.
-             * @default
+             * @description Columns joined into the transaction's memo. Falls back to `description` when empty, so every posted row keeps the bank's own wording.
              */
-            readonly memo: string;
+            readonly memo?: readonly string[];
             /**
              * Reference
              * @description The bank's own unique id for the line, if it has one. With it, duplicate detection is exact across overlapping downloads.
