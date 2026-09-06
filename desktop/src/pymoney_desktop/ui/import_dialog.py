@@ -38,6 +38,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QStackedWidget,
     QTableWidget,
@@ -285,10 +287,44 @@ def _fits(mapping: ColumnMappingModel, columns: set[str]) -> bool:
         mapping.debit,
         mapping.credit,
         mapping.reference,
-        mapping.memo,
+        *mapping.memo,
         *mapping.description,
     ]
     return all(name in columns for name in used if name)
+
+
+class _ColumnChecklist(QListWidget):
+    """Pick one or more columns, for the description or the memo. Kept in the
+    file's column order, whatever order they were ticked in."""
+
+    def __init__(self, on_change: Callable[[], None] | None = None) -> None:
+        super().__init__()
+        self.setMaximumHeight(96)
+        self._columns: list[str] = []
+        if on_change is not None:
+            self.itemChanged.connect(lambda _item: on_change())
+
+    def set_columns(self, columns: list[str], selected: list[str]) -> None:
+        self.blockSignals(True)
+        self.clear()
+        self._columns = list(columns)
+        chosen = set(selected)
+        for name in columns:
+            item = QListWidgetItem(name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(
+                Qt.CheckState.Checked if name in chosen else Qt.CheckState.Unchecked
+            )
+            self.addItem(item)
+        self.blockSignals(False)
+
+    def checked(self) -> list[str]:
+        ticked = {
+            self.item(i).text()
+            for i in range(self.count())
+            if self.item(i).checkState() == Qt.CheckState.Checked
+        }
+        return [c for c in self._columns if c in ticked]
 
 
 # ==========================================================================
@@ -313,9 +349,15 @@ class _MapPage(QWidget):
         self.decimal = QComboBox()
         self.decimal.addItem(_("Full stop (1,234.56)"), ".")
         self.decimal.addItem(_("Comma (1.234,56)"), ",")
-        self.description = QComboBox()
+        self.description = _ColumnChecklist()
+        self.description.setToolTip(
+            _("What the payee match reads. Tick one column, or several to join.")
+        )
         self.reference = QComboBox()
-        self.memo = QComboBox()
+        self.memo = _ColumnChecklist()
+        self.memo.setToolTip(
+            _("Kept as the transaction's memo. Left empty, the description is used.")
+        )
         self.invert = QCheckBox(_("Flip every sign (a withdrawal is listed positive)"))
 
         form = QFormLayout()
@@ -328,8 +370,8 @@ class _MapPage(QWidget):
         form.addRow(_("Money in"), self.credit)
         form.addRow(_("Decimal separator"), self.decimal)
         form.addRow(_("Description"), self.description)
+        form.addRow(_("Memo"), self.memo)
         form.addRow(_("Bank reference"), self.reference)
-        form.addRow(_("Extra memo"), self.memo)
         form.addRow("", self.invert)
         self._form = form
         self._amount_label = form.labelForField(self.amount)
@@ -374,7 +416,7 @@ class _MapPage(QWidget):
         self.columns = columns
         self._required(self.date)
         self._required(self.amount)
-        for box in (self.debit, self.credit, self.description, self.reference, self.memo):
+        for box in (self.debit, self.credit, self.reference):
             self._optional(box)
         _select(self.date, mapping.date)
         self.date_format.setText(mapping.date_format)
@@ -383,9 +425,9 @@ class _MapPage(QWidget):
         _select(self.debit, mapping.debit)
         _select(self.credit, mapping.credit)
         _select(self.decimal, mapping.decimal)
-        _select(self.description, mapping.description[0] if mapping.description else "")
         _select(self.reference, mapping.reference)
-        _select(self.memo, mapping.memo)
+        self.description.set_columns(columns, list(mapping.description))
+        self.memo.set_columns(columns, list(mapping.memo))
         self.invert.setChecked(mapping.invert)
         self._kind_changed()
         self._load_sample(sample)
@@ -409,7 +451,6 @@ class _MapPage(QWidget):
         base = self.dialog.mapping
         source = base.model_dump() if base is not None else {}
         signed = self.amount_kind.currentData() == "signed"
-        description = self.description.currentData()
         source.update(
             date=self.date.currentData() or "",
             date_format=self.date_format.text().strip(),
@@ -419,9 +460,9 @@ class _MapPage(QWidget):
             credit="" if signed else (self.credit.currentData() or ""),
             decimal=self.decimal.currentData(),
             invert=self.invert.isChecked(),
-            description=[description] if description else [],
+            description=self.description.checked(),
             reference=self.reference.currentData() or "",
-            memo=self.memo.currentData() or "",
+            memo=self.memo.checked(),
         )
         return ColumnMappingModel.model_validate(source)
 
@@ -429,7 +470,7 @@ class _MapPage(QWidget):
 # ==========================================================================
 # page 2: review every row
 # ==========================================================================
-_HEADERS = ("", _("Date"), _("Amount"), _("Description"), _("Payee"), _("Category"))
+_HEADERS = ("", _("Date"), _("Amount"), _("Memo"), _("Payee"), _("Category"))
 
 
 class _ReviewPage(QWidget):
@@ -511,7 +552,13 @@ class _ReviewPage(QWidget):
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
             self.table.setItem(r, 2, amount)
-            self.table.setItem(r, 3, QTableWidgetItem(proposal.description))
+
+            # The server has already folded the description into the memo when
+            # no memo column was mapped, so an unmatched row is never blank.
+            memo = QLineEdit(proposal.memo)
+            if proposal.description and proposal.description != proposal.memo:
+                memo.setToolTip(proposal.description)
+            self.table.setCellWidget(r, 3, memo)
 
             payee = QComboBox()
             payee.setEditable(True)
@@ -529,7 +576,9 @@ class _ReviewPage(QWidget):
                 _select(category, str(proposal.suggested_category_id))
             self.table.setCellWidget(r, 5, category)
 
-            self.row_widgets.append({"post": post, "payee": payee, "category": category})
+            self.row_widgets.append(
+                {"post": post, "memo": memo, "payee": payee, "category": category}
+            )
             self._apply_enabled(r)
 
         for r, widgets in enumerate(self.row_widgets):
@@ -551,6 +600,7 @@ class _ReviewPage(QWidget):
     def _apply_enabled(self, row: int) -> None:
         widgets = self.row_widgets[row]
         on = widgets["post"].isChecked()
+        widgets["memo"].setEnabled(on)
         widgets["payee"].setEnabled(on)
         widgets["category"].setEnabled(on)
 
@@ -589,6 +639,7 @@ class _ReviewPage(QWidget):
                     payee_id=existing.id if existing else None,
                     new_payee="" if existing or not name else name,
                     category_id=None if category == _NONE else UUID(category),
+                    memo=widgets["memo"].text().strip(),
                 )
             )
         return out

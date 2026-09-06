@@ -122,6 +122,8 @@ class TestImportDialog:
             tesco = review.row_widgets[_row(dialog, "TESCO STORES 7 LEEDS")]
             assert tesco["payee"].currentText() == "Tesco"
             assert tesco["category"].currentText() == "Groceries"
+            # The bank's wording is the memo, and it is editable.
+            assert tesco["memo"].text() == "TESCO STORES 7 LEEDS"
             transfer_row = _row(dialog, "TRANSFER TO SAVINGS")
             assert review.proposals[transfer_row].existing_account_path == "Savings"
             transfer = review.row_widgets[transfer_row]
@@ -129,6 +131,8 @@ class TestImportDialog:
 
             cafe = review.row_widgets[_row(dialog, "A CAFE NOBODY KNOWS")]
             assert cafe["payee"].currentText()  # a cleaned-up name, offered
+            assert cafe["memo"].text() == "A CAFE NOBODY KNOWS"  # never blank
+            cafe["memo"].setText("lunch, Friday")
             assert review.needs_fallback()  # the cafe has no category yet
             category = cafe["category"]
             assert isinstance(category, QComboBox)
@@ -151,6 +155,8 @@ class TestImportDialog:
 
         # Checking shows the two new rows; the transfer was not re-posted.
         assert win.register.rowCount() == 2
+        memos = {win.register.item(r, 3).text() for r in range(win.register.rowCount())}
+        assert memos == {"TESCO STORES 7 LEEDS", "lunch, Friday"}
         amounts = {win.register.item(r, 5).text() for r in range(win.register.rowCount())}
         assert amounts == {"-42.11", "-3.80"}
         # The new payee was created and the column mapping remembered.
@@ -219,3 +225,54 @@ class TestImportDialog:
         win.run_dialog = drive  # type: ignore[method-assign]
         win.import_statement()
         assert win.register.rowCount() == 0  # nothing was posted to Checking
+
+    def test_a_foreign_account_is_posted_in_its_own_currency(
+        self, window, tmp_path, monkeypatch
+    ):
+        win, api, book_id, _checking, _groceries = window
+        api.login(EMAIL)
+        huf = api.post(
+            f"/books/{book_id}/commodities",
+            json={"code": "HUF", "name": "Forint", "scale": 0},
+        ).json()["id"]
+        eur = next(
+            c["id"]
+            for c in api.get(f"/books/{book_id}/commodities").json()
+            if c["code"] == "EUR"
+        )
+        api.account("HUF Wallet", "CASH", commodity_id=huf)
+        api.post(
+            f"/books/{book_id}/prices",
+            json={
+                "base_id": eur,
+                "quote_id": huf,
+                "rate": "400",
+                "effective_date": "2026-01-01",
+            },
+        )
+        api.logout()
+        win.client.sync()
+        win._reload_book()  # pull the new account into the tree
+
+        select_account(win, "HUF Wallet")
+        groceries = next(a for a in win.accounts if a.name == "Groceries")  # EUR
+        _file(monkeypatch, tmp_path, b"Date,Details,Amount\n2026-02-03,SPAR,-50000\n")
+
+        def drive(dialog: ImportStatementDialog) -> int:
+            dialog._next()
+            dialog._next()
+            (row,) = dialog.review_page.row_widgets
+            assert dialog.review_page.proposals[0].amount.commodity == "HUF"
+            row["category"].setCurrentIndex(row["category"].findData(str(groceries.id)))
+            dialog._next()
+            assert dialog.report is not None and dialog.report.posted == 1
+            assert dialog.report.ok
+            dialog.accept()
+            return dialog.result()
+
+        win.run_dialog = drive  # type: ignore[method-assign]
+        win.import_statement()
+        assert getattr(win, "reported", None) is None
+        # 50000 HUF off the wallet; 125.00 EUR (50000 / 400) onto Groceries.
+        assert win.register.item(0, 5).text() == "-50,000"
+        assert win.client.balance(book_id, groceries.id).balance.text == "125.00"
