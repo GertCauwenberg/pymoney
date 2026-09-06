@@ -186,7 +186,7 @@ jobs:
       # server alone -- no Qt -- and its coverage gate measures the server alone,
       # so nothing is skipped and nothing is missed.
       - name: Build test image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: server
           target: test
@@ -197,7 +197,7 @@ jobs:
       - name: Run the suite in the image
         run: docker run --rm pymoney:test
       - name: Build runtime image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: server
           target: runtime
