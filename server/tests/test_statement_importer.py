@@ -13,6 +13,7 @@ from fractions import Fraction
 
 import pytest
 
+from pymoney.core import AccountType, Amount
 from pymoney.core.posting import LegSpec
 from pymoney.importers.statement import (
     AmountKind,
@@ -535,3 +536,173 @@ class TestImport:
         )
         suggestion = suggest_for(chart.book, chart.checking, "TESCO STORES 12 LEEDS")
         assert suggestion.category_id == chart.groceries.id
+
+
+class TestForeignCurrency:
+    """A statement is in the account's currency, never the book's. Where the
+    category is held in another, the row is a conversion at the day's rate."""
+
+    def _csv(self) -> bytes:
+        return (
+            b"Date,Details,Amount\n"
+            b"2026-02-03,SPAR BUDAPEST,-50000\n"
+            b"2026-02-04,LIDL,-9000\n"
+        )
+
+    def test_a_foreign_account_posts_in_its_own_currency(self, chart: Chart):
+        # chart.usd_account is a USD wallet in a EUR book; chart.fuel is EUR.
+        chart.book.add_price(
+            chart.usd, chart.eur, "0.90", effective_date=date(2026, 2, 1)
+        )
+        entries, _, _ = _entries(
+            chart,
+            b"Date,Details,Amount\n2026-02-03,GAS STATION,-40.00\n",
+            account=chart.usd_account,
+        )
+        report = import_statement(
+            chart.book,
+            chart.usd_account,
+            entries,
+            {
+                entries[0].imported_id: RowDecision(
+                    row_key=entries[0].imported_id, category_id=chart.fuel.id
+                )
+            },
+        )
+        assert report.posted == 1 and report.ok
+        (row,) = chart.book.register(chart.usd_account.id)
+        assert row.quantity == Amount(chart.usd, -4000)  # 40 USD, not EUR
+        transaction = chart.book.transaction(row.transaction.id)
+        assert transaction.currency.id == chart.usd.id
+        # The EUR fuel leg was converted: 40 USD * 0.90 = 36 EUR.
+        fuel_leg = next(s for s in transaction.splits if s.account_id == chart.fuel.id)
+        assert fuel_leg.quantity == Amount(chart.eur, 3600)
+        assert fuel_leg.value == Amount(chart.usd, 4000)
+
+    def test_either_stored_direction_of_the_rate_works(self, chart: Chart):
+        # Only USD/EUR is stored; the importer must invert it for EUR legs.
+        chart.book.add_price(
+            chart.usd, chart.eur, "0.80", effective_date=date(2026, 2, 1)
+        )
+        entries, _, _ = _entries(
+            chart,
+            b"Date,Details,Amount\n2026-02-05,SHOP,-25.00\n",
+            account=chart.usd_account,
+        )
+        report = import_statement(
+            chart.book,
+            chart.usd_account,
+            entries,
+            {},
+            uncategorised_account_id=chart.fuel.id,
+        )
+        assert report.posted == 1 and report.ok
+        assert chart.book.balance(chart.fuel.id) == Amount(chart.eur, 2000)  # 25*0.8
+
+    def test_a_missing_rate_is_reported_not_fatal(self, chart: Chart):
+        # No USD<->EUR price anywhere. The EUR-category row cannot book; a
+        # row whose category happens to be USD still does.
+        usd_fuel = chart.book.add_account(
+            "Fuel USD", AccountType.EXPENSE, commodity=chart.usd
+        )
+        entries, _, _ = _entries(
+            chart,
+            self._csv().replace(b"-50000", b"-40.00").replace(b"-9000", b"-7.00"),
+            account=chart.usd_account,
+        )
+        report = import_statement(
+            chart.book,
+            chart.usd_account,
+            entries,
+            {
+                entries[0].imported_id: RowDecision(
+                    row_key=entries[0].imported_id, category_id=chart.fuel.id
+                ),
+                entries[1].imported_id: RowDecision(
+                    row_key=entries[1].imported_id, category_id=usd_fuel.id
+                ),
+            },
+        )
+        assert report.posted == 1 and not report.ok
+        (problem,) = report.errors
+        assert "EUR/USD price" in problem.message and "2026-02-03" in problem.message
+        assert chart.book.balance(usd_fuel.id) == Amount(chart.usd, 700)
+
+
+class TestMemo:
+    """A posted row keeps the bank's own wording: the description, if no memo
+    column is mapped; whatever memo columns are, if they are."""
+
+    def test_the_description_becomes_the_memo_by_default(self, chart: Chart):
+        csv = b"Date,Details,Amount\n2026-02-03,CORNER SHOP LEEDS,-4.20\n"
+        entries, _, _ = _entries(chart, csv)
+        assert entries[0].memo == "CORNER SHOP LEEDS"
+        import_statement(
+            chart.book,
+            chart.checking,
+            entries,
+            {
+                entries[0].imported_id: RowDecision(
+                    row_key=entries[0].imported_id, category_id=chart.groceries.id
+                )
+            },
+        )
+        (row,) = chart.book.register(chart.checking.id)
+        assert chart.book.transaction(row.transaction.id).memo == "CORNER SHOP LEEDS"
+
+    def test_a_mapped_memo_column_wins_and_feeds_matching_too(self, chart: Chart):
+        csv = b"Date,Merchant,Note,Amount\n2026-02-03,TESCO,weekly shop,-42.11\n"
+        mapping = ColumnMapping(
+            date="Date",
+            amount="Amount",
+            description=("Merchant",),
+            memo=("Merchant", "Note"),
+        )
+        read = read_csv(csv)
+        entries = entries_from_rows(
+            read.rows, mapping, account_id=chart.checking.id, columns=read.columns
+        )
+        assert entries[0].description == "TESCO"  # the payee matcher's text
+        assert entries[0].memo == "TESCO weekly shop"  # several columns joined
+
+    def test_a_memo_only_file_still_matches_payees(self, chart: Chart):
+        read = read_csv(b"Date,Memo,Amount\n2026-02-03,TESCO STORES 9,-5.00\n")
+        mapping = suggest_mapping(read)
+        # "Memo" is both the matched description and the stored memo.
+        assert mapping.description == ("Memo",)
+        entries = entries_from_rows(
+            read.rows, mapping, account_id=chart.checking.id, columns=read.columns
+        )
+        assert entries[0].description == entries[0].memo == "TESCO STORES 9"
+
+    def test_an_edited_memo_does_not_change_the_dedup_key(self, chart: Chart):
+        csv = b"Date,Details,Amount\n2026-02-03,MYSTERY,-1.00\n"
+        entries, _, _ = _entries(chart, csv)
+        key = entries[0].imported_id
+        import_statement(
+            chart.book,
+            chart.checking,
+            entries,
+            {
+                key: RowDecision(
+                    row_key=key, category_id=chart.fuel.id, memo="a clearer note"
+                )
+            },
+        )
+        (row,) = chart.book.register(chart.checking.id)
+        transaction = chart.book.transaction(row.transaction.id)
+        assert transaction.memo == "a clearer note"
+        assert transaction.imported_id == key  # the edit did not move the key
+
+    def test_a_hard_to_read_column_is_still_offered_as_the_description(
+        self, chart: Chart
+    ):
+        # Mostly reference codes, only a short merchant tag -- but better than
+        # leaving the reviewer a row with no text at all.
+        read = read_csv(
+            b"Date,Ref,Narrative,Amount\n"
+            b"2026-02-03,99112233,/TRTP/SEPA/NAME/ALBERT HEIJN,-18.40\n"
+            b"2026-02-04,99112234,/TRTP/SEPA/NAME/HEMA,-9.00\n"
+        )
+        mapping = suggest_mapping(read)
+        assert mapping.description == ("Narrative",)

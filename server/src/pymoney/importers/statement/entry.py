@@ -118,9 +118,15 @@ def entries_from_rows(
         line = index + 1 + mapping.skip_rows + (1 if mapping.has_header else 0)
         on = mapping.read_date(row, line=line)
         amount = mapping.read_amount(row, line=line)
-        description = mapping.read_text(row, mapping.description)
         reference = row.get(mapping.reference, "").strip() if mapping.reference else ""
-        memo = row.get(mapping.memo, "").strip() if mapping.memo else ""
+        # The two text roles stand in for each other: a file with one
+        # descriptive column, mapped to either, fills both -- so the payee
+        # matcher always has something to read, and every posted row keeps
+        # the bank's own wording even when nothing matched.
+        description_text = mapping.read_text(row, mapping.description)
+        memo_text = mapping.read_text(row, mapping.memo)
+        description = description_text or memo_text
+        memo = memo_text or description_text
 
         fingerprint = (on.isoformat(), f"{amount}", description)
         occurrence = seen[fingerprint]

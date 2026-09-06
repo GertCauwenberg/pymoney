@@ -105,13 +105,17 @@ class ColumnMapping:
     invert: bool = False
     """Flip every sign. For the rare export where a withdrawal is positive."""
     description: tuple[str, ...] = ()
-    """Columns joined for the text the payee heuristics match against."""
+    """Columns (joined with a space) for the text the payee heuristics match
+    against. Falls back to :attr:`memo` when left empty, so a file with one
+    text column need only be mapped once."""
     reference: str = ""
     """The bank's own unique id for the line, if it has one. When present it
     makes the deduplication key stable across overlapping downloads; without
     it, dedup falls back to (date, amount, description, order in the file)."""
-    memo: str = ""
-    """An extra column kept verbatim as the transaction's memo."""
+    memo: tuple[str, ...] = ()
+    """Columns (joined with a space) kept as the transaction's memo. Falls
+    back to :attr:`description` when left empty, so every row arrives with the
+    bank's own wording even when nothing matched a payee."""
     skip_rows: int = 0
     """Preamble lines above the data (or the header). Some banks print an
     account summary before the transactions."""
@@ -156,7 +160,7 @@ class ColumnMapping:
             self.debit,
             self.credit,
             self.reference,
-            self.memo,
+            *self.memo,
             *self.description,
         ]
         seen: list[str] = []
@@ -236,13 +240,16 @@ class ColumnMapping:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ColumnMapping:
         """Rebuild from :meth:`to_dict`, ignoring any key this version of the
-        class has since dropped (a forward-compatible round trip)."""
+        class has since dropped, and coercing a value stored under an older
+        shape (``memo`` used to be a single string)."""
         known = {f.name for f in fields(cls)}
         kwargs: dict[str, Any] = {}
         for name, value in data.items():
             if name not in known:
                 continue
-            if name == "description":
+            if name in ("description", "memo"):
+                if isinstance(value, str):
+                    value = [value] if value else []
                 kwargs[name] = tuple(value or ())
             elif name == "amount_kind":
                 kwargs[name] = AmountKind(value)

@@ -1307,7 +1307,10 @@ class ColumnMappingModel(In):
     )
     description: list[str] = Field(
         default_factory=list,
-        description="Columns joined into the text the payee matcher reads.",
+        description=(
+            "Columns joined into the text the payee matcher reads. Falls back "
+            "to `memo` when empty, so one text column need only be mapped once."
+        ),
     )
     reference: str = Field(
         default="",
@@ -1316,7 +1319,14 @@ class ColumnMappingModel(In):
             "duplicate detection is exact across overlapping downloads."
         ),
     )
-    memo: str = Field(default="", description="A column kept verbatim as the memo.")
+    memo: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Columns joined into the transaction's memo. Falls back to "
+            "`description` when empty, so every posted row keeps the bank's "
+            "own wording."
+        ),
+    )
     skip_rows: int = Field(
         default=0, ge=0, description="Preamble lines above the header."
     )
@@ -1336,7 +1346,7 @@ class ColumnMappingModel(In):
             invert=self.invert,
             description=tuple(self.description),
             reference=self.reference,
-            memo=self.memo,
+            memo=tuple(self.memo),
             skip_rows=self.skip_rows,
             has_header=self.has_header,
             delimiter=self.delimiter,

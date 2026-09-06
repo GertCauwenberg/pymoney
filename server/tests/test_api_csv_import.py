@@ -293,9 +293,25 @@ class TestRememberedMapping:
         assert saved["description"] == ["Details"]
 
     def test_a_mapping_can_be_saved_without_importing(self, imp: Importer):
-        mine = imp.suggested(EUROPEAN) | {"memo": "Omschrijving"}
+        mine = imp.suggested(EUROPEAN) | {"memo": ["Omschrijving"]}
         assert imp.put_mapping(mine).status_code == 200
-        assert imp.get_mapping().json()["memo"] == "Omschrijving"
+        assert imp.get_mapping().json()["memo"] == ["Omschrijving"]
+
+    def test_a_mapping_with_a_legacy_string_memo_still_loads(
+        self, imp: Importer, ledger: Ledger
+    ):
+        # Rows written by the first version of the feature kept `memo` as one
+        # string; the account's saved mapping must survive the upgrade.
+        from uuid import UUID
+
+        from pymoney.store import write_transaction
+        from pymoney.store.import_mappings import save_mapping
+
+        stored = imp.suggested(SIMPLE) | {"memo": "Details"}  # the old shape
+        engine = ledger.client.http.app.state.engine
+        with write_transaction(engine) as conn:
+            save_mapping(conn, UUID(ledger.book_id), UUID(ledger.checking), stored)
+        assert imp.get_mapping().json()["memo"] == ["Details"]
 
     def test_an_invalid_mapping_is_refused(self, imp: Importer):
         broken = imp.suggested(SIMPLE) | {"date": "", "amount": ""}
@@ -320,6 +336,71 @@ class TestRememberedMapping:
             ).json()
             is None
         )
+
+
+class TestForeignCurrency:
+    """Importing a statement from an account kept in a foreign currency."""
+
+    def _huf_book(self, api: Client) -> tuple[str, str, str, str]:
+        book_id = api.make_book("Travel", code="EUR")
+        huf = api.post(
+            f"/books/{book_id}/commodities",
+            json={"code": "HUF", "name": "Forint", "scale": 0},
+        ).json()["id"]
+        checking = api.account("HUF Account", "CHECKING", commodity_id=huf)
+        groceries = api.account("Groceries", "EXPENSE")  # EUR
+        misc = api.account("Uncategorised", "EXPENSE")  # EUR
+        return book_id, checking["id"], groceries["id"], misc["id"]
+
+    def test_the_transaction_is_in_the_account_currency_and_converted(self, api: Client):
+        api.register("traveller@example.invalid")
+        book_id, checking, groceries, _misc = self._huf_book(api)
+        api.post(
+            f"/books/{book_id}/prices",
+            json={
+                "base_id": _commodity(api, book_id, "EUR"),
+                "quote_id": _commodity(api, book_id, "HUF"),
+                "rate": "400",
+                "effective_date": "2026-02-01",
+            },
+        )
+        imp = Importer(api, book_id, checking)
+        csv = b"Date,Details,Amount\n2026-02-03,SPAR BUDAPEST VII,-50000\n"
+        mapping = imp.suggested(csv)
+        rows = imp.preview(csv, mapping).json()["proposals"]
+        assert rows[0]["amount"]["minor"] == -50000  # HUF, the bank's figure
+        assert rows[0]["amount"]["commodity"] == "HUF"
+        body = imp.commit(
+            csv,
+            mapping,
+            decisions=[{"row_key": rows[0]["row_key"], "category_id": groceries}],
+        ).json()
+        assert body["posted"] == 1 and body["ok"]
+        assert api.balance(checking)["text"] == "-50000"
+        # 50000 HUF at 400 HUF/EUR = 125.00 EUR on the grocery account.
+        assert api.balance(groceries)["minor"] == 12500
+
+    def test_a_missing_rate_is_reported_not_fatal(self, api: Client):
+        api.register("nofx@example.invalid")
+        book_id, checking, groceries, _misc = self._huf_book(api)
+        imp = Importer(api, book_id, checking)
+        csv = b"Date,Details,Amount\n2026-02-03,SPAR,-50000\n"
+        body = imp.commit(
+            csv,
+            imp.suggested(csv),
+            fallback=groceries,  # the EUR uncategorised bucket
+        ).json()
+        assert body["posted"] == 0 and not body["ok"]
+        assert "EUR/HUF price" in body["problems"][0]["message"]
+        assert "2026-02-03" in body["problems"][0]["message"]
+        # Its mapping was still remembered, so adding the price and re-importing
+        # is a one-click job.
+        assert imp.get_mapping().json()["date"] == "Date"
+
+
+def _commodity(api: Client, book_id: str, code: str) -> str:
+    found = api.get(f"/books/{book_id}/commodities").json()
+    return next(c["id"] for c in found if c["code"] == code)
 
 
 class TestDecisionContract:

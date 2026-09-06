@@ -207,18 +207,25 @@ def suggest_mapping(read: ReadResult) -> ColumnMapping:
 
     reference_col = by_hint(_REFERENCE_HINTS)
     memo_col = by_hint(_MEMO_HINTS)
-    used = {date_col, amount_col, debit_col, credit_col, reference_col, memo_col, ""}
+    numeric = {date_col, amount_col, debit_col, credit_col, ""}
+
     named = tuple(
         c
         for c in columns
-        if c not in used and c.strip().casefold() in set(_DESC_HINTS[0])
+        if c not in numeric
+        and c != reference_col
+        and c != memo_col
+        and c.strip().casefold() in set(_DESC_HINTS[0])
     )
-    description = named or _text_columns(columns, rows, exclude=used)
-    if not description and memo_col:
-        # A file whose only free text is headed "Memo" (or "Notes"): the
-        # payee heuristics need *something* to match against, so that column
-        # is the description and the memo stays empty.
-        description, memo_col = (memo_col,), ""
+    description = named or _text_columns(
+        columns, rows, exclude=numeric | {reference_col, memo_col}
+    )
+    memo: tuple[str, ...] = (memo_col,) if memo_col else ()
+    if not description and memo:
+        # A file whose only free text is headed "Memo" (or "Notes"): the payee
+        # matcher needs something to read, and the entry builder folds the two
+        # roles together anyway, so one column serves both.
+        description, memo = memo, ()
 
     return ColumnMapping(
         date=date_col or (columns[0] if columns else "1"),
@@ -230,7 +237,7 @@ def suggest_mapping(read: ReadResult) -> ColumnMapping:
         decimal=decimal,
         description=description,
         reference=reference_col,
-        memo=memo_col,
+        memo=memo,
         skip_rows=read.skip_rows,
         has_header=read.has_header,
         delimiter=read.delimiter,
@@ -426,6 +433,15 @@ def _text_columns(
     *,
     exclude: set[str],
 ) -> tuple[str, ...]:
+    """The column(s) most likely to carry the merchant / description text.
+
+    Scored by how many *letters* a value holds on average, so a column of
+    ``SEPA /9912/ ALBERT HEIJN`` beats a column of cheque numbers even though
+    both "have a letter". A second column is taken only when it is almost as
+    wordy as the first (banks that split the payee across two fields); and a
+    file with nothing obviously texty still gets its widest remaining column,
+    because an approximate memo beats a blank row to post against.
+    """
     scored: list[tuple[float, str]] = []
     for column in columns:
         if column in exclude or not column:
@@ -433,10 +449,14 @@ def _text_columns(
         values = _column_values(rows, column)
         if not values:
             continue
-        letters = sum(1 for v in values if any(ch.isalpha() for ch in v))
-        scored.append((letters / len(values), column))
+        letters = sum(sum(ch.isalpha() for ch in v) for v in values) / len(values)
+        scored.append((letters, column))
+    if not scored:
+        return ()
     scored.sort(key=lambda pair: (-pair[0], columns.index(pair[1])))
-    chosen = [column for share, column in scored if share >= 0.5][:2]
-    if chosen:
-        return tuple(chosen)
-    return (scored[0][1],) if scored else ()
+    top = scored[0]
+    chosen = [top[1]]
+    for letters, column in scored[1:]:
+        if letters >= max(3.0, top[0] * 0.6):
+            chosen.append(column)
+    return tuple(chosen[:2])

@@ -22,13 +22,17 @@ rest go in.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from enum import StrEnum
+from fractions import Fraction
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from ...core.account import Account
-from ...core.errors import PyMoneyError, ValidationError
+from ...core.commodity import Commodity
+from ...core.errors import NoPriceError, PyMoneyError, ValidationError
 from ...core.posting import LegSpec
+from ...core.price import ValuationPolicy
 from .entry import StatementEntry
 from .proposals import ProposalStatus, propose
 from .report import StatementReport
@@ -87,6 +91,45 @@ class _PayeePool:
         return payee.id
 
 
+@dataclass(slots=True)
+class _Rates:
+    """The rate each row needs to cross from a category's commodity into the
+    account's, looked up once per (pair, date) over the book's prices."""
+
+    book: Book
+    into: Commodity
+    _cache: dict[tuple[UUID, date], Fraction | None] = field(default_factory=dict)
+
+    def of(self, category_commodity: Commodity, on: date) -> Fraction:
+        """``category`` units per ``account`` unit, on or before ``on``.
+
+        The value a residual leg in ``category``'s commodity needs: the
+        booked account amount is in ``into``, and ``quantity = value / rate``.
+
+        :raises NoPriceError: naming the pair and the date, if the book holds
+            no usable rate -- exactly what to add under Prices and re-import.
+        """
+        if category_commodity.id == self.into.id:
+            raise AssertionError("a same-commodity leg needs no rate")
+        key = (category_commodity.id, on)
+        if key not in self._cache:
+            policy = ValuationPolicy(target=self.into, as_of=on)
+            try:
+                self._cache[key] = self.book.prices.rate(
+                    category_commodity, self.into, policy
+                )
+            except NoPriceError:
+                self._cache[key] = None
+        rate = self._cache[key]
+        if rate is None:
+            raise NoPriceError(
+                f"no {category_commodity.code}/{self.into.code} price on or "
+                f"before {on} (either direction is fine); add one under Prices "
+                f"and import the file again"
+            )
+        return rate
+
+
 def import_statement(
     book: Book,
     account: Account,
@@ -105,6 +148,14 @@ def import_statement(
         no chosen category goes. Required if any such row is to be posted;
         those transactions are counted as ``uncategorised`` in the report so
         the household can finish them off in the register.
+
+    Every transaction is denominated in ``account``'s own commodity -- a bank
+    reports in the account's currency, never the book's. When a category is
+    held in a different commodity (a EUR grocery account paid from a HUF
+    current account), the transaction is a genuine conversion: the rate comes
+    from the book's prices for the statement date, either stored direction,
+    triangulated if need be. A row for which no rate exists is reported, not
+    fatal -- add the price and import the file again.
     """
     report = StatementReport(
         account_id=account.id,
@@ -114,6 +165,7 @@ def import_statement(
     )
     proposals = {p.entry.imported_id: p for p in propose(book, account, entries)}
     pool = _PayeePool(book)
+    rates = _Rates(book, account.commodity)
 
     with book.bulk():
         for entry in entries:
@@ -145,6 +197,7 @@ def import_statement(
                 entry,
                 decision,
                 pool,
+                rates,
                 report,
                 proposal_status=proposal.status,
                 uncategorised_account_id=uncategorised_account_id,
@@ -170,6 +223,7 @@ def _post(
     entry: StatementEntry,
     decision: RowDecision,
     pool: _PayeePool,
+    rates: _Rates,
     report: StatementReport,
     *,
     proposal_status: ProposalStatus,
@@ -187,13 +241,20 @@ def _post(
                 "no category, and no account was given to collect uncategorised rows"
             )
 
-        legs = [
-            LegSpec.of(account.id, entry.amount),
-            LegSpec(account_id=category_id),
-        ]
+        currency = account.commodity
+        category_commodity = book.account(category_id).commodity
+        residual = LegSpec(account_id=category_id)
+        if category_commodity.id != currency.id:
+            # A cross-currency row: the other leg is in the category's
+            # commodity and needs the statement day's rate to be booked.
+            residual = LegSpec(
+                account_id=category_id,
+                price=rates.of(category_commodity, entry.date),
+            )
         transaction = book.post(
             entry.date,
-            legs,
+            [LegSpec.of(account.id, entry.amount), residual],
+            currency=currency.id,
             memo=decision.memo.strip() or entry.memo,
             payee_id=payee_id,
             number=entry.reference[:_NUMBER_MAX],
