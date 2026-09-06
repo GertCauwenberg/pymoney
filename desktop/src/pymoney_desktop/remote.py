@@ -26,8 +26,12 @@ from pymoney.api.schemas import (
     BalanceSheetOut,
     BookIn,
     BookOut,
+    ColumnMappingModel,
     CommodityOut,
+    CsvInspectOut,
+    CsvPreviewOut,
     HoldingsOut,
+    ImportDecisionIn,
     IncomeStatementOut,
     NetWorthSeriesOut,
     PayeeIn,
@@ -37,6 +41,7 @@ from pymoney.api.schemas import (
     RegisterPage,
     ReportInterval,
     SessionOut,
+    StatementImportOut,
     TransactionIn,
     TransactionOut,
     TransactionSearchOut,
@@ -44,6 +49,7 @@ from pymoney.api.schemas import (
     UserOut,
 )
 
+from . import statement_import
 from .client import (
     ApiError,
     ConnectionStatus,
@@ -454,6 +460,73 @@ class RemoteClient(LedgerClient):
         )
         self._written(book_id)
         return AccountOut.model_validate(payload)
+
+    # -- CSV statement import --------------------------------------------------------
+    def inspect_csv(self, book_id: UUID, data: bytes) -> CsvInspectOut:
+        return statement_import.inspect_csv(self._guarded(), book_id, data)
+
+    def preview_csv(
+        self,
+        book_id: UUID,
+        account_id: UUID,
+        data: bytes,
+        mapping: ColumnMappingModel,
+    ) -> CsvPreviewOut:
+        return statement_import.preview_csv(
+            self._guarded(), book_id, account_id, data, mapping
+        )
+
+    def commit_csv(
+        self,
+        book_id: UUID,
+        account_id: UUID,
+        data: bytes,
+        mapping: ColumnMappingModel,
+        decisions: list[ImportDecisionIn],
+        *,
+        uncategorised_account_id: UUID | None = None,
+    ) -> StatementImportOut:
+        report = statement_import.commit_csv(
+            self._guarded(),
+            book_id,
+            account_id,
+            data,
+            mapping,
+            decisions,
+            uncategorised_account_id=uncategorised_account_id,
+        )
+        self._written(book_id)  # transactions (and maybe payees) were posted
+        return report
+
+    def import_mapping(
+        self, book_id: UUID, account_id: UUID
+    ) -> ColumnMappingModel | None:
+        return statement_import.import_mapping(self._guarded(), book_id, account_id)
+
+    def save_import_mapping(
+        self, book_id: UUID, account_id: UUID, mapping: ColumnMappingModel
+    ) -> ColumnMappingModel:
+        return statement_import.save_import_mapping(
+            self._guarded(), book_id, account_id, mapping
+        )
+
+    def _guarded(self) -> Transport:
+        """The transport, wrapped so a dropped connection flips to offline and
+        a server error reads as it does everywhere else in this client."""
+
+        def transport(method, path, body=None, headers=None, *, files=None):
+            try:
+                status, result_headers, payload = self._transport(
+                    method, path, body, headers or {}, files=files
+                )
+            except OfflineError as exc:
+                self._online, self._last_error = False, str(exc)
+                raise
+            self._online, self._last_error = True, None
+            self._last_sync = datetime.now(timezone.utc)
+            return status, result_headers, payload
+
+        return transport
 
     # -- connection --------------------------------------------------------------------
     def status(self) -> ConnectionStatus:

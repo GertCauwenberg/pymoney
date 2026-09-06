@@ -203,6 +203,12 @@ class MainWindow(QMainWindow):
         )
         self.reconcile_button.clicked.connect(self.reconcile_account)
         bar.addWidget(self.reconcile_button)
+        self.import_button = QPushButton(_("Import CSV…"))
+        self.import_button.setToolTip(
+            _("Bring a bank statement into this account: map the columns, review, post")
+        )
+        self.import_button.clicked.connect(self.import_statement)
+        bar.addWidget(self.import_button)
         self.search_button = QPushButton(_("Search…"))
         self.search_button.setShortcut(QKeySequence.StandardKey.Find)
         self.search_button.setToolTip(
@@ -517,6 +523,27 @@ class MainWindow(QMainWindow):
             self._failed(_("Could not reconcile")),
         )
 
+    def import_statement(self) -> None:
+        """Bring a bank statement (CSV) into the selected account."""
+        account = self.current_account
+        if account is None or self.book is None or not self._can_write():
+            return
+        from .import_dialog import ImportStatementDialog
+
+        dialog = ImportStatementDialog(
+            self.client,
+            self.book.id,
+            account,
+            self.accounts,
+            self.payees,
+            executor=self.executor,
+            parent=self,
+        )
+        self.run_dialog(dialog)
+        if dialog.report is not None:
+            # Payees may be new, and N transactions are in: reload either way.
+            self._reload_book()
+
     # -- search -------------------------------------------------------------------------
     def open_search(self) -> QMainWindow | None:
         """The search window for the current book; one at a time, brought to the front."""
@@ -603,11 +630,13 @@ class MainWindow(QMainWindow):
         self.mark_button.setEnabled(writable and selected and not frozen)
         # FROZEN has no way back, so it is the owner's alone (the server checks too).
         self.mark_actions["FROZEN"].setVisible(self._is_owner())
-        self.reconcile_button.setEnabled(
+        on_postable_account = (
             writable
             and self.current_account is not None
             and not self.current_account.placeholder
         )
+        self.reconcile_button.setEnabled(on_postable_account)
+        self.import_button.setEnabled(on_postable_account)
 
     def _selected_row(self) -> RegisterRowOut | None:
         index = self.register.currentRow()

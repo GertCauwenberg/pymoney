@@ -1,27 +1,50 @@
-"""HTTP, reduced to one function, so both clients and every test share it.
+"""HTTP, reduced to one call, so both clients and every test share it.
 
-A :data:`Transport` takes ``(method, path, json_body, headers)`` and returns
-``(status, headers, parsed_body)``. The default is urllib against a base URL
-with a bearer token; tests hand in FastAPI's ``TestClient`` wrapped the same way,
-so the clients are tested against the real API without a socket.
+A :class:`Transport` takes ``(method, path, json_body, headers)`` and returns
+``(status, headers, parsed_body)``. A statement upload is the one thing that is
+not JSON, so the call also accepts ``files=`` -- a mapping of form field to
+``(filename, bytes, content-type)`` -- and then sends ``body`` as the string
+form fields alongside. Everything else passes ``files=None`` and does not
+notice.
+
+The default is urllib against a base URL with a bearer token; tests hand in
+FastAPI's ``TestClient`` wrapped the same way, so the clients are exercised
+against the real API without a socket.
 """
 
 from __future__ import annotations
 
 import json
+import secrets
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Mapping
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, Protocol
 
 from .client import ApiError, OfflineError
 
-__all__ = ["Response", "Transport", "UrllibTransport", "raise_for_problem"]
+__all__ = ["FilePart", "Response", "Transport", "UrllibTransport", "raise_for_problem"]
 
 Response = tuple[int, Mapping[str, str], Any]
-Transport = Callable[[str, str, Any, Mapping[str, str]], Response]
+FilePart = tuple[str, bytes, str]
+"""``(filename, content, content-type)`` for one part of a multipart upload."""
 
-TIMEOUT = 15.0
+TIMEOUT = 30.0
+
+
+class Transport(Protocol):
+    """How a client talks to the server. One call; JSON in, JSON out -- unless
+    ``files`` is given, and then the body is the string form fields."""
+
+    def __call__(
+        self,
+        method: str,
+        path: str,
+        body: Any = None,
+        headers: Mapping[str, str] = {},
+        *,
+        files: Mapping[str, FilePart] | None = None,
+    ) -> Response: ...
 
 
 def raise_for_problem(status: int, body: Any) -> None:
@@ -48,6 +71,27 @@ def raise_for_problem(status: int, body: Any) -> None:
     raise ApiError(status, type_, message)
 
 
+def encode_multipart(
+    fields: Mapping[str, str], files: Mapping[str, FilePart]
+) -> tuple[bytes, str]:
+    """A ``multipart/form-data`` body and its ``Content-Type`` header value."""
+    boundary = f"----pymoney{secrets.token_hex(16)}"
+    out = bytearray()
+    for name, value in fields.items():
+        out += f"--{boundary}\r\n".encode()
+        out += f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode()
+        out += value.encode("utf-8") + b"\r\n"
+    for name, (filename, content, content_type) in files.items():
+        out += f"--{boundary}\r\n".encode()
+        out += (
+            f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'
+        ).encode()
+        out += f"Content-Type: {content_type}\r\n\r\n".encode()
+        out += content + b"\r\n"
+    out += f"--{boundary}--\r\n".encode()
+    return bytes(out), f"multipart/form-data; boundary={boundary}"
+
+
 class UrllibTransport:
     """The real thing: a base URL and, once logged in, a bearer token."""
 
@@ -57,11 +101,22 @@ class UrllibTransport:
         self.token: str | None = None
 
     def __call__(
-        self, method: str, path: str, body: Any, headers: Mapping[str, str]
+        self,
+        method: str,
+        path: str,
+        body: Any = None,
+        headers: Mapping[str, str] = {},
+        *,
+        files: Mapping[str, FilePart] | None = None,
     ) -> Response:
-        data = None if body is None else json.dumps(body).encode("utf-8")
         sent = {"Accept": "application/json", **headers}
-        if data is not None:
+        if files is not None:
+            data, content_type = encode_multipart(dict(body or {}), files)
+            sent["Content-Type"] = content_type
+        elif body is None:
+            data = None
+        else:
+            data = json.dumps(body).encode("utf-8")
             sent["Content-Type"] = "application/json"
         if self.token:
             sent["Authorization"] = f"Bearer {self.token}"

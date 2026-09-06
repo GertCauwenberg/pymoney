@@ -35,8 +35,12 @@ from pymoney.api.schemas import (
     BalanceSheetOut,
     BookIn,
     BookOut,
+    ColumnMappingModel,
     CommodityOut,
+    CsvInspectOut,
+    CsvPreviewOut,
     HoldingsOut,
+    ImportDecisionIn,
     IncomeStatementOut,
     NetWorthSeriesOut,
     PayeeIn,
@@ -45,6 +49,7 @@ from pymoney.api.schemas import (
     ReconcileStateName,
     RegisterPage,
     ReportInterval,
+    StatementImportOut,
     TransactionIn,
     TransactionOut,
     TransactionSearchOut,
@@ -321,6 +326,54 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def create_account(self, book_id: UUID, body: AccountIn) -> AccountOut: ...
+
+    # -- CSV statement import ----------------------------------------------
+    #
+    # The whole flow goes to the server: the duplicate and transfer checks
+    # want the book as the server sees it, not a replica a write behind. Like
+    # creating a book, it needs the connection -- offline, every one of these
+    # raises OfflineError.
+    @abstractmethod
+    def inspect_csv(self, book_id: UUID, data: bytes) -> CsvInspectOut:
+        """Read an uploaded statement: its columns, sample rows, a suggested
+        mapping. Needs the server."""
+
+    @abstractmethod
+    def preview_csv(
+        self,
+        book_id: UUID,
+        account_id: UUID,
+        data: bytes,
+        mapping: ColumnMappingModel,
+    ) -> CsvPreviewOut:
+        """Classify every row of the statement -- new, duplicate, transfer --
+        with a suggested payee and category. Writes nothing."""
+
+    @abstractmethod
+    def commit_csv(
+        self,
+        book_id: UUID,
+        account_id: UUID,
+        data: bytes,
+        mapping: ColumnMappingModel,
+        decisions: list[ImportDecisionIn],
+        *,
+        uncategorised_account_id: UUID | None = None,
+    ) -> StatementImportOut:
+        """Post the reviewed statement in one unit of work; the column mapping
+        is remembered for this account."""
+
+    @abstractmethod
+    def import_mapping(
+        self, book_id: UUID, account_id: UUID
+    ) -> ColumnMappingModel | None:
+        """The mapping last used for this account, or None if never imported to."""
+
+    @abstractmethod
+    def save_import_mapping(
+        self, book_id: UUID, account_id: UUID, mapping: ColumnMappingModel
+    ) -> ColumnMappingModel:
+        """Remember a mapping without importing in the same breath."""
 
     # -- connection ----------------------------------------------------------
     @abstractmethod

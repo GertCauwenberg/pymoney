@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 import pytest
 from pymoney.api.schemas import (
     AccountIn,
+    ImportDecisionIn,
     PayeeIn,
     TransactionIn,
     TransactionUpdateIn,
@@ -48,13 +49,26 @@ class InProcessTransport:
         # Fail *after* the server has acted, once: the dropped-ack case.
         self.drop_ack_once = False
 
-    def __call__(self, method: str, path: str, body: Any, headers: Mapping[str, str]):
+    def __call__(
+        self,
+        method: str,
+        path: str,
+        body: Any = None,
+        headers: Mapping[str, str] = {},
+        *,
+        files: Mapping[str, tuple[str, bytes, str]] | None = None,
+    ):
         if not self.plugged:
             raise OfflineError("unplugged")
         sent = dict(headers)
         if self.token:
             sent["Authorization"] = f"Bearer {self.token}"
-        response = self.http.request(method, path, json=body, headers=sent)
+        if files is not None:
+            response = self.http.request(
+                method, path, data=dict(body or {}), files=dict(files), headers=sent
+            )
+        else:
+            response = self.http.request(method, path, json=body, headers=sent)
         self.http.cookies.clear()
         self.calls.append((method, path))
         if self.drop_ack_once and method != "GET":
@@ -473,6 +487,87 @@ class TestOffline:
         client.close()
 
 
+CSV = (
+    b"Date,Details,Amount\n"
+    b"2026-02-03,TESCO STORES 7 LEEDS,-42.11\n"
+    b"2026-02-04,A NEW CAFE,-3.80\n"
+)
+
+
+@pytest.mark.parametrize("kind", ["remote", "offline"])
+class TestCsvImport:
+    """The statement import always runs against the server -- the duplicate
+    and transfer checks need the book as the server holds it -- so both
+    clients go the same way, and offline it surfaces as an OfflineError."""
+
+    def _ready(self, server, tmp_path, kind):
+        api, book_id, checking, food = server
+        client, transport = make_client(kind, api.http, tmp_path)
+        client.login(EMAIL, PASSWORD)
+        client.accounts(book_id)  # the offline client pulls its replica here
+        return client, transport, book_id, checking, food
+
+    def test_inspect_preview_commit(self, server, tmp_path, kind):
+        client, _transport, book_id, checking, food = self._ready(server, tmp_path, kind)
+        try:
+            inspect = client.inspect_csv(book_id, CSV)
+            assert inspect.columns == ["Date", "Details", "Amount"]
+            mapping = inspect.suggested_mapping
+            assert mapping.date == "Date" and mapping.amount == "Amount"
+
+            preview = client.preview_csv(book_id, checking, CSV, mapping)
+            assert [p.status for p in preview.proposals] == ["new", "new"]
+
+            decisions = [
+                ImportDecisionIn(row_key=p.row_key, category_id=food)
+                for p in preview.proposals
+            ]
+            report = client.commit_csv(
+                book_id,
+                checking,
+                CSV,
+                mapping,
+                decisions,
+                uncategorised_account_id=food,
+            )
+            assert report.posted == 2 and report.ok
+            assert client.balance(book_id, checking).balance.minor == -4591
+            # The replica (offline) caught up without a manual sync.
+            register = client.register(book_id, checking)
+            assert len(register.items) == 2
+
+            # Re-importing the same file adds nothing.
+            again = client.commit_csv(book_id, checking, CSV, mapping, decisions)
+            assert again.posted == 0 and again.skipped_duplicates == 2
+        finally:
+            client.close()
+
+    def test_the_mapping_is_remembered(self, server, tmp_path, kind):
+        client, _transport, book_id, checking, _food = self._ready(server, tmp_path, kind)
+        try:
+            assert client.import_mapping(book_id, checking) is None
+            mine = client.inspect_csv(book_id, CSV).suggested_mapping
+            saved = client.save_import_mapping(book_id, checking, mine)
+            assert saved.date == "Date"
+            assert client.import_mapping(book_id, checking) == saved
+        finally:
+            client.close()
+
+    def test_offline_it_needs_the_server(self, server, tmp_path, kind):
+        if kind != "offline":
+            pytest.skip("the remote client is always online or nothing")
+        client, transport, book_id, checking, _food = self._ready(server, tmp_path, kind)
+        try:
+            transport.plugged = False
+            with pytest.raises(OfflineError):
+                client.inspect_csv(book_id, CSV)
+            with pytest.raises(OfflineError):
+                client.import_mapping(book_id, checking)
+            assert client.status().online is False
+        finally:
+            client.close()
+
+
 def test_new_ids_are_client_chosen_and_stable(server, tmp_path):
     """The replica's row and the server's are the same row."""
     api, book_id, checking, food = server
@@ -525,12 +620,18 @@ class TestUrllibTransport:
 
             def do_POST(self):
                 length = int(self.headers.get("Content-Length", "0"))
-                seen.append(
-                    {
-                        "path": self.path,
-                        "body": json.loads(self.rfile.read(length) or b"null"),
-                    }
-                )
+                raw = self.rfile.read(length)
+                content_type = self.headers.get("Content-Type", "")
+                if content_type.startswith("multipart/form-data"):
+                    seen.append(
+                        {
+                            "path": self.path,
+                            "content_type": content_type,
+                            "multipart": raw,
+                        }
+                    )
+                else:
+                    seen.append({"path": self.path, "body": json.loads(raw or b"null")})
                 self.send_response(204)
                 self.end_headers()
 
@@ -561,6 +662,26 @@ class TestUrllibTransport:
         assert seen[-1]["body"] == {"a": "1.50"}
         status, _, body = transport("GET", "/missing", None, {})
         assert status == 404 and body["error"]["type"] == "NotFoundError"
+
+    def test_a_multipart_upload(self, server_url):
+        from pymoney_desktop.transport import UrllibTransport
+
+        url, seen = server_url
+        transport = UrllibTransport(url)
+        status, _, _ = transport(
+            "POST",
+            "/import",
+            {"mapping": '{"date":"Date"}'},
+            {},
+            files={"file": ("statement.csv", b"Date\n2026-01-01\n", "text/csv")},
+        )
+        assert status == 204
+        sent = seen[-1]
+        assert sent["content_type"].startswith("multipart/form-data; boundary=")
+        assert b'name="mapping"' in sent["multipart"]
+        assert b'{"date":"Date"}' in sent["multipart"]
+        assert b'filename="statement.csv"' in sent["multipart"]
+        assert b"2026-01-01" in sent["multipart"]
 
     def test_an_unreachable_server_is_offline(self):
         from pymoney_desktop.transport import UrllibTransport

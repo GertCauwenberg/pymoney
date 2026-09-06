@@ -58,8 +58,12 @@ from pymoney.api.schemas import (
     BalanceSheetOut,
     BookIn,
     BookOut,
+    ColumnMappingModel,
     CommodityOut,
+    CsvInspectOut,
+    CsvPreviewOut,
     HoldingsOut,
+    ImportDecisionIn,
     IncomeStatementOut,
     NetWorthSeriesOut,
     PayeeIn,
@@ -71,6 +75,7 @@ from pymoney.api.schemas import (
     ReportInterval,
     SessionOut,
     SetSplitStateIn,
+    StatementImportOut,
     SyncPageOut,
     TransactionIn,
     TransactionOut,
@@ -104,6 +109,7 @@ from pymoney.store.types import Uuid
 from sqlalchemy import Column, Integer, MetaData, String, Table, Text, delete, select
 from sqlalchemy.engine import Engine
 
+from . import statement_import
 from .client import (
     ApiError,
     ConnectionStatus,
@@ -808,6 +814,80 @@ class OfflineClient(LedgerClient):
             ),
         )
         return AccountOut.of(entity, self._book(book_id).path(entity.id))
+
+    # ======================================================================
+    # CSV statement import -- the server's job, even offline
+    # ======================================================================
+    # A statement goes straight to the server: the duplicate and transfer
+    # detection is only right against the book the server holds, and the
+    # outbox is the wrong tool for a hundred transactions that should stand or
+    # fall together. So, like create_book, these need the connection; the
+    # transport raising OfflineError is the "come back online" message.
+    def _net(self) -> Transport:
+        def transport(method, path, body=None, headers=None, *, files=None):
+            try:
+                result = self._transport(method, path, body, headers or {}, files=files)
+            except OfflineError as exc:
+                self._online, self._last_error = False, str(exc)
+                raise
+            self._online = True
+            return result
+
+        return transport
+
+    def inspect_csv(self, book_id: UUID, data: bytes) -> CsvInspectOut:
+        return statement_import.inspect_csv(self._net(), book_id, data)
+
+    def preview_csv(
+        self,
+        book_id: UUID,
+        account_id: UUID,
+        data: bytes,
+        mapping: ColumnMappingModel,
+    ) -> CsvPreviewOut:
+        return statement_import.preview_csv(
+            self._net(), book_id, account_id, data, mapping
+        )
+
+    def commit_csv(
+        self,
+        book_id: UUID,
+        account_id: UUID,
+        data: bytes,
+        mapping: ColumnMappingModel,
+        decisions: list[ImportDecisionIn],
+        *,
+        uncategorised_account_id: UUID | None = None,
+    ) -> StatementImportOut:
+        report = statement_import.commit_csv(
+            self._net(),
+            book_id,
+            account_id,
+            data,
+            mapping,
+            decisions,
+            uncategorised_account_id=uncategorised_account_id,
+        )
+        # The server has the new transactions; bring the replica level so the
+        # register shows them without a manual sync.
+        try:
+            self._pull(book_id)
+            self._last_sync = self._clock.now()
+        except OfflineError:  # pragma: no cover - it answered the upload
+            pass
+        return report
+
+    def import_mapping(
+        self, book_id: UUID, account_id: UUID
+    ) -> ColumnMappingModel | None:
+        return statement_import.import_mapping(self._net(), book_id, account_id)
+
+    def save_import_mapping(
+        self, book_id: UUID, account_id: UUID, mapping: ColumnMappingModel
+    ) -> ColumnMappingModel:
+        return statement_import.save_import_mapping(
+            self._net(), book_id, account_id, mapping
+        )
 
     # ======================================================================
     # sync
