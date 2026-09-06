@@ -265,14 +265,14 @@ function MappingStep({
   return (
     <section className="card import-mapping">
       <p className="muted">
-        {t("Tell PyMoney which column is which. It has guessed; correct anything it got wrong.")}
+        {t("Tell PyMoney which column is which. It has guessed; adjust anything it got wrong.")}
       </p>
       {preview.error && <ErrorBanner error={preview.error} title={t("That mapping does not fit the file")} />}
 
       <div className="import-mapping__grid">
         <Field label={t("Date")}>{columnSelect(draft.date, (date) => set({ date }), false)}</Field>
         <Field label={t("Date format")} hint={t("Leave blank to detect it; or e.g. %d/%m/%Y.")}>
-          <input value={draft.date_format} onChange={(e) => set({ date_format: e.target.value })} placeholder={t("auto")} />
+          <input value={draft.date_format} onChange={(e) => set({ date_format: e.target.value })} placeholder={t("auto-detect")} />
         </Field>
 
         <Field label={t("Amount")} hint={t("One signed column, or a money-out and a money-in column.")}>
@@ -286,7 +286,7 @@ function MappingStep({
               )
             }
           >
-            <option value="signed">{t("One column, signed")}</option>
+            <option value="signed">{t("One signed column")}</option>
             <option value="debit_credit">{t("Separate out / in columns")}</option>
           </select>
         </Field>
@@ -326,7 +326,7 @@ function MappingStep({
 
       <div className="actions">
         <button type="button" className="btn btn--primary" onClick={go} disabled={preview.isPending || !draft.date}>
-          {preview.isPending ? t("Checking…") : t("Review the transactions")}
+          {preview.isPending ? t("Checking…") : t("Review transactions")}
         </button>
         <button type="button" className="btn btn--link" onClick={onBack} disabled={preview.isPending}>
           {t("Choose another file")}
@@ -481,7 +481,7 @@ function ReviewStep({
     <section className="card import-review">
       <p className="muted">
         {t("{new} new, {duplicate} already imported, {transfer} transfers.", counts)}{" "}
-        {t("Everything but the date and the amount is editable. Clear a payee to leave it blank.")}
+        {t("Everything but the date and the amount is editable.")}
       </p>
       {commit.error && <ErrorBanner error={commit.error} title={t("The import was refused")} />}
 
@@ -588,7 +588,7 @@ function ReviewStep({
             : t("Import {n} transaction(s)", { n: toPost.length })}
         </button>
         <button type="button" className="btn btn--link" onClick={onBack} disabled={commit.isPending}>
-          {t("Back to the columns")}
+          {t("Back")}
         </button>
       </div>
     </section>

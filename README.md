@@ -67,12 +67,20 @@ quotes/                           price quotes
     scheduler.py    the periodic thread inside the API process
     __main__.py     the command line, for cron and backfills
 
-importers/kmymoney/               migration from KMyMoney
+importers/kmymoney/               migration from KMyMoney (once)
     model.py        the file's own structures, unintepreted
     parser.py       .kmy reading: gzip, XML, streamed transactions
     importer.py     model -> book, including the rounding reconciliation
     report.py       what was done, approximated, and skipped
     __main__.py     the command line
+
+importers/statement/              bank statements (CSV), every week
+    mapping.py      which column is which; lenient, exact value parsing
+    source.py       sniff the delimiter, header and preamble; suggest a mapping
+    entry.py        a mapping applied: canonical rows, each with its dedup key
+    matching.py     payee + category from the description; the new-payee guess
+    proposals.py    new / duplicate / transfer, read-only, for the review screen
+    commit.py       the reviewed rows, posted in one book.bulk()
 
 api/                              the HTTP API
     schemas.py      wire models, deliberately not the domain objects
@@ -368,6 +376,76 @@ what `book.bulk()`'s per-command savepoints are for. A second import of the same
 file is refused up front, before anything is created, on the strength of the
 `imported_id` prefix.
 
+## Importing bank statements (CSV)
+
+The KMyMoney importer is the one-time migration. The other half of a real book
+is getting *next week's* download in, into an account that already has a
+history, a chart of accounts and a list of payees to reconcile it against.
+`pymoney.importers.statement` does that, and both clients have it — the web
+app's **Import CSV** on a register, the desktop's toolbar button.
+
+**Every bank's CSV is different, so the mapping is the feature.** Which column
+is the date, which is the amount (one signed column, or separate debit and
+credit), whether it is written `1,234.56` or `1.234,56`, how many summary lines
+sit above the header. The server sniffs all of it and *suggests* a mapping; the
+user confirms it once, and it is [remembered per account](#the-remembered-mapping)
+so the next download opens straight on the review screen. A grouping mark on
+the wrong side of the decimal point — the commonest way an import goes quietly
+100× wrong — is refused, not read.
+
+**Nothing is posted without a review.** Each row comes back classified:
+
+| | |
+|---|---|
+| **new** | not seen before — post it |
+| **duplicate** | a transaction with this row's dedup key is already in the book (an overlapping download), *or* one in this account with the same amount on the same day (you typed it in before the statement arrived) |
+| **transfer** | the mirror image is already recorded against another of your own cash accounts, and posting this would count the money twice |
+
+Duplicates and recorded transfers default to *skip*; the rest to *post*, with a
+proposed payee and category the reviewer can override per row. The guesses
+follow the order the domain's `Payee` was built for — `match_keys` and
+`default_account_id` have carried a comment about import matching since before
+there was an importer. A `match_keys` hit picks the payee; its
+`default_account_id`, or failing that the category it was last filed under,
+picks the account; no match at all offers a cleaned-up name (`"POS TESCO
+STORES 2243 LEEDS GB"` → *Tesco Stores 2243 Leeds*) as a new payee. The commit
+re-classifies under the book's lock — the
+far side of a transfer may have posted in another tab since the preview — and
+writes the lot in one `book.bulk()`: all-or-nothing against the database, a
+malformed row reported rather than fatal, N rows naming the same new payee
+creating one payee.
+
+**Duplicate detection is the load-bearing promise.** The dedup key is a
+`csv:`-prefixed hash (distinct from the KMyMoney importer's `kmm:`), carried
+into the transaction's `imported_id` where the domain's
+`uq_transactions_book_id_imported_id` constraint enforces it. Where the bank
+gives each line its own reference number — map that column — overlapping
+downloads are free. Without one, the key falls back to (date, amount,
+description, order in the file): exact for a clean re-import, best-effort for a
+download whose window overlaps the last. Re-importing the same file posts
+nothing and does not burn a revision.
+
+**The upload, three times.** `inspect` → `preview` → `commit` are three
+stateless calls; the file is uploaded each time. There is no half-built import
+for the server to keep alive between requests, and a reviewer's decision can
+only steer the soft fields — the date and the amount are the bank's, not
+theirs. The desktop's offline client sends all three straight to the server
+(the duplicate and transfer checks need the book the server holds, not a
+replica a write behind), so importing a statement needs the connection exactly
+as creating a book does.
+
+### The remembered mapping
+
+`import_mappings` is a table beside `command_results`: one row per account,
+holding the last `ColumnMapping` used. Like the idempotency record it is not
+part of the ledger — never synced, never in the change log, a book with none
+behaves exactly as one with them — so it lives in `pymoney.store`, managed
+through three functions (`get` / `save` / `forget`) rather than a command. A
+successful import saves the mapping it used; `GET`/`PUT
+/accounts/{id}/import-mapping` reads and writes it directly, for a mapping
+built or fixed without importing in the same breath. Deleting the account
+forgets it, since nothing else refers to it.
+
 ## The HTTP API
 
 ```bash
@@ -585,9 +663,9 @@ report hands back the `Conversion` objects it used.
 ## Deliberately not here yet
 
 Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
-is the naive value-column sum) · budgets · loan amortisation · importers other
-than KMyMoney (OFX, CSV) · attachments · tags · the desktop app's account,
-payee and commodity management (the web app has them under **Settings**; see
+is the naive value-column sum) · budgets · loan amortisation · other import
+formats (OFX, QIF) · attachments · tags · the desktop app's account, payee and
+commodity management (the web app has them under **Settings**; see
 [The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
@@ -684,7 +762,10 @@ tree with balances, registers (with the reconciliation column), posting, editing
 and deleting transactions with payees created on the spot, search (Ctrl+F),
 reconciliation (**Mark** for one row, **Reconcile…** to tick a whole statement
 and mark it in one command; FROZEN offered to owners only, as on the web, and
-queued and replayed like every other write when offline), and under **Reports** the balance sheet, income
+queued and replayed like every other write when offline), **Import CSV…** for a
+bank statement (the same stacked wizard as the web app; like creating a book it
+needs the connection, since the duplicate and transfer checks run against the
+book the server holds), and under **Reports** the balance sheet, income
 statement and holdings with the same options as on the web (valuation date or
 period presets, reporting currency, closed accounts, strict mode, the rates used
 and what could not be valued, CSV export with the same columns) -- and one thing
@@ -771,7 +852,9 @@ spreadsheet view of income and expenses per month, quarter or year -- all drawn
 from the same report payloads, in plain SVG, with a legend or table a reader
 without the picture can use), drill-down from any report row to the account's register and
 from any register row to the transaction, and -- by role -- posting, editing and
-deleting transactions with payees created on the spot, and under **Settings**:
+deleting transactions with payees created on the spot, **Import CSV** on any
+register (the four-step wizard of [Importing bank statements](#importing-bank-statements-csv):
+file, columns, review, report), and under **Settings**:
 payees (add, edit, merge duplicates, delete the unused), commodities and prices,
 and fetching quotes (editors), the chart of accounts and sharing (owners), and
 the book's **History** -- who changed what, and when; a transaction page shows

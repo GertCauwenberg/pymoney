@@ -322,6 +322,33 @@ class TestRememberedMapping:
         )
 
 
+class TestDecisionContract:
+    """``ImportDecisionIn`` is a JSON string inside a multipart form, so it is
+    not in the OpenAPI document, so the frontend's ``ImportDecision`` type is
+    hand-written. This is the tripwire for the two drifting apart."""
+
+    def test_the_decision_shape_is_what_the_clients_expect(self):
+        from pymoney.api.schemas import ImportDecisionIn
+
+        assert set(ImportDecisionIn.model_fields) == {
+            "row_key",
+            "action",
+            "payee_id",
+            "new_payee",
+            "category_id",
+            "memo",
+        }
+        required = {
+            name
+            for name, field in ImportDecisionIn.model_fields.items()
+            if field.is_required()
+        }
+        assert required == {"row_key"}
+        # The action literal the wizards send.
+        action = ImportDecisionIn.model_fields["action"].annotation
+        assert getattr(action, "__args__", ()) == ("post", "skip")
+
+
 class TestAuthorisation:
     def test_a_viewer_may_not_import(self, api: Client):
         api.register("keeper@example.invalid")

@@ -311,8 +311,8 @@ class _MapPage(QWidget):
         self.debit = QComboBox()
         self.credit = QComboBox()
         self.decimal = QComboBox()
-        self.decimal.addItem(_("Full stop  (1,234.56)"), ".")
-        self.decimal.addItem(_("Comma  (1.234,56)"), ",")
+        self.decimal.addItem(_("Full stop (1,234.56)"), ".")
+        self.decimal.addItem(_("Comma (1.234,56)"), ",")
         self.description = QComboBox()
         self.reference = QComboBox()
         self.memo = QComboBox()
@@ -448,7 +448,7 @@ class _ReviewPage(QWidget):
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
 
-        self.fallback_label = QLabel(_("Put uncategorised rows in:"))
+        self.fallback_label = QLabel(_("Put uncategorised rows in"))
         self.fallback = QComboBox()
         self.fallback.currentIndexChanged.connect(
             lambda _i: dialog._update_import_button()
@@ -469,9 +469,11 @@ class _ReviewPage(QWidget):
             for k in ("new", "duplicate", "transfer")
         }
         self.summary.setText(
-            _(
-                "{new} new, {duplicate} already imported, {transfer} transfers. Everything but the date and amount is editable."
-            ).format(**kinds)
+            _("{new} new, {duplicate} already imported, {transfer} transfers.").format(
+                **kinds
+            )
+            + " "
+            + _("Everything but the date and the amount is editable.")
         )
         self.fallback.blockSignals(True)
         self.fallback.clear()

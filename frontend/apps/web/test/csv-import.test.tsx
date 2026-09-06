@@ -211,7 +211,7 @@ describe("CSV statement import", () => {
     await user.upload(await screen.findByLabelText("Statement file"), upload());
 
     // 2. the columns, pre-filled from the suggestion
-    const mapping = await screen.findByRole("button", { name: "Review the transactions" });
+    const mapping = await screen.findByRole("button", { name: "Review transactions" });
     expect(screen.getByLabelText("Date")).toHaveValue("Date");
     expect(screen.getByLabelText("Amount column")).toHaveValue("Amount");
     expect(screen.getByText("TESCO STORES 7")).toBeInTheDocument(); // the sample
@@ -267,7 +267,7 @@ describe("CSV statement import", () => {
     mount(fetch);
 
     await user.upload(await screen.findByLabelText("Statement file"), upload());
-    await user.click(await screen.findByRole("button", { name: "Review the transactions" }));
+    await user.click(await screen.findByRole("button", { name: "Review transactions" }));
 
     const dup = (await screen.findByText("already imported")).closest("tr")!;
     expect(within(dup).getByLabelText("Post this row")).not.toBeChecked();
@@ -292,10 +292,10 @@ describe("CSV statement import", () => {
 
     await user.upload(await screen.findByLabelText("Statement file"), upload());
     await user.selectOptions(await screen.findByLabelText("Decimal separator"), ",");
-    await user.click(screen.getByRole("button", { name: "Review the transactions" }));
+    await user.click(screen.getByRole("button", { name: "Review transactions" }));
 
     expect(await screen.findByText(/is not an amount/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Review the transactions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review transactions" })).toBeInTheDocument();
   });
 
   it("refuses to import with only viewer access", async () => {
