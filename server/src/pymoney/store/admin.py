@@ -39,6 +39,7 @@ def delete_book(conn: Connection, book_id: UUID) -> bool:
         schema.commodities,
         schema.changes,
         schema.command_results,
+        schema.import_mappings,
         identity.book_grants,
     ):
         conn.execute(delete(table).where(table.c.book_id == book_id))

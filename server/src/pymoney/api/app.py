@@ -36,6 +36,7 @@ from .routers import (
     auth,
     books,
     commodities,
+    csv_import,
     imports,
     payees,
     prices,
@@ -113,6 +114,14 @@ TAGS = [
             "Balance sheet, income statement and holdings. Every report takes an "
             "explicit valuation policy, so the same request always gives the same "
             "numbers."
+        ),
+    },
+    {
+        "name": "imports",
+        "description": (
+            "Bringing a bank statement (CSV) into an account: inspect the "
+            "file, preview what each row would become, commit the reviewed "
+            "set. The per-bank column mapping is remembered for next time."
         ),
     },
     {
@@ -299,6 +308,7 @@ def create_app(
     app.include_router(transactions.router)
     app.include_router(prices.router)
     app.include_router(reports.router)
+    app.include_router(csv_import.router)
     app.include_router(sync.router)
     app.include_router(quotes.router)
     return app

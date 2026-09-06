@@ -43,7 +43,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 
-from .types import JsonList, UtcDateTime, Uuid
+from .types import JsonDict, JsonList, UtcDateTime, Uuid
 
 # Explicit naming convention: Alembic autogenerate only produces stable,
 # readable migrations if constraints have deterministic names.
@@ -298,6 +298,22 @@ command_results = Table(
     ),
 )
 
+# The column mapping that turns a bank's CSV into this account's transactions.
+# Not a ledger table and not synced: it is UI convenience -- which column is
+# the date, how the amount is written -- kept so next week's statement needs
+# no remapping. One per account; replaced wholesale when the user adjusts it.
+import_mappings = Table(
+    "import_mappings",
+    metadata,
+    Column("book_id", Uuid, ForeignKey("books.id", ondelete="CASCADE"), nullable=False),
+    Column("account_id", Uuid, nullable=False),
+    Column("mapping", JsonDict, nullable=False),
+    Column("updated_at", UtcDateTime, nullable=False),
+    UniqueConstraint(
+        "book_id", "account_id", name="uq_import_mappings_book_id_account_id"
+    ),
+)
+
 ALL_TABLES = (
     books,
     commodities,
@@ -308,4 +324,5 @@ ALL_TABLES = (
     prices,
     changes,
     command_results,
+    import_mappings,
 )

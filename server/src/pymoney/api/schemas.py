@@ -44,6 +44,10 @@ from ..core.price import Price
 from ..core.rounding import RoundingMode
 from ..core.settings import BookSettings
 from ..core.transaction import ReconcileState, Split, Transaction
+from ..importers.statement import AmountKind as _AmountKind
+from ..importers.statement import ColumnMapping as _ColumnMapping
+from ..importers.statement import RowAction as _RowAction
+from ..importers.statement import RowDecision as _RowDecision
 
 __all__ = [
     "AccountIn",
@@ -53,15 +57,20 @@ __all__ = [
     "BookIn",
     "BookOut",
     "ChangeOut",
+    "ColumnMappingModel",
     "CommodityIn",
     "CommodityOut",
     "CommodityPatch",
+    "CsvInspectOut",
+    "CsvPreviewOut",
     "DeleteBookIn",
     "DeleteMeIn",
     "EmailIn",
     "Exact",
+    "ImportDecisionIn",
     "ImportOut",
     "ImportProblemOut",
+    "ImportProposalOut",
     "LegIn",
     "LoginIn",
     "MergeAccountsIn",
@@ -86,6 +95,7 @@ __all__ = [
     "ResetPasswordIn",
     "SessionOut",
     "SplitOut",
+    "StatementImportOut",
     "SyncBatchOut",
     "SyncPageOut",
     "TransactionIn",
@@ -1249,3 +1259,278 @@ class HealthOut(Out):
     version: str
     database: str = Field(description="The dialect in use, without credentials.")
     books: int
+
+
+# ==========================================================================
+# importing a bank statement (CSV)
+# ==========================================================================
+# The wire mirror of :mod:`pymoney.importers.statement`. A preview and a commit
+# are deliberately *stateless*: the file is uploaded each time and the server
+# re-derives everything from it, so there is no half-built import to keep alive
+# between two requests, and the reviewer's edits can only touch the soft fields
+# (payee, category, skip) -- never the date or the amount, which are the bank's.
+AmountKindName = Literal["signed", "debit_credit"]
+ProposalStatusName = Literal["new", "duplicate", "transfer"]
+RowActionName = Literal["post", "skip"]
+
+
+class ColumnMappingModel(In):
+    """Which CSV column is which, and how its values are written.
+
+    Built once per account (the server suggests a starting point) and then
+    remembered, so the next download from the same bank opens ready to review.
+    """
+
+    date: str = Field(description="The column holding each row's posting date.")
+    date_format: str = Field(
+        default="",
+        description=(
+            "A strptime pattern (e.g. '%d/%m/%Y'). Empty: detect it from the file."
+        ),
+    )
+    amount_kind: AmountKindName = Field(
+        default="signed",
+        description=(
+            "'signed': one column, a minus for money out. 'debit_credit': a "
+            "money-out column and a money-in column, each a positive number."
+        ),
+    )
+    amount: str = Field(default="", description="The signed-amount column.")
+    debit: str = Field(default="", description="The money-out column.")
+    credit: str = Field(default="", description="The money-in column.")
+    decimal: Literal[".", ","] = Field(
+        default=".", description="The decimal separator used in the amounts."
+    )
+    invert: bool = Field(
+        default=False,
+        description="Flip every sign, for a bank that lists a withdrawal as positive.",
+    )
+    description: list[str] = Field(
+        default_factory=list,
+        description="Columns joined into the text the payee matcher reads.",
+    )
+    reference: str = Field(
+        default="",
+        description=(
+            "The bank's own unique id for the line, if it has one. With it, "
+            "duplicate detection is exact across overlapping downloads."
+        ),
+    )
+    memo: str = Field(default="", description="A column kept verbatim as the memo.")
+    skip_rows: int = Field(
+        default=0, ge=0, description="Preamble lines above the header."
+    )
+    has_header: bool = True
+    delimiter: str = Field(default=",", min_length=1, max_length=1)
+    encoding: str = "utf-8"
+
+    def to_domain(self) -> _ColumnMapping:
+        return _ColumnMapping(
+            date=self.date,
+            date_format=self.date_format,
+            amount_kind=_AmountKind(self.amount_kind),
+            amount=self.amount,
+            debit=self.debit,
+            credit=self.credit,
+            decimal=self.decimal,
+            invert=self.invert,
+            description=tuple(self.description),
+            reference=self.reference,
+            memo=self.memo,
+            skip_rows=self.skip_rows,
+            has_header=self.has_header,
+            delimiter=self.delimiter,
+            encoding=self.encoding,
+        )
+
+    @classmethod
+    def of(cls, mapping: _ColumnMapping) -> ColumnMappingModel:
+        return cls.model_validate(mapping.to_dict())
+
+
+class CsvInspectOut(Out):
+    """What one upload looks like, before any mapping is applied."""
+
+    columns: list[str] = Field(
+        description="Header names, or '1', '2', ... for a file with no header."
+    )
+    sample_rows: list[dict[str, str]] = Field(
+        description="The first rows, column name to cell, for the mapping screen."
+    )
+    row_count: int
+    encoding: str
+    delimiter: str
+    has_header: bool
+    skip_rows: int = Field(description="Preamble lines the sniffer skipped.")
+    suggested_mapping: ColumnMappingModel = Field(
+        description="A starting point, every field of it overridable."
+    )
+
+
+class ImportProposalOut(Out):
+    """One statement row and what the importer proposes to do with it."""
+
+    row_key: str = Field(
+        description=(
+            "The row's stable id -- its deduplication key. Pass it back in a "
+            "decision, and to undo the import later (it becomes the "
+            "transaction's imported_id)."
+        )
+    )
+    index: int = Field(description="Position in the file, zero-based.")
+    date: PostDate
+    amount: AmountOut = Field(description="Signed; positive is money in.")
+    description: str
+    reference: str
+    memo: str
+    status: ProposalStatusName = Field(
+        description=(
+            "'new': post it. 'duplicate': already in the book. 'transfer': the "
+            "other side is already recorded on another of your accounts."
+        )
+    )
+    default_action: RowActionName = Field(
+        description="'skip' for a duplicate or a recorded transfer, else 'post'."
+    )
+    existing_transaction_id: UUID | None = Field(
+        default=None, description="The duplicate, or the far side of the transfer."
+    )
+    existing_account_id: UUID | None = Field(
+        default=None, description="For a transfer: the other account."
+    )
+    existing_account_path: str = ""
+    suggested_payee_id: UUID | None = None
+    suggested_payee_name: str = Field(
+        default="",
+        description=(
+            "The matched payee's name, or -- with no suggested_payee_id -- a "
+            "cleaned-up name to offer as a new payee."
+        ),
+    )
+    suggested_category_id: UUID | None = None
+    suggestion_reason: str = Field(
+        description="'match key', 'payee default', 'last used', 'transfer', "
+        "'new payee', or '' when the importer had nothing to go on."
+    )
+
+    @classmethod
+    def of(cls, proposal: Any, commodity: Commodity) -> ImportProposalOut:
+        entry = proposal.entry
+        return cls(
+            row_key=entry.imported_id,
+            index=entry.index,
+            date=entry.date,
+            amount=AmountOut.of(Amount.from_major(commodity, entry.amount)),
+            description=entry.description,
+            reference=entry.reference,
+            memo=entry.memo,
+            status=proposal.status.value,
+            default_action="skip" if proposal.default_skip else "post",
+            existing_transaction_id=proposal.existing_transaction_id,
+            existing_account_id=proposal.existing_account_id,
+            existing_account_path=proposal.existing_account_path,
+            suggested_payee_id=proposal.suggestion.payee_id,
+            suggested_payee_name=proposal.suggestion.payee_name,
+            suggested_category_id=proposal.suggestion.category_id,
+            suggestion_reason=proposal.suggestion.reason,
+        )
+
+
+class CsvPreviewOut(Out):
+    account_id: UUID
+    mapping: ColumnMappingModel = Field(
+        description="The mapping used; echoed so the review screen can save it."
+    )
+    proposals: list[ImportProposalOut]
+
+
+class ImportDecisionIn(In):
+    """The reviewer's verdict on one row, keyed by its ``row_key``.
+
+    Only the soft fields: a wrong date or amount is fixed by editing the
+    transaction in the register after it is posted, not here.
+    """
+
+    row_key: str
+    action: RowActionName = "post"
+    payee_id: UUID | None = Field(
+        default=None, description="An existing payee for the transaction."
+    )
+    new_payee: str = Field(
+        default="",
+        max_length=255,
+        description=(
+            "Create (or reuse) a payee with this name when payee_id is unset. "
+            "Rows that name the same payee share the one that gets created."
+        ),
+    )
+    category_id: UUID | None = Field(
+        default=None,
+        description=(
+            "The account the other leg posts to. Unset: the row goes to the "
+            "commit's uncategorised_account_id and is flagged for follow-up."
+        ),
+    )
+    memo: str = Field(
+        default="", max_length=500, description="Replaces the mapped memo, if set."
+    )
+
+    def to_domain(self) -> _RowDecision:
+        return _RowDecision(
+            row_key=self.row_key,
+            action=_RowAction(self.action),
+            payee_id=self.payee_id,
+            new_payee=self.new_payee,
+            category_id=self.category_id,
+            memo=self.memo,
+        )
+
+
+class StatementImportOut(Out):
+    """What a commit did: posted, skipped, and could not post."""
+
+    account_id: UUID
+    account_path: str
+    rows: int = Field(description="Lines read from the file.")
+    posted: int
+    skipped_duplicates: int
+    skipped_transfers: int
+    skipped_by_user: int
+    payees_created: int
+    uncategorised: int = Field(
+        description="Posted with no category -- in the register, awaiting one."
+    )
+    revision_before: int
+    revision_after: int
+    posted_transaction_ids: list[UUID]
+    ok: bool = Field(description="No row failed to post.")
+    problems: list[ImportProblemOut]
+    summary: str
+
+    @classmethod
+    def of(cls, report: Any) -> StatementImportOut:
+        return cls(
+            account_id=report.account_id,
+            account_path=report.account_path,
+            rows=report.rows,
+            posted=report.posted,
+            skipped_duplicates=report.skipped_duplicates,
+            skipped_transfers=report.skipped_transfers,
+            skipped_by_user=report.skipped_by_user,
+            payees_created=report.payees_created,
+            uncategorised=report.uncategorised,
+            revision_before=report.revision_before,
+            revision_after=report.revision_after,
+            posted_transaction_ids=list(report.posted_ids),
+            ok=report.ok,
+            problems=[
+                ImportProblemOut(
+                    level=p.level.name,
+                    category=p.category,
+                    message=p.message,
+                    source_id=p.source_id,
+                )
+                for p in report.problems
+            ],
+            summary=report.summary(),
+        )

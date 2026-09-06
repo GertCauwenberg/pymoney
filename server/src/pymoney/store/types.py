@@ -32,7 +32,7 @@ from uuid import UUID
 from sqlalchemy import DateTime, Dialect, LargeBinary, Text, TypeDecorator
 from sqlalchemy.dialects import postgresql
 
-__all__ = ["JsonList", "UtcDateTime", "Uuid", "fits_in_bigint"]
+__all__ = ["JsonDict", "JsonList", "UtcDateTime", "Uuid", "fits_in_bigint"]
 
 _BIGINT_MAX = 2**63 - 1
 
@@ -104,6 +104,39 @@ class JsonList(TypeDecorator):
 
     def __repr__(self) -> str:  # pragma: no cover - Alembic renders this
         return "JsonList()"
+
+
+class JsonDict(TypeDecorator):
+    """A JSON object, as ``jsonb`` on PostgreSQL or JSON text on SQLite.
+
+    The sibling of :class:`JsonList`, for a small bag of settings that is not a
+    relation worth its own table. Used by the per-account statement-import
+    column mapping: a dozen strings and flags that only ever travel together.
+    """
+
+    impl = Text
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect: Dialect) -> Any:
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(postgresql.JSONB())
+        return dialect.type_descriptor(Text())
+
+    def process_bind_param(self, value: Any, dialect: Dialect) -> Any:
+        payload = dict(value or {})
+        if dialect.name == "postgresql":
+            return payload
+        return json.dumps(payload)
+
+    def process_result_value(self, value: Any, dialect: Dialect) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, str):
+            return dict(json.loads(value))
+        return dict(value)
+
+    def __repr__(self) -> str:  # pragma: no cover - Alembic renders this
+        return "JsonDict()"
 
 
 class UtcDateTime(TypeDecorator):

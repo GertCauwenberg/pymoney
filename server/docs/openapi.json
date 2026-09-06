@@ -450,6 +450,52 @@
         "title": "BalanceSheetOut",
         "type": "object"
       },
+      "Body_commit_csv_books__book_id__accounts__account_id__imports_csv_commit_post": {
+        "properties": {
+          "decisions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A JSON list of per-row decisions; a row with none takes the proposal's default.",
+            "title": "Decisions"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The reviewed statement as CSV.",
+            "title": "File",
+            "type": "string"
+          },
+          "mapping": {
+            "description": "The column mapping, as JSON.",
+            "title": "Mapping",
+            "type": "string"
+          },
+          "uncategorised_account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where a posted row with no chosen category balances to. Required if any such row is to be posted.",
+            "title": "Uncategorised Account Id"
+          }
+        },
+        "required": [
+          "file",
+          "mapping"
+        ],
+        "title": "Body_commit_csv_books__book_id__accounts__account_id__imports_csv_commit_post",
+        "type": "object"
+      },
       "Body_import_kmymoney_file_books_import_kmymoney_post": {
         "properties": {
           "file": {
@@ -481,6 +527,42 @@
           "name"
         ],
         "title": "Body_import_kmymoney_file_books_import_kmymoney_post",
+        "type": "object"
+      },
+      "Body_inspect_csv_books__book_id__imports_csv_inspect_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "A bank statement as CSV.",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_inspect_csv_books__book_id__imports_csv_inspect_post",
+        "type": "object"
+      },
+      "Body_preview_csv_books__book_id__accounts__account_id__imports_csv_preview_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The same statement as CSV.",
+            "title": "File",
+            "type": "string"
+          },
+          "mapping": {
+            "description": "A column mapping, as JSON.",
+            "title": "Mapping",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "mapping"
+        ],
+        "title": "Body_preview_csv_books__book_id__accounts__account_id__imports_csv_preview_post",
         "type": "object"
       },
       "BookIn": {
@@ -633,6 +715,116 @@
           "note"
         ],
         "title": "ChangeOut",
+        "type": "object"
+      },
+      "ColumnMappingModel": {
+        "additionalProperties": false,
+        "description": "Which CSV column is which, and how its values are written.\n\nBuilt once per account (the server suggests a starting point) and then\nremembered, so the next download from the same bank opens ready to review.",
+        "properties": {
+          "amount": {
+            "default": "",
+            "description": "The signed-amount column.",
+            "title": "Amount",
+            "type": "string"
+          },
+          "amount_kind": {
+            "default": "signed",
+            "description": "'signed': one column, a minus for money out. 'debit_credit': a money-out column and a money-in column, each a positive number.",
+            "enum": [
+              "signed",
+              "debit_credit"
+            ],
+            "title": "Amount Kind",
+            "type": "string"
+          },
+          "credit": {
+            "default": "",
+            "description": "The money-in column.",
+            "title": "Credit",
+            "type": "string"
+          },
+          "date": {
+            "description": "The column holding each row's posting date.",
+            "title": "Date",
+            "type": "string"
+          },
+          "date_format": {
+            "default": "",
+            "description": "A strptime pattern (e.g. '%d/%m/%Y'). Empty: detect it from the file.",
+            "title": "Date Format",
+            "type": "string"
+          },
+          "debit": {
+            "default": "",
+            "description": "The money-out column.",
+            "title": "Debit",
+            "type": "string"
+          },
+          "decimal": {
+            "default": ".",
+            "description": "The decimal separator used in the amounts.",
+            "enum": [
+              ".",
+              ","
+            ],
+            "title": "Decimal",
+            "type": "string"
+          },
+          "delimiter": {
+            "default": ",",
+            "maxLength": 1,
+            "minLength": 1,
+            "title": "Delimiter",
+            "type": "string"
+          },
+          "description": {
+            "description": "Columns joined into the text the payee matcher reads.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Description",
+            "type": "array"
+          },
+          "encoding": {
+            "default": "utf-8",
+            "title": "Encoding",
+            "type": "string"
+          },
+          "has_header": {
+            "default": true,
+            "title": "Has Header",
+            "type": "boolean"
+          },
+          "invert": {
+            "default": false,
+            "description": "Flip every sign, for a bank that lists a withdrawal as positive.",
+            "title": "Invert",
+            "type": "boolean"
+          },
+          "memo": {
+            "default": "",
+            "description": "A column kept verbatim as the memo.",
+            "title": "Memo",
+            "type": "string"
+          },
+          "reference": {
+            "default": "",
+            "description": "The bank's own unique id for the line, if it has one. With it, duplicate detection is exact across overlapping downloads.",
+            "title": "Reference",
+            "type": "string"
+          },
+          "skip_rows": {
+            "default": 0,
+            "description": "Preamble lines above the header.",
+            "minimum": 0.0,
+            "title": "Skip Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "ColumnMappingModel",
         "type": "object"
       },
       "CommodityIn": {
@@ -960,6 +1152,96 @@
           "sources"
         ],
         "title": "ConversionOut",
+        "type": "object"
+      },
+      "CsvInspectOut": {
+        "additionalProperties": false,
+        "description": "What one upload looks like, before any mapping is applied.",
+        "properties": {
+          "columns": {
+            "description": "Header names, or '1', '2', ... for a file with no header.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "delimiter": {
+            "title": "Delimiter",
+            "type": "string"
+          },
+          "encoding": {
+            "title": "Encoding",
+            "type": "string"
+          },
+          "has_header": {
+            "title": "Has Header",
+            "type": "boolean"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "sample_rows": {
+            "description": "The first rows, column name to cell, for the mapping screen.",
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Sample Rows",
+            "type": "array"
+          },
+          "skip_rows": {
+            "description": "Preamble lines the sniffer skipped.",
+            "title": "Skip Rows",
+            "type": "integer"
+          },
+          "suggested_mapping": {
+            "$ref": "#/components/schemas/ColumnMappingModel",
+            "description": "A starting point, every field of it overridable."
+          }
+        },
+        "required": [
+          "columns",
+          "sample_rows",
+          "row_count",
+          "encoding",
+          "delimiter",
+          "has_header",
+          "skip_rows",
+          "suggested_mapping"
+        ],
+        "title": "CsvInspectOut",
+        "type": "object"
+      },
+      "CsvPreviewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/ColumnMappingModel",
+            "description": "The mapping used; echoed so the review screen can save it."
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ImportProposalOut"
+            },
+            "title": "Proposals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account_id",
+          "mapping",
+          "proposals"
+        ],
+        "title": "CsvPreviewOut",
         "type": "object"
       },
       "DeleteBookIn": {
@@ -1294,6 +1576,142 @@
           "source_id"
         ],
         "title": "ImportProblemOut",
+        "type": "object"
+      },
+      "ImportProposalOut": {
+        "additionalProperties": false,
+        "description": "One statement row and what the importer proposes to do with it.",
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/AmountOut",
+            "description": "Signed; positive is money in."
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "default_action": {
+            "description": "'skip' for a duplicate or a recorded transfer, else 'post'.",
+            "enum": [
+              "post",
+              "skip"
+            ],
+            "title": "Default Action",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "existing_account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a transfer: the other account.",
+            "title": "Existing Account Id"
+          },
+          "existing_account_path": {
+            "default": "",
+            "title": "Existing Account Path",
+            "type": "string"
+          },
+          "existing_transaction_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The duplicate, or the far side of the transfer.",
+            "title": "Existing Transaction Id"
+          },
+          "index": {
+            "description": "Position in the file, zero-based.",
+            "title": "Index",
+            "type": "integer"
+          },
+          "memo": {
+            "title": "Memo",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "row_key": {
+            "description": "The row's stable id -- its deduplication key. Pass it back in a decision, and to undo the import later (it becomes the transaction's imported_id).",
+            "title": "Row Key",
+            "type": "string"
+          },
+          "status": {
+            "description": "'new': post it. 'duplicate': already in the book. 'transfer': the other side is already recorded on another of your accounts.",
+            "enum": [
+              "new",
+              "duplicate",
+              "transfer"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "suggested_category_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Category Id"
+          },
+          "suggested_payee_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Payee Id"
+          },
+          "suggested_payee_name": {
+            "default": "",
+            "description": "The matched payee's name, or -- with no suggested_payee_id -- a cleaned-up name to offer as a new payee.",
+            "title": "Suggested Payee Name",
+            "type": "string"
+          },
+          "suggestion_reason": {
+            "description": "'match key', 'payee default', 'last used', 'transfer', 'new payee', or '' when the importer had nothing to go on.",
+            "title": "Suggestion Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "row_key",
+          "index",
+          "date",
+          "amount",
+          "description",
+          "reference",
+          "memo",
+          "status",
+          "default_action",
+          "suggestion_reason"
+        ],
+        "title": "ImportProposalOut",
         "type": "object"
       },
       "IncomeStatementOut": {
@@ -3067,6 +3485,102 @@
           "number"
         ],
         "title": "SplitOut",
+        "type": "object"
+      },
+      "StatementImportOut": {
+        "additionalProperties": false,
+        "description": "What a commit did: posted, skipped, and could not post.",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "account_path": {
+            "title": "Account Path",
+            "type": "string"
+          },
+          "ok": {
+            "description": "No row failed to post.",
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "payees_created": {
+            "title": "Payees Created",
+            "type": "integer"
+          },
+          "posted": {
+            "title": "Posted",
+            "type": "integer"
+          },
+          "posted_transaction_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Posted Transaction Ids",
+            "type": "array"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ImportProblemOut"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "revision_after": {
+            "title": "Revision After",
+            "type": "integer"
+          },
+          "revision_before": {
+            "title": "Revision Before",
+            "type": "integer"
+          },
+          "rows": {
+            "description": "Lines read from the file.",
+            "title": "Rows",
+            "type": "integer"
+          },
+          "skipped_by_user": {
+            "title": "Skipped By User",
+            "type": "integer"
+          },
+          "skipped_duplicates": {
+            "title": "Skipped Duplicates",
+            "type": "integer"
+          },
+          "skipped_transfers": {
+            "title": "Skipped Transfers",
+            "type": "integer"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "uncategorised": {
+            "description": "Posted with no category -- in the register, awaiting one.",
+            "title": "Uncategorised",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "account_id",
+          "account_path",
+          "rows",
+          "posted",
+          "skipped_duplicates",
+          "skipped_transfers",
+          "skipped_by_user",
+          "payees_created",
+          "uncategorised",
+          "revision_before",
+          "revision_after",
+          "posted_transaction_ids",
+          "ok",
+          "problems",
+          "summary"
+        ],
+        "title": "StatementImportOut",
         "type": "object"
       },
       "SyncBatchOut": {
@@ -5581,6 +6095,412 @@
         ]
       }
     },
+    "/books/{book_id}/accounts/{account_id}/import-mapping": {
+      "get": {
+        "description": "``null`` if no statement has ever been imported into the account.",
+        "operationId": "get_import_mapping_books__book_id__accounts__account_id__import_mapping_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ColumnMappingModel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Import Mapping Books  Book Id  Accounts  Account Id  Import Mapping Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "The CSV column mapping last used for this account",
+        "tags": [
+          "imports"
+        ]
+      },
+      "put": {
+        "description": "For a mapping a user built or fixed without importing in the same\nbreath; a successful commit saves the mapping it used anyway.",
+        "operationId": "put_import_mapping_books__book_id__accounts__account_id__import_mapping_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ColumnMappingModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ColumnMappingModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Save a CSV column mapping for this account",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/books/{book_id}/accounts/{account_id}/imports/csv/commit": {
+      "post": {
+        "description": "Re-derives the rows from the file, re-checks for duplicates and\ntransfers under the book's lock (the far side of a transfer may have\narrived since the preview), applies the decisions, and writes the lot in\none unit of work. A malformed row is reported, not fatal. The mapping is\nsaved as this account's.",
+        "operationId": "commit_csv_books__book_id__accounts__account_id__imports_csv_commit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_commit_csv_books__book_id__accounts__account_id__imports_csv_commit_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "413": {
+            "description": "The file is larger than the server accepts."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Post a reviewed statement into the account",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/books/{book_id}/accounts/{account_id}/imports/csv/preview": {
+      "post": {
+        "description": "Each row comes back as ``new``, ``duplicate`` or ``transfer``, with a\nsuggested payee and category. Nothing is written; this is the input to the\nreview screen.",
+        "operationId": "preview_csv_books__book_id__accounts__account_id__imports_csv_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_csv_books__book_id__accounts__account_id__imports_csv_preview_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsvPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "413": {
+            "description": "The file is larger than the server accepts."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Classify a statement's rows against the book, without posting",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
     "/books/{book_id}/accounts/{account_id}/merge": {
       "post": {
         "operationId": "merge_accounts_books__book_id__accounts__account_id__merge_post",
@@ -7307,6 +8227,100 @@
         "summary": "Who changed what, and when",
         "tags": [
           "sync"
+        ]
+      }
+    },
+    "/books/{book_id}/imports/csv/inspect": {
+      "post": {
+        "description": "Sniffs the delimiter, the header and any preamble, and guesses which\ncolumn is the date, the amount and the description. Every guess is the\nclient's to override before a preview.",
+        "operationId": "inspect_csv_books__book_id__imports_csv_inspect_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_inspect_csv_books__book_id__imports_csv_inspect_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsvInspectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "413": {
+            "description": "The file is larger than the server accepts."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Read an uploaded CSV and suggest a column mapping",
+        "tags": [
+          "imports"
         ]
       }
     },
@@ -10925,6 +11939,10 @@
     {
       "description": "Balance sheet, income statement and holdings. Every report takes an explicit valuation policy, so the same request always gives the same numbers.",
       "name": "reports"
+    },
+    {
+      "description": "Bringing a bank statement (CSV) into an account: inspect the file, preview what each row would become, commit the reviewed set. The per-bank column mapping is remembered for next time.",
+      "name": "imports"
     },
     {
       "description": "The pull half of the replica protocol.",

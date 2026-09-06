@@ -15,11 +15,12 @@ never a silent zero.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 from datetime import date as _Date
 from datetime import datetime
 from enum import StrEnum
 from fractions import Fraction
+from typing import Any
 
 __all__ = [
     "DATE_FORMATS",
@@ -218,6 +219,39 @@ class ColumnMapping:
             else f"debit={self.debit!r} credit={self.credit!r}"
         )
         return f"date={self.date!r} {which} decimal={self.decimal!r}"
+
+    # -- persistence (one row of the import_mappings table) ------------------
+    def to_dict(self) -> dict[str, Any]:
+        """A JSON-friendly dict: every value a string, int, bool or list."""
+        data: dict[str, Any] = {}
+        for field in fields(self):
+            value = getattr(self, field.name)
+            if isinstance(value, tuple):
+                value = list(value)
+            elif isinstance(value, AmountKind):
+                value = value.value
+            data[field.name] = value
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ColumnMapping:
+        """Rebuild from :meth:`to_dict`, ignoring any key this version of the
+        class has since dropped (a forward-compatible round trip)."""
+        known = {f.name for f in fields(cls)}
+        kwargs: dict[str, Any] = {}
+        for name, value in data.items():
+            if name not in known:
+                continue
+            if name == "description":
+                kwargs[name] = tuple(value or ())
+            elif name == "amount_kind":
+                kwargs[name] = AmountKind(value)
+            else:
+                kwargs[name] = value
+        return cls(**kwargs)
+
+    def replace(self, **changes: Any) -> ColumnMapping:
+        return replace(self, **changes)
 
 
 def parse_date(text: str, fmt: str, *, line: int | None = None) -> _Date:

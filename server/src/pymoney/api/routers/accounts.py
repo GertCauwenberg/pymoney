@@ -16,14 +16,18 @@ reshapes every report the household shares, so that needs the stronger role.
 from __future__ import annotations
 
 from datetime import date
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import Engine
 
 from ...core import commands as cmd
 from ...core.account import AccountClass, AccountType
 from ...core.commands import UNSET
-from ..deps import IdempotencyKey, OwnedBook, ReadableBook
+from ...store import write_transaction
+from ...store.import_mappings import forget_mapping
+from ..deps import IdempotencyKey, OwnedBook, ReadableBook, get_engine
 from ..schemas import (
     AccountBalanceOut,
     AccountIn,
@@ -220,8 +224,17 @@ def merge_accounts(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an empty account",
 )
-def delete_account(account_id: UUID, book: OwnedBook, key: IdempotencyKey) -> None:
+def delete_account(
+    account_id: UUID,
+    book: OwnedBook,
+    key: IdempotencyKey,
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> None:
     book.execute(cmd.DeleteAccount(account_id=account_id, command_id=key))
+    # The remembered CSV mapping is keyed on the account, and nothing else
+    # refers to it, so it goes too (a no-op for an account never imported to).
+    with write_transaction(engine) as conn:
+        forget_mapping(conn, book.id, account_id)
 
 
 @router.get(
