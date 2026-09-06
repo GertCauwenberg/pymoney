@@ -351,7 +351,7 @@ class _MapPage(QWidget):
         self.decimal.addItem(_("Comma (1.234,56)"), ",")
         self.description = _ColumnChecklist()
         self.description.setToolTip(
-            _("What the payee match reads. Tick one column, or several to join.")
+            _("What the payee match reads. Pick one column, or several to join.")
         )
         self.reference = QComboBox()
         self.memo = _ColumnChecklist()

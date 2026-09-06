@@ -387,11 +387,23 @@ app's **Import CSV** on a register, the desktop's toolbar button.
 **Every bank's CSV is different, so the mapping is the feature.** Which column
 is the date, which is the amount (one signed column, or separate debit and
 credit), whether it is written `1,234.56` or `1.234,56`, how many summary lines
-sit above the header. The server sniffs all of it and *suggests* a mapping; the
-user confirms it once, and it is [remembered per account](#the-remembered-mapping)
-so the next download opens straight on the review screen. A grouping mark on
-the wrong side of the decimal point — the commonest way an import goes quietly
-100× wrong — is refused, not read.
+sit above the header, which column (or columns, joined) carry the merchant
+text. The server sniffs all of it and *suggests* a mapping; the user confirms
+it once, and it is [remembered per account](#the-remembered-mapping) so the
+next download opens straight on the review screen. A grouping mark on the
+wrong side of the decimal point — the commonest way an import goes quietly
+100× wrong — is refused, not read. The two text roles — the description the
+payee matcher reads, and the memo the transaction keeps — fall back to each
+other, so a file with one descriptive column is mapped once and every posted
+row carries the bank's own wording, matched or not.
+
+**A statement is in the account's currency, not the book's.** Import a HUF
+current account into a EUR book and every transaction is denominated in HUF;
+a category held in EUR is a genuine conversion, booked at the rate the book
+holds for the statement date — either stored direction, triangulated if need
+be. A row for which no rate exists is reported, not fatal: add the price and
+import the file again (it is idempotent, so the rows that did post are
+skipped the second time).
 
 **Nothing is posted without a review.** Each row comes back classified:
 
