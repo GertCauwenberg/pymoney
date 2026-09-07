@@ -47,6 +47,8 @@ core/                           the domain. pure stdlib, no dependencies
     handlers/       command handlers, one module per aggregate
     book.py         the aggregate: consistency boundary, dispatcher, read model
     reports.py      balance sheet, income statement, holdings; net worth over time, income/expenses by period
+    recurrence.py   RFC 5545 subset: the k-th occurrence as a pure function
+    schedule.py     Schedule = a date-less template + a recurrence + a cursor
 
 store/                          persistence. SQLAlchemy Core, no ORM mapping
     types.py        portable UUID / JSON / timezone-aware timestamp columns
@@ -142,15 +144,6 @@ commit.
 Three Hypothesis profiles, because the property tests are the only real check on
 the rounding invariants: `dev` (50 examples, the default), `ci` (500,
 derandomised so a CI failure is reproducible) and `thorough` (5000).
-
-### Refactoring note
-
-`book.py` was 1,600 lines doing four jobs. It is now 880 and does three, all of
-which belong to an aggregate: enforce the invariants, dispatch commands, answer
-reads. The rest moved out — storage to `core/store.py`, the 25 command handlers
-to `core/handlers/` (one module per aggregate), the pull protocol into
-`core/sync.py`. Nothing about the public API changed, which the unchanged test
-suite is the evidence for.
 
 ### Containers
 
@@ -363,7 +356,7 @@ posts nothing, if you would rather see the raw sums.
 
 ### What does not come across
 
-Scheduled transactions, budgets, saved reports, cost centres, tags, online
+Budgets, saved reports, cost centres, tags, online
 banking jobs, and per-account settings like `PreferredAccount`. None of it is
 dropped quietly — the report counts every one. Also reported: KMyMoney types we
 narrow (a certificate of deposit becomes a savings account), colons stripped from
@@ -457,6 +450,50 @@ successful import saves the mapping it used; `GET`/`PUT
 /accounts/{id}/import-mapping` reads and writes it directly, for a mapping
 built or fixed without importing in the same breath. Deleting the account
 forgets it, since nothing else refers to it.
+
+## Scheduled / recurring transactions
+
+Rent, a salary, a subscription -- the other half of daily entry, and the thing
+KMyMoney users lose on the way in if it is not here. A `Schedule` is a
+**date-less transaction template**, a **recurrence** (a small exact subset of
+RFC 5545 -- daily / weekly / monthly-by-date-or-nth-weekday / yearly, every
+*interval* units, ending after *N* or on a date), and a **cursor**:
+`occurrences_done`, the one number that says where in the series we are.
+Everything else -- `next_due`, "is it finished", "how many are overdue" -- is
+derived from it, and `recurrence.nth(k)` is a pure function of the start and
+*k*, so the cursor is always recomputable and the monthly 31st clamps to the
+28th and comes *back* to the 31st without drifting.
+
+**Nothing posts on a timer.** Given "one writer per book" and an offline
+desktop, server-side auto-posting would mean either a second writer or money
+appearing behind the user's back. Instead it is *due-on-sight*: any client --
+web, desktop, online or on a replica -- calls `GET
+/books/{id}/schedules/due`, shows "3 scheduled transactions are due", and
+posts each one on confirmation through `POST /schedules/{id}/post`. That is an
+ordinary command: one revision for the posted transaction *and* the advanced
+cursor together, an `Idempotency-Key` so a retry is a no-op, and a per-occurrence
+`legs` override for the month the figure is different. `auto_post` only lets a
+client skip the confirmation click; the server still never acts on its own.
+
+**Two clients, no double post.** The posted transaction is stamped
+`imported_id = sched:<schedule id>:<date>` (the same uniqueness the CSV
+importer leans on). When the second spouse confirms the rent -- or an offline
+replay lands after the web already posted it -- the command finds that
+transaction already there, advances its own cursor to match, and returns it.
+No shared key, no merge, no duplicate. The offline client pins both the
+occurrence date and the transaction id in its outbox entry so the replay is
+byte-for-byte the same row.
+
+It is a full syncable entity: `EntityKind.SCHEDULE`, a cached `schedules`
+table (small, read by the due panel) with migration `46cb494dbd9e`, a typed
+`schedules` list in every sync batch, replica support and offline outbox ops.
+The KMyMoney importer maps `<SCHEDULED_TX>` across -- the recurrence code to
+the nearest rule it can express, `autoEnter` to `auto_post`, `fixed="0"` to an
+estimate -- and reports the ones it can only approximate or cannot express.
+
+The web app has **Settings → Scheduled** (a two-sided template builder and a
+recurrence editor) and a **due banner** on every book page; the desktop has
+the same, and both post through the idempotent endpoint.
 
 ## The HTTP API
 
@@ -583,13 +620,7 @@ written, and cost a pool slot per open book.
 
 The cost is explicit: requests against the *same* book are serialised; different
 books run concurrently. For a personal finance server that is the right trade
-(commands take single-digit milliseconds), and the place to revisit it is a read
-replica, not a weaker lock.
-
-One consequence worth knowing: **an in-memory SQLite database cannot back the
-API**, because it is a single connection and the API needs two at once.
-`create_app` refuses it with that explanation rather than failing later with a
-baffling "cannot start a transaction within a transaction".
+(commands take single-digit milliseconds).
 
 ## Performance
 
@@ -672,9 +703,9 @@ Supply `knowledge_time` in the policy and you get the numbers the report would
 have shown on that date, even if corrected quotes have arrived since. Every
 report hands back the `Conversion` objects it used.
 
-## Deliberately not here yet
+## Not here yet
 
-Scheduled/recurring transactions · investment lots and cost basis (`Holding.cost`
+investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · other import
 formats (OFX, QIF) · attachments · tags · the desktop app's account, payee and
 commodity management (the web app has them under **Settings**; see
@@ -774,7 +805,7 @@ tree with balances, registers (with the reconciliation column), posting, editing
 and deleting transactions with payees created on the spot, search (Ctrl+F),
 reconciliation (**Mark** for one row, **Reconcile…** to tick a whole statement
 and mark it in one command; FROZEN offered to owners only, as on the web, and
-queued and replayed like every other write when offline), **Import CSV…** for a
+queued and replayed like every other write when offline), the due banner and **Scheduled…** for recurring transactions, **Import CSV…** for a
 bank statement (the same stacked wizard as the web app; like creating a book it
 needs the connection, since the duplicate and transfer checks run against the
 book the server holds), and under **Reports** the balance sheet, income
@@ -824,24 +855,10 @@ rejection and rebuild, cold start offline. `desktop/tests/test_desktop_ui.py` dr
 real window offscreen (`pytest-qt`) through posting, editing, deleting,
 reconnecting and a rejection.
 
-### Packaging: PyInstaller, not Briefcase (for now)
+### Packaging: PyInstaller
 
 `make -C desktop build` runs `desktop/packaging/pymoney-desktop.spec` and produces
-`dist/PyMoney/`, a one-folder build. The reasoning:
-
-- **PyInstaller** is one command, has maintained hooks for both PySide6 and
-  SQLAlchemy, runs anywhere CI runs, and produces a folder or a single file you
-  can hand to someone today. Its weak spots -- no installer, no code signing, no
-  store metadata -- do not matter until there is a release process.
-- **Briefcase** does those things well (native installers, signing, app-store
-  layouts, per-platform templates), at the price of its own project scaffold,
-  `pyproject.toml` sections, and a per-platform build host. That is the right
-  tool *once PyMoney ships installers*; adopting it now would be building a
-  pipeline for a release that does not exist.
-
-So: PyInstaller for "give me a binary", and move to Briefcase when signed
-installers are a requirement -- the app itself needs no change for that,
-Briefcase consumes the same entry point (`pymoney_desktop.__main__:main`).
+`dist/PyMoney/`, a one-folder build.
 
 ## The web frontend
 
@@ -867,7 +884,7 @@ from any register row to the transaction, and -- by role -- posting, editing and
 deleting transactions with payees created on the spot, **Import CSV** on any
 register (the four-step wizard of [Importing bank statements](#importing-bank-statements-csv):
 file, columns, review, report), and under **Settings**:
-payees (add, edit, merge duplicates, delete the unused), commodities and prices,
+payees (add, edit, merge duplicates, delete the unused), scheduled transactions, commodities and prices,
 and fetching quotes (editors), the chart of accounts and sharing (owners), and
 the book's **History** -- who changed what, and when; a transaction page shows
 its own. Posting is quick: choosing a payee fills its default account and the
