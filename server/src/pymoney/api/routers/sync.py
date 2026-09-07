@@ -28,6 +28,7 @@ from ..schemas import (
     DeletionOut,
     PayeeOut,
     PriceOut,
+    ScheduleOut,
     SyncBatchOut,
     SyncPageOut,
     TransactionOut,
@@ -70,6 +71,8 @@ def _batch(book: Any, batch: Any) -> SyncBatchOut:
         out.transactions.append(TransactionOut.of(entity))
     for entity in batch.upserts_of(EntityKind.PRICE):
         out.prices.append(PriceOut.of(entity))
+    for entity in batch.upserts_of(EntityKind.SCHEDULE):
+        out.schedules.append(ScheduleOut.of(entity))
     for entity in batch.upserts_of(EntityKind.BOOK):
         out.book = BookOut.of(entity, book.revision)
     return out

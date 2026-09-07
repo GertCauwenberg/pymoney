@@ -41,7 +41,12 @@ from ..core.amount import Amount
 from ..core.commodity import Commodity, CommodityKind
 from ..core.payee import Payee
 from ..core.price import Price
+from ..core.recurrence import Frequency as _Frequency
+from ..core.recurrence import Recurrence as _Recurrence
 from ..core.rounding import RoundingMode
+from ..core.schedule import Schedule as _Schedule
+from ..core.schedule import ScheduleTemplate as _ScheduleTemplate
+from ..core.schedule import TemplateLeg as _TemplateLeg
 from ..core.settings import BookSettings
 from ..core.transaction import ReconcileState, Split, Transaction
 from ..importers.statement import AmountKind as _AmountKind
@@ -65,6 +70,8 @@ __all__ = [
     "CsvPreviewOut",
     "DeleteBookIn",
     "DeleteMeIn",
+    "DuePanelOut",
+    "DueScheduleOut",
     "EmailIn",
     "Exact",
     "ImportDecisionIn",
@@ -80,6 +87,7 @@ __all__ = [
     "PayeeIn",
     "PayeeOut",
     "PendingOut",
+    "PostOccurrenceIn",
     "PriceIn",
     "PriceOut",
     "PricePage",
@@ -89,15 +97,24 @@ __all__ = [
     "RateOut",
     "ReconcileIn",
     "ReconcileStateName",
+    "RecurrenceModel",
     "RegisterRowOut",
     "RegisterTotals",
     "RenameIn",
     "ResetPasswordIn",
+    "ScheduleIn",
+    "ScheduleOut",
+    "SchedulePatch",
+    "ScheduleTemplateIn",
+    "ScheduleTemplateOut",
     "SessionOut",
+    "SkipOccurrenceIn",
     "SplitOut",
     "StatementImportOut",
     "SyncBatchOut",
     "SyncPageOut",
+    "TemplateLegIn",
+    "TemplateLegOut",
     "TransactionIn",
     "TransactionOut",
     "TransactionPage",
@@ -1076,6 +1093,7 @@ class SyncBatchOut(Out):
     payees: list[PayeeOut] = Field(default_factory=list)
     transactions: list[TransactionOut] = Field(default_factory=list)
     prices: list[PriceOut] = Field(default_factory=list)
+    schedules: list[ScheduleOut] = Field(default_factory=list)
     book: BookOut | None = None
     deletions: list[DeletionOut] = Field(default_factory=list)
     changes: list[ChangeOut] = Field(
@@ -1259,6 +1277,258 @@ class HealthOut(Out):
     version: str
     database: str = Field(description="The dialect in use, without credentials.")
     books: int
+
+
+# ==========================================================================
+# scheduled / recurring transactions
+# ==========================================================================
+FrequencyName = Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"]
+
+
+class RecurrenceModel(In):
+    """A recurrence rule: a small, exact subset of RFC 5545."""
+
+    frequency: FrequencyName
+    start: PostDate = Field(description="The first occurrence.")
+    interval: int = Field(default=1, ge=1, description="Every N units.")
+    monthly_by_weekday: bool = Field(
+        default=False,
+        description="MONTHLY only: the nth weekday of the month (a 'third "
+        "Friday') rather than a day number.",
+    )
+    count: int | None = Field(
+        default=None, ge=1, description="End after this many occurrences."
+    )
+    until: PostDate | None = Field(
+        default=None, description="End on or before this date (inclusive)."
+    )
+
+    def to_domain(self) -> _Recurrence:
+        return _Recurrence(
+            frequency=_Frequency(self.frequency),
+            start=self.start,
+            interval=self.interval,
+            monthly_by_weekday=self.monthly_by_weekday,
+            count=self.count,
+            until=self.until,
+        )
+
+    @classmethod
+    def of(cls, recurrence: _Recurrence) -> RecurrenceModel:
+        return cls.model_validate(recurrence.to_dict())
+
+
+class TemplateLegIn(In):
+    account_id: UUID
+    value: Exact | None = None
+    quantity: Exact | None = None
+    price: RateLike | None = None
+    memo: str = ""
+    payee_id: UUID | None = None
+
+    def to_domain(self) -> _TemplateLeg:
+        return _TemplateLeg(
+            account_id=self.account_id,
+            value=None if self.value is None else to_fraction(self.value),
+            quantity=None if self.quantity is None else to_fraction(self.quantity),
+            price=None if self.price is None else to_fraction(self.price),
+            memo=self.memo,
+            payee_id=self.payee_id,
+        )
+
+
+class TemplateLegOut(Out):
+    account_id: UUID
+    value: str | None = Field(
+        default=None, description="Exact major-unit string,'10/3' form allowed."
+    )
+    quantity: str | None = None
+    price: str | None = None
+    memo: str = ""
+    payee_id: UUID | None = None
+    is_residual: bool
+
+    @classmethod
+    def of(cls, leg: _TemplateLeg) -> TemplateLegOut:
+        def s(x: Fraction | None) -> str | None:
+            return None if x is None else str(x)
+
+        return cls(
+            account_id=leg.account_id,
+            value=s(leg.value),
+            quantity=s(leg.quantity),
+            price=s(leg.price),
+            memo=leg.memo,
+            payee_id=leg.payee_id,
+            is_residual=leg.is_residual,
+        )
+
+
+class ScheduleTemplateIn(In):
+    legs: list[TemplateLegIn] = Field(min_length=1)
+    currency_id: UUID | None = None
+    memo: str = ""
+    payee_id: UUID | None = None
+    number: str = ""
+    rounding: RoundingMode = RoundingMode.HALF_EVEN
+    imbalance_account_id: UUID | None = None
+    estimate: bool = Field(
+        default=False,
+        description="The amounts are a guess (a variable bill); shown as '≈'.",
+    )
+
+    def to_domain(self) -> _ScheduleTemplate:
+        return _ScheduleTemplate(
+            legs=tuple(leg.to_domain() for leg in self.legs),
+            currency_id=self.currency_id,
+            memo=self.memo,
+            payee_id=self.payee_id,
+            number=self.number,
+            rounding=self.rounding,
+            imbalance_account_id=self.imbalance_account_id,
+            estimate=self.estimate,
+        )
+
+
+class ScheduleTemplateOut(Out):
+    legs: list[TemplateLegOut]
+    currency_id: UUID | None = None
+    memo: str = ""
+    payee_id: UUID | None = None
+    number: str = ""
+    rounding: RoundingMode
+    imbalance_account_id: UUID | None = None
+    estimate: bool = False
+
+    @classmethod
+    def of(cls, template: _ScheduleTemplate) -> ScheduleTemplateOut:
+        return cls(
+            legs=[TemplateLegOut.of(leg) for leg in template.legs],
+            currency_id=template.currency_id,
+            memo=template.memo,
+            payee_id=template.payee_id,
+            number=template.number,
+            rounding=template.rounding,
+            imbalance_account_id=template.imbalance_account_id,
+            estimate=template.estimate,
+        )
+
+
+class ScheduleIn(In):
+    name: str = Field(min_length=1, max_length=255)
+    template: ScheduleTemplateIn
+    recurrence: RecurrenceModel
+    auto_post: bool = Field(
+        default=False,
+        description="A client may post a due occurrence of this schedule "
+        "without a per-occurrence confirmation. The server never posts.",
+    )
+    paused: bool = False
+    id: UUID | None = None
+
+
+class SchedulePatch(In):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    template: ScheduleTemplateIn | None = None
+    recurrence: RecurrenceModel | None = None
+    auto_post: bool | None = None
+    paused: bool | None = None
+
+
+class ScheduleOut(Out):
+    id: UUID
+    name: str
+    template: ScheduleTemplateOut
+    recurrence: RecurrenceModel
+    recurrence_text: str = Field(
+        description="The rule in words, e.g. 'every month on day 1'."
+    )
+    occurrences_done: int
+    total_occurrences: int | None = Field(
+        default=None, description="Null for an open-ended rule."
+    )
+    next_due: PostDate | None = Field(
+        default=None, description="Null once the schedule has finished."
+    )
+    last_occurrence: PostDate | None = None
+    auto_post: bool
+    paused: bool
+    finished: bool
+    upcoming: list[PostDate] = Field(
+        default_factory=list, description="The next few occurrence dates, for a preview."
+    )
+    revision: int
+
+    @classmethod
+    def of(cls, schedule: _Schedule) -> ScheduleOut:
+        assert schedule.template is not None and schedule.recurrence is not None
+        return cls(
+            id=schedule.id,
+            name=schedule.name,
+            template=ScheduleTemplateOut.of(schedule.template),
+            recurrence=RecurrenceModel.of(schedule.recurrence),
+            recurrence_text=schedule.recurrence.describe(),
+            occurrences_done=schedule.occurrences_done,
+            total_occurrences=schedule.total_occurrences,
+            next_due=schedule.next_due,
+            last_occurrence=schedule.last_occurrence,
+            auto_post=schedule.auto_post,
+            paused=schedule.paused,
+            finished=schedule.is_finished,
+            upcoming=list(schedule.upcoming(6)),
+            revision=schedule.revision,
+        )
+
+
+class DueScheduleOut(Out):
+    """A schedule with at least one occurrence on or before the asked date."""
+
+    schedule: ScheduleOut
+    pending: list[PostDate] = Field(
+        description="Every occurrence from the cursor up to the date, oldest first."
+    )
+    amount: AmountOut | None = Field(
+        default=None,
+        description="What one occurrence would post to the first non-residual "
+        "leg, for a quick total. Null if it cannot be worked out without the "
+        "book (an estimate leg, a price needed).",
+    )
+
+    @classmethod
+    def of(cls, schedule: _Schedule, pending: tuple[Any, ...], amount: Amount | None):
+        return cls(
+            schedule=ScheduleOut.of(schedule),
+            pending=list(pending),
+            amount=None if amount is None else AmountOut.of(amount),
+        )
+
+
+class DuePanelOut(Out):
+    as_of: PostDate
+    due: list[DueScheduleOut]
+    occurrences: int = Field(
+        description="Total pending occurrences across all schedules."
+    )
+
+
+class PostOccurrenceIn(In):
+    """Confirm (and optionally adjust) the occurrence a schedule has due."""
+
+    on: PostDate | None = Field(
+        default=None, description="Pin which occurrence; must be the one due."
+    )
+    legs: list[LegIn] | None = Field(
+        default=None, description="Replace the template's legs for this occurrence only."
+    )
+    memo: str | None = None
+    payee_id: UUID | None = None
+    number: str | None = None
+
+
+class SkipOccurrenceIn(In):
+    on: PostDate | None = Field(
+        default=None, description="Pin which occurrence; must be the one due."
+    )
 
 
 # ==========================================================================

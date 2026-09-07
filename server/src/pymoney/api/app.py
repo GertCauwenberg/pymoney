@@ -42,6 +42,7 @@ from .routers import (
     prices,
     quotes,
     reports,
+    schedules,
     sync,
     system,
     transactions,
@@ -122,6 +123,12 @@ TAGS = [
             "Bringing a bank statement (CSV) into an account: inspect the "
             "file, preview what each row would become, commit the reviewed "
             "set. The per-bank column mapping is remembered for next time."
+        ),
+    },
+    {
+        "name": "schedules",
+        "description": (
+            "Recurring transactions. Nothing posts on a timer: a client lists what is due and posts each occurrence on confirmation, idempotently."
         ),
     },
     {
@@ -308,6 +315,7 @@ def create_app(
     app.include_router(transactions.router)
     app.include_router(prices.router)
     app.include_router(reports.router)
+    app.include_router(schedules.router)
     app.include_router(csv_import.router)
     app.include_router(sync.router)
     app.include_router(quotes.router)
