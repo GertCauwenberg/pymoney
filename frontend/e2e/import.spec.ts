@@ -23,7 +23,7 @@ test("a new user imports a KMyMoney file instead of creating a book by hand", as
   await expect(report).toBeVisible({ timeout: 30_000 });
   await expect(report).toContainText("Our old books");
   await expect(report).toContainText(/15 transactions/);
-  await expect(report).toContainText(/scheduled transactions/);
+  await expect(report).toContainText(/imported 12.999/);
   await report.getByRole("link", { name: "Open Our old books" }).click();
 
   // Inside the imported book, as its owner: the balance KMyMoney showed.
