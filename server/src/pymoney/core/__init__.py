@@ -81,6 +81,7 @@ from .ids import Uuid7Generator, new_id, uuid7
 from .payee import Payee
 from .posting import BookedLegs, LegSpec, book_legs
 from .price import Conversion, Price, PriceDB, PriceSource, ValuationPolicy
+from .recurrence import Frequency, Recurrence
 from .reports import (
     AccountRow,
     BalanceSheet,
@@ -110,6 +111,7 @@ from .rounding import (
     round_fraction,
     to_fraction,
 )
+from .schedule import Schedule, ScheduleTemplate, TemplateLeg
 from .settings import BookSettings
 from .store import TransactionSearch
 from .sync import RevisionBatch, SyncPage
@@ -148,7 +150,12 @@ __all__ = [  # noqa: RUF022
     "AccountClass",
     "AccountType",
     "ACCOUNT_SEPARATOR",
+    "Frequency",
     "Payee",
+    "Recurrence",
+    "Schedule",
+    "ScheduleTemplate",
+    "TemplateLeg",
     "Split",
     "Transaction",
     "ReconcileState",

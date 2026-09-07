@@ -63,6 +63,7 @@ from ..core.commodity import Commodity
 from ..core.entity import Entity
 from ..core.payee import Payee
 from ..core.price import PriceDB
+from ..core.schedule import Schedule
 from ..core.store import CommandRecord, Store, StoredBook, TransactionSearch
 from ..core.transaction import Transaction
 from . import schema
@@ -75,6 +76,7 @@ _TABLES = {
     EntityKind.COMMODITY: schema.commodities,
     EntityKind.ACCOUNT: schema.accounts,
     EntityKind.PAYEE: schema.payees,
+    EntityKind.SCHEDULE: schema.schedules,
     EntityKind.PRICE: schema.prices,
 }
 
@@ -132,6 +134,7 @@ class SqlStore(Store):
         self._commodities: dict[UUID, Commodity] = {}
         self._accounts: dict[UUID, Account] = {}
         self._payees: dict[UUID, Payee] = {}
+        self._schedules: dict[UUID, Schedule] = {}
         self._prices = PriceDB()
         self._loaded = False
         self._closed = False
@@ -318,6 +321,14 @@ class SqlStore(Store):
                 select(schema.payees).where(schema.payees.c.book_id == self._book_id)
             )
         }
+        self._schedules = {
+            r.id: Rows.schedule_from_row(r)
+            for r in conn.execute(
+                select(schema.schedules).where(
+                    schema.schedules.c.book_id == self._book_id
+                )
+            )
+        }
 
     def _registry(self) -> Registry:
         return Registry(commodities=self._commodities, accounts=self._accounts)
@@ -345,6 +356,8 @@ class SqlStore(Store):
             return self._accounts.get(entity_id)
         if kind is EntityKind.PAYEE:
             return self._payees.get(entity_id)
+        if kind is EntityKind.SCHEDULE:
+            return self._schedules.get(entity_id)
         if kind is EntityKind.PRICE:
             return self._prices.get(entity_id)
         return self._load_transaction(entity_id)
@@ -403,6 +416,8 @@ class SqlStore(Store):
             return Rows.account_to_row(entity, self._book_id)
         if kind is EntityKind.PAYEE:
             return Rows.payee_to_row(entity, self._book_id)
+        if kind is EntityKind.SCHEDULE:
+            return Rows.schedule_to_row(entity, self._book_id)
         return Rows.price_to_row(entity, self._book_id)
 
     def _cache_put(self, kind: EntityKind, entity: Any) -> None:
@@ -412,6 +427,8 @@ class SqlStore(Store):
             self._accounts[entity.id] = entity
         elif kind is EntityKind.PAYEE:
             self._payees[entity.id] = entity
+        elif kind is EntityKind.SCHEDULE:
+            self._schedules[entity.id] = entity
         else:
             self._prices.add(entity)
 
@@ -422,6 +439,8 @@ class SqlStore(Store):
             del self._accounts[entity_id]
         elif kind is EntityKind.PAYEE:
             del self._payees[entity_id]
+        elif kind is EntityKind.SCHEDULE:
+            del self._schedules[entity_id]
         else:
             self._prices.remove(entity_id)
 
@@ -436,6 +455,10 @@ class SqlStore(Store):
     def payees(self) -> tuple[Payee, ...]:
         self._ensure_loaded()
         return tuple(self._payees.values())
+
+    def schedules(self) -> tuple[Schedule, ...]:
+        self._ensure_loaded()
+        return tuple(self._schedules.values())
 
     def children_ids(self, parent_id: UUID | None) -> tuple[UUID, ...]:
         self._ensure_loaded()

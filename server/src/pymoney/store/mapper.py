@@ -23,7 +23,9 @@ from ..core.changelog import Change, ChangeOp, EntityKind
 from ..core.commodity import Commodity, CommodityKind
 from ..core.payee import Payee
 from ..core.price import Price
+from ..core.recurrence import Recurrence
 from ..core.rounding import RoundingMode
+from ..core.schedule import Schedule, ScheduleTemplate
 from ..core.store import CommandRecord, StoredBook
 from ..core.transaction import ReconcileState, Split, Transaction
 from .types import fits_in_bigint
@@ -193,6 +195,43 @@ class Rows:
             address=row.address,
             match_keys=tuple(row.match_keys),
             default_account_id=row.default_account_id,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            revision=row.revision,
+        )
+
+    # -- schedules --------------------------------------------------------
+    @staticmethod
+    def schedule_to_row(schedule: Schedule, book_id: UUID) -> dict[str, Any]:
+        assert schedule.template is not None and schedule.recurrence is not None
+        return {
+            "id": schedule.id,
+            "book_id": book_id,
+            "name": schedule.name,
+            "recurrence": schedule.recurrence.to_dict(),
+            "template": schedule.template.to_dict(),
+            "occurrences_done": schedule.occurrences_done,
+            "next_due": schedule.next_due,
+            "last_occurrence": schedule.last_occurrence,
+            "auto_post": schedule.auto_post,
+            "paused": schedule.paused,
+            "created_at": schedule.created_at,
+            "updated_at": schedule.updated_at,
+            "revision": schedule.revision,
+        }
+
+    @staticmethod
+    def schedule_from_row(row: Any) -> Schedule:
+        return Schedule(
+            id=row.id,
+            book_id=row.book_id,
+            name=row.name,
+            recurrence=Recurrence.from_dict(dict(row.recurrence)),
+            template=ScheduleTemplate.from_dict(dict(row.template)),
+            occurrences_done=row.occurrences_done,
+            last_occurrence=row.last_occurrence,
+            auto_post=row.auto_post,
+            paused=row.paused,
             created_at=row.created_at,
             updated_at=row.updated_at,
             revision=row.revision,

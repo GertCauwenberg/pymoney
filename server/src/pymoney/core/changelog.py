@@ -44,6 +44,7 @@ class EntityKind(StrEnum):
     PAYEE = "PAYEE"
     TRANSACTION = "TRANSACTION"
     PRICE = "PRICE"
+    SCHEDULE = "SCHEDULE"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

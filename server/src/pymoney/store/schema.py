@@ -150,6 +150,27 @@ payees = Table(
     UniqueConstraint("book_id", "name_key", name="uq_payees_book_id_name_key"),
 )
 
+# A recurring transaction: a date-less template, a recurrence rule, and a
+# cursor. Small and read constantly (the "what is due?" panel), so cached like
+# payees. `next_due` is denormalised from `occurrences_done` purely so the due
+# query is an indexed range scan.
+schedules = Table(
+    "schedules",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("book_id", Uuid, ForeignKey("books.id", ondelete="CASCADE"), nullable=False),
+    Column("name", NAME, nullable=False),
+    Column("recurrence", JsonDict, nullable=False),
+    Column("template", JsonDict, nullable=False),
+    Column("occurrences_done", Integer, nullable=False),
+    Column("next_due", Date, nullable=True),
+    Column("last_occurrence", Date, nullable=True),
+    Column("auto_post", Boolean, nullable=False),
+    Column("paused", Boolean, nullable=False),
+    *_audit(),
+    Index("ix_schedules_book_id_next_due", "book_id", "next_due"),
+)
+
 transactions = Table(
     "transactions",
     metadata,
@@ -319,6 +340,7 @@ ALL_TABLES = (
     commodities,
     accounts,
     payees,
+    schedules,
     transactions,
     splits,
     prices,

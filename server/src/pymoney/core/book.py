@@ -37,6 +37,7 @@ from .ids import new_id
 from .payee import Payee
 from .posting import LegSpec
 from .price import Price, PriceDB, ValuationPolicy
+from .schedule import Schedule
 from .settings import BookSettings
 from .store import ChangeLogView, CommandRecord, MemoryStore, Store, TransactionSearch
 from .sync import RevisionBatch, SyncPage
@@ -54,6 +55,7 @@ _ENTITY_KINDS: dict[type, EntityKind] = {
     Payee: EntityKind.PAYEE,
     Transaction: EntityKind.TRANSACTION,
     Price: EntityKind.PRICE,
+    Schedule: EntityKind.SCHEDULE,
     BookSettings: EntityKind.BOOK,
 }
 
@@ -289,6 +291,38 @@ class Book:
 
     def payees(self) -> tuple[Payee, ...]:
         return tuple(sorted(self._store.payees(), key=lambda p: p.name))
+
+    def schedule(self, schedule_id: UUID) -> Schedule:
+        found = self._store.get(EntityKind.SCHEDULE, schedule_id)
+        if found is None:
+            raise NotFoundError(f"no schedule {schedule_id}")
+        return cast(Schedule, found)
+
+    def schedules(
+        self, *, include_finished: bool = True, include_paused: bool = True
+    ) -> tuple[Schedule, ...]:
+        out = [
+            s
+            for s in self._store.schedules()
+            if (include_finished or not s.is_finished)
+            and (include_paused or not s.paused)
+        ]
+        return tuple(sorted(out, key=lambda s: (s.next_due or date.max, s.name)))
+
+    def due_schedules(
+        self, on: date | None = None
+    ) -> tuple[tuple[Schedule, tuple[date, ...]], ...]:
+        """Every schedule with at least one occurrence on or before ``on``
+        (default: the book's today), paired with those occurrence dates,
+        oldest first."""
+        when = on or self.clock.today()
+        out = []
+        for schedule in self.schedules(include_finished=False, include_paused=False):
+            pending = schedule.pending(when)
+            if pending:
+                out.append((schedule, pending))
+        out.sort(key=lambda pair: (pair[1][0], pair[0].name))
+        return tuple(out)
 
     def find_payee(self, name: str) -> Payee | None:
         key = name.strip().casefold()
@@ -996,6 +1030,7 @@ class Book:
             "commodities": tuple(c.id for c in self._store.commodities()),
             "accounts": tuple(a.id for a in self._store.accounts()),
             "payees": tuple(p.id for p in self._store.payees()),
+            "schedules": tuple(s.id for s in self._store.schedules()),
             "transactions": self._store.transaction_ids(),
             "prices": tuple(p.id for p in self.prices.all()),
         }

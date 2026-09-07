@@ -17,7 +17,15 @@ from collections.abc import Callable
 from typing import Any
 
 from .. import commands as cmd
-from . import accounts, commodities, payees, prices, settings, transactions
+from . import (
+    accounts,
+    commodities,
+    payees,
+    prices,
+    schedules,
+    settings,
+    transactions,
+)
 
 __all__ = ["HANDLERS", "handler_for"]
 
@@ -44,6 +52,11 @@ HANDLERS: dict[type[cmd.Command], Callable[..., Any]] = {
     cmd.UpdatePayee: payees.update_payee,
     cmd.MergePayees: payees.merge_payees,
     cmd.DeletePayee: payees.delete_payee,
+    cmd.CreateSchedule: schedules.create_schedule,
+    cmd.UpdateSchedule: schedules.update_schedule,
+    cmd.DeleteSchedule: schedules.delete_schedule,
+    cmd.PostScheduledOccurrence: schedules.post_scheduled_occurrence,
+    cmd.SkipScheduledOccurrence: schedules.skip_scheduled_occurrence,
     # transactions
     cmd.PostTransaction: transactions.post_transaction,
     cmd.UpdateTransaction: transactions.update_transaction,

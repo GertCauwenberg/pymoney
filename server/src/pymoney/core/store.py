@@ -40,6 +40,7 @@ from .commodity import Commodity
 from .entity import Entity
 from .payee import Payee
 from .price import PriceDB
+from .schedule import Schedule
 from .settings import BookSettings
 from .transaction import Transaction
 
@@ -56,6 +57,7 @@ _ENTITY_KINDS = (
     EntityKind.COMMODITY,
     EntityKind.ACCOUNT,
     EntityKind.PAYEE,
+    EntityKind.SCHEDULE,
     EntityKind.TRANSACTION,
 )
 
@@ -252,6 +254,9 @@ class Store(ABC):
 
     @abstractmethod
     def payees(self) -> tuple[Payee, ...]: ...
+
+    @abstractmethod
+    def schedules(self) -> tuple[Schedule, ...]: ...
 
     @abstractmethod
     def children_ids(self, parent_id: UUID | None) -> tuple[UUID, ...]:
@@ -581,6 +586,9 @@ class MemoryStore(Store):
 
     def payees(self) -> tuple[Payee, ...]:
         return tuple(self._entities[EntityKind.PAYEE].values())
+
+    def schedules(self) -> tuple[Schedule, ...]:
+        return tuple(self._entities[EntityKind.SCHEDULE].values())
 
     def children_ids(self, parent_id: UUID | None) -> tuple[UUID, ...]:
         return tuple(self._children.get(parent_id, ()))

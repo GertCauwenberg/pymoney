@@ -28,7 +28,9 @@ from uuid import UUID
 from .account import AccountType
 from .commodity import CommodityKind
 from .posting import LegSpec
+from .recurrence import Recurrence
 from .rounding import DEFAULT_ROUNDING, RoundingMode
+from .schedule import ScheduleTemplate
 from .transaction import ReconcileState
 
 __all__ = [
@@ -39,23 +41,28 @@ __all__ = [
     "CreateAccount",
     "CreateCommodity",
     "CreatePayee",
+    "CreateSchedule",
     "DeleteAccount",
     "DeleteCommodity",
     "DeletePayee",
     "DeletePrice",
+    "DeleteSchedule",
     "DeleteTransaction",
     "MergeAccounts",
     "MergePayees",
     "MoveAccount",
+    "PostScheduledOccurrence",
     "PostTransaction",
     "ReconcileAccount",
     "RenameAccount",
     "SetAccountClosed",
     "SetSplitReconcileState",
+    "SkipScheduledOccurrence",
     "Unset",
     "UpdateAccount",
     "UpdateCommodity",
     "UpdatePayee",
+    "UpdateSchedule",
     "UpdateTransaction",
     "fingerprint",
 ]
@@ -345,6 +352,66 @@ class MergePayees(Command):
 @dataclass(frozen=True, slots=True, kw_only=True)
 class DeletePayee(Command):
     payee_id: UUID
+
+
+# -- scheduled / recurring transactions ---------------------------------
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CreateSchedule(Command):
+    """A recurring transaction: a template, a recurrence, and a cursor."""
+
+    name: str
+    template: ScheduleTemplate
+    recurrence: Recurrence
+    auto_post: bool = False
+    paused: bool = False
+    occurrences_done: int = 0
+    """Usually 0; an importer sets it for a schedule partway through its run."""
+    id: UUID | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class UpdateSchedule(Command):
+    schedule_id: UUID
+    name: Maybe[str] = UNSET
+    template: Maybe[ScheduleTemplate] = UNSET
+    recurrence: Maybe[Recurrence] = UNSET
+    auto_post: Maybe[bool] = UNSET
+    paused: Maybe[bool] = UNSET
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DeleteSchedule(Command):
+    schedule_id: UUID
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PostScheduledOccurrence(Command):
+    """Post the occurrence currently due, and advance the schedule -- one
+    revision for both.
+
+    ``on`` pins which occurrence (it must be the one due); leave it unset for
+    "the oldest that is due". ``overrides`` lets the confirming user adjust the
+    amounts or the memo for this one occurrence without touching the template.
+    The posted transaction carries ``imported_id = sched:<id>:<date>``, so a
+    second client posting the same occurrence converges instead of doubling.
+    """
+
+    schedule_id: UUID
+    on: Maybe[date] = UNSET
+    legs: Maybe[tuple[LegSpec, ...]] = UNSET
+    memo: Maybe[str] = UNSET
+    payee_id: Maybe[UUID | None] = UNSET
+    number: Maybe[str] = UNSET
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SkipScheduledOccurrence(Command):
+    """Advance past the occurrence currently due without posting anything."""
+
+    schedule_id: UUID
+    on: Maybe[date] = UNSET
 
 
 # -- transactions ---------------------------------------------------------
