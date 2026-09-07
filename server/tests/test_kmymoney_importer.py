@@ -682,9 +682,19 @@ class TestPrices:
 # reporting
 # ==========================================================================
 class TestReport:
+    def test_scheduled_transactions_are_imported(self, imported):
+        book, report = imported
+        assert report.imported["schedules"] == 2
+        assert "scheduled transactions" not in report.skipped  # none left behind
+        by_name = {s.name: s for s in book.schedules()}
+        assert by_name["Rent"].recurrence.describe() == "every 3 weeks on Sunday"
+        assert by_name["Rent"].next_due.isoformat() == "2026-02-01"
+        assert by_name["Rent"].auto_post is True
+        assert by_name["Insurance"].recurrence.describe() == "every 2 months on day 1"
+        assert by_name["Insurance"].auto_post is False
+
     def test_nothing_is_dropped_silently(self, imported):
         _, report = imported
-        assert report.skipped["scheduled transactions"] == 2
         assert report.skipped["budgets"] == 1
         assert report.skipped["tags"] == 2
         assert report.skipped["split bank id (import reference)"] == 1

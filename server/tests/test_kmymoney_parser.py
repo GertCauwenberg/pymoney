@@ -261,6 +261,17 @@ class TestTransactionStreaming:
         assert len(ids) == 15
         assert source.declared_counts["schedules"] == 2
 
+    def test_schedules_are_parsed_with_their_template(self, source):
+        by_name = {s.name: s for s in source.schedules}
+        assert set(by_name) == {"Rent", "Insurance"}
+        rent = by_name["Rent"]
+        assert rent.occurrence == 32 and rent.occurrence_multiplier == 1
+        assert rent.auto_enter is True and rent.fixed is True
+        assert rent.start_date.isoformat() == "2026-01-01"
+        assert rent.transaction is not None
+        assert rent.transaction.post_date.isoformat() == "2026-02-01"
+        assert {s.account_id for s in rent.transaction.splits} == {"A000001", "A000010"}
+
     def test_splits_keep_their_exact_rationals(self, source):
         taxi = next(
             t for t in source.iter_transactions() if t.memo == "Taxi split three ways"

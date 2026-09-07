@@ -47,6 +47,7 @@ from .model import (
     KmyInstitution,
     KmyPayee,
     KmyPrice,
+    KmySchedule,
     KmySplit,
     KmyTransaction,
 )
@@ -235,6 +236,7 @@ class KmyFile:
     institutions: dict[str, KmyInstitution] = field(default_factory=dict)
     prices: list[KmyPrice] = field(default_factory=list)
     tags: dict[str, str] = field(default_factory=dict)
+    schedules: list[KmySchedule] = field(default_factory=list)
     key_values: dict[str, str] = field(default_factory=dict)
     max_bytes: int = DEFAULT_MAX_XML_BYTES
     """The most XML the file may inflate to (see :func:`open_kmy`)."""
@@ -303,6 +305,10 @@ class KmyFile:
                     element.clear()
                 elif element.tag == "TRANSACTIONS":
                     parsed.declared_counts["transactions"] = _int(element, "count", -1)
+                    element.clear()
+                elif element.tag == "SCHEDULES":
+                    parsed.declared_counts["schedules"] = _int(element, "count", -1)
+                    _read_schedules(parsed, element)
                     element.clear()
                 elif element.tag in _COUNTED_SECTIONS:
                     parsed.declared_counts[element.tag.lower()] = _int(
@@ -516,6 +522,29 @@ class KmyFile:
 _COUNTED_SECTIONS = frozenset(
     {"SCHEDULES", "BUDGETS", "REPORTS", "COSTCENTERS", "ONLINEJOBS"}
 )
+
+
+def _read_schedules(parsed: KmyFile, element: Element) -> None:
+    """Parse <SCHEDULE> children: name, the recurrence code, and the embedded
+    <TRANSACTION> that is the template (its postdate is the next due date)."""
+    for sched in element.findall("SCHEDULED_TX"):
+        txn_el = sched.find("TRANSACTION")
+        parsed.schedules.append(
+            KmySchedule(
+                id=sched.get("id", ""),
+                name=sched.get("name", "").strip(),
+                occurrence=_int(sched, "occurence")  # KMyMoney's spelling
+                or _int(sched, "occurrence"),
+                occurrence_multiplier=_int(sched, "occurenceMultiplier", 1)
+                or _int(sched, "occurrenceMultiplier", 1),
+                start_date=_date(sched, "startDate"),
+                end_date=_date(sched, "endDate"),
+                last_payment=_date(sched, "lastPayment"),
+                auto_enter=sched.get("autoEnter", "0") == "1",
+                fixed=sched.get("fixed", "1") == "1",
+                transaction=_transaction(txn_el) if txn_el is not None else None,
+            )
+        )
 
 
 def _transaction(element: Element) -> KmyTransaction:

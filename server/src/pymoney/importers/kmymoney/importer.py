@@ -148,6 +148,7 @@ class KmyImporter:
             if not self.options.skip_prices:
                 self._import_prices()
             self._post_rounding_adjustments()
+            self._import_schedules()
             self._close_accounts()
 
         self._record_skipped()
@@ -499,6 +500,121 @@ class KmyImporter:
                     source_id=source_id,
                 )
                 return candidate
+
+    # KMyMoney eRecurrence -> (our Frequency, interval). None = cannot express;
+    # an approximation carries a note.
+    _RECURRENCE: dict[int, tuple[str, int, bool]] = {
+        2: ("DAILY", 1, False),
+        4: ("WEEKLY", 1, False),
+        8: ("WEEKLY", 2, False),
+        16: ("WEEKLY", 2, False),  # fortnightly
+        32: ("WEEKLY", 3, False),
+        64: ("DAILY", 30, True),  # "every thirty days" ~ monthly
+        128: ("MONTHLY", 1, False),
+        256: ("WEEKLY", 4, False),
+        512: ("WEEKLY", 8, False),
+        1024: ("MONTHLY", 2, False),
+        2048: ("MONTHLY", 3, False),
+        4096: ("MONTHLY", 4, False),
+        8192: ("MONTHLY", 6, False),
+        16384: ("YEARLY", 1, False),
+        32768: ("YEARLY", 2, False),
+    }
+
+    def _import_schedules(self) -> None:
+        from ...core import commands as cmd
+        from ...core.recurrence import Frequency, Recurrence
+        from ...core.schedule import ScheduleTemplate, TemplateLeg
+
+        for kmy in self.source.schedules:
+            template_txn = kmy.transaction
+            when = (template_txn.post_date if template_txn else None) or kmy.start_date
+            if template_txn is None or not template_txn.splits or when is None:
+                self.report.warn(
+                    "schedule",
+                    f"{kmy.name!r}: no usable template; skipped",
+                    source_id=kmy.id,
+                )
+                continue
+            if kmy.occurrence in (1, 0):  # Once / unknown
+                self.report.note(
+                    "schedule",
+                    f"{kmy.name!r}: a one-off entry; skipped",
+                    source_id=kmy.id,
+                )
+                continue
+            mapped = self._RECURRENCE.get(kmy.occurrence)
+            if mapped is None or kmy.occurrence == 18:  # 18 = semi-monthly
+                self.report.warn(
+                    "schedule",
+                    f"{kmy.name!r}: its recurrence is not one PyMoney can express; "
+                    f"skipped -- re-create it by hand",
+                    source_id=kmy.id,
+                )
+                continue
+            freq, interval, approx = mapped
+            interval *= max(1, kmy.occurrence_multiplier)
+
+            legs: list[TemplateLeg] = []
+            missing = False
+            for split in template_txn.splits:
+                account = self.accounts.get(split.account_id)
+                if account is None:
+                    missing = True
+                    break
+                legs.append(
+                    TemplateLeg(
+                        account_id=account.id,
+                        value=split.value,
+                        memo=split.memo,
+                        payee_id=(
+                            self.payees.get(split.payee_id) if split.payee_id else None
+                        ),
+                    )
+                )
+            if missing or len(legs) < 1:
+                self.report.warn(
+                    "schedule",
+                    f"{kmy.name!r}: a template split points at an account that "
+                    f"was not imported; skipped",
+                    source_id=kmy.id,
+                )
+                continue
+
+            currency = self.commodity_for(template_txn.currency_id)
+            try:
+                recurrence = Recurrence(
+                    frequency=Frequency(freq),
+                    start=when,
+                    interval=interval,
+                    until=kmy.end_date,
+                )
+                self.book.execute(
+                    cmd.CreateSchedule(
+                        name=kmy.name or "Imported schedule",
+                        template=ScheduleTemplate(
+                            legs=tuple(legs),
+                            currency_id=currency.id if currency else None,
+                            memo=template_txn.memo,
+                            estimate=not kmy.fixed,
+                        ),
+                        recurrence=recurrence,
+                        auto_post=kmy.auto_enter,
+                    )
+                )
+            except Exception as exc:
+                self.report.warn(
+                    "schedule", f"{kmy.name!r}: {exc}; skipped", source_id=kmy.id
+                )
+                continue
+            self.report.count("schedules")
+            if approx:
+                self.report.note(
+                    "schedule",
+                    f"{kmy.name!r}: '{kmy.occurrence}-day' recurrence imported as "
+                    f"every {interval} days",
+                    source_id=kmy.id,
+                )
 
     def _close_accounts(self) -> None:
         for kmy_id, kmy in self.source.accounts.items():
@@ -858,13 +974,19 @@ class KmyImporter:
     # ====================================================================
     def _record_skipped(self) -> None:
         for name, key in (
-            ("scheduled transactions", "schedules"),
             ("budgets", "budgets"),
             ("saved reports", "reports"),
             ("cost centres", "costcenters"),
             ("online banking jobs", "onlinejobs"),
         ):
             self.report.skip(name, max(self.source.declared_counts.get(key, 0), 0))
+        # Schedules are imported now; only those the mapper could not express
+        # stay behind. They were counted into `schedules` below.
+        declared = max(self.source.declared_counts.get("schedules", 0), 0)
+        self.report.skip(
+            "scheduled transactions",
+            max(declared - self.report.imported.get("schedules", 0), 0),
+        )
         self.report.skip("tags", len(self.source.tags))
         for name, count in sorted(self._unmapped.items()):
             self.report.skip(name, count)

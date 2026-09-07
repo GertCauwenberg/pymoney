@@ -221,6 +221,28 @@ class KmyTransaction:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class KmySchedule:
+    """A scheduled / recurring transaction.
+
+    The embedded ``transaction`` is the template; its ``post_date`` is the next
+    occurrence that has not been entered.
+    """
+
+    id: str = ""
+    name: str = ""
+    occurrence: int = 0
+    """KMyMoney's ``eRecurrence`` code (128 = monthly, 16384 = yearly, ...)."""
+    occurrence_multiplier: int = 1
+    start_date: date | None = None
+    end_date: date | None = None
+    last_payment: date | None = None
+    auto_enter: bool = False
+    fixed: bool = True
+    """``False`` means KMyMoney treats the amounts as an estimate."""
+    transaction: KmyTransaction | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class KmyPrice:
     from_id: str
     to_id: str

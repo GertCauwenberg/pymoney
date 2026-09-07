@@ -38,13 +38,13 @@ class TestImportUpload:
         assert body["ok"] is True
         assert body["imported"]["transactions"] == 15
         assert body["imported"]["accounts"] >= 12
+        assert body["imported"]["schedules"] == 2
         assert (
             "rounding adjustments" in body["imported"]
             or body["adjustments"] == []
             or body["adjustments"]
         )
         assert "Imported" in body["summary"]
-        assert body["skipped"]["scheduled transactions"] == 2
 
         book_id = body["book"]["id"]
         books = user.get("/books").json()
