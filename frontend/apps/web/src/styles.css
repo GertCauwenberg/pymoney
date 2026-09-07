@@ -1219,3 +1219,18 @@ a.btn--link {
   font-size: 1.4em;
   font-weight: 600;
 }
+
+/* --- scheduled transactions ---------------------------------------------- */
+.due-panel { margin-bottom: 1rem; border: 1px solid var(--warning-border); border-radius: 8px; background: var(--warning-bg); }
+.due-panel__summary { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.9rem; background: none; border: 0; cursor: pointer; color: var(--warning-text); font: inherit; }
+.due-panel__list { list-style: none; margin: 0; padding: 0.25rem 0.9rem 0.6rem; }
+.due-panel__row { display: flex; align-items: center; gap: 1rem; padding: 0.35rem 0; border-top: 1px solid color-mix(in srgb, var(--warning-border) 40%, transparent); }
+.due-panel__row > div:first-child { flex: 1; }
+.due-panel__actions { display: flex; gap: 0.4rem; }
+.due-panel__foot { padding-top: 0.5rem; font-size: 0.9em; }
+.schedules__table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+.schedules__table th, .schedules__table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); text-align: left; }
+.schedules__table tr.is-paused, .schedules__table tr.is-finished { opacity: 0.6; }
+.schedules__legs, .schedules__rule { border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.8rem; margin: 0.6rem 0; }
+.schedules__legs legend, .schedules__rule legend { padding: 0 0.3rem; color: var(--muted); font-size: 0.85em; }
+.schedules__leg-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.5rem 0.9rem; }

@@ -11,6 +11,7 @@ import { ActivatePage, ForgotPasswordPage, ResetPasswordPage } from "./pages/Pas
 import { NotFound } from "./pages/NotFound";
 import { HistoryPage } from "./pages/HistoryPage";
 import { PayeesPage } from "./pages/PayeesPage";
+import { SchedulesPage } from "./pages/SchedulesPage";
 import { SettingsShell } from "./pages/SettingsShell";
 import { SharingPage } from "./pages/SharingPage";
 import { BalanceSheetReport } from "./reports/BalanceSheetReport";
@@ -60,6 +61,7 @@ export function App() {
             <Route index element={<Navigate to="accounts" replace />} />
             <Route path="accounts" element={<AccountsPage />} />
             <Route path="payees" element={<PayeesPage />} />
+            <Route path="schedules" element={<SchedulesPage />} />
             <Route path="commodities" element={<CommoditiesPage />} />
             <Route path="prices" element={<PricesPage />} />
             <Route path="sharing" element={<SharingPage />} />

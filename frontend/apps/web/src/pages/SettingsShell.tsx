@@ -13,6 +13,7 @@ export function SettingsShell() {
       <nav className="tabs tabs--sub" aria-label={t("Settings")}>
         <NavLink to="accounts">{t("Accounts")}</NavLink>
         <NavLink to="payees">{t("Payees")}</NavLink>
+        <NavLink to="schedules">{t("Scheduled")}</NavLink>
         <NavLink to="commodities">{t("Commodities")}</NavLink>
         <NavLink to="prices">{t("Prices")}</NavLink>
         {context.role === "owner" && <NavLink to="sharing">{t("Sharing")}</NavLink>}

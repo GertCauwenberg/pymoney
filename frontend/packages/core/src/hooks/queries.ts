@@ -21,6 +21,9 @@ import type {
   PayeePatch,
   PayeesQuery,
   PeriodTableQuery,
+  PostOccurrenceIn,
+  ScheduleIn,
+  SchedulePatch,
   PriceIn,
   PricesQuery,
   QuoteFetchIn,
@@ -65,6 +68,9 @@ export const keys = {
   quoteProviders: ["quote-providers"] as const,
   importMapping: (bookId: string, accountId: string) =>
     ["books", bookId, "accounts", accountId, "import-mapping"] as const,
+  schedules: (bookId: string) => ["books", bookId, "schedules"] as const,
+  dueSchedules: (bookId: string, on?: string) =>
+    ["books", bookId, "schedules", "due", on ?? "today"] as const,
 };
 
 /**
@@ -593,6 +599,78 @@ export function useFetchQuotes(bookId: string) {
       qc.setQueryData(keys.lastQuoteRun(bookId), run);
       invalidate();
     },
+  });
+}
+
+// -- scheduled / recurring transactions -------------------------------------
+
+export function useSchedules(bookId: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.schedules(bookId),
+    queryFn: () => api.schedules(bookId),
+    staleTime: 60_000,
+  });
+}
+
+/** The "due" panel: what needs posting. Polled lightly; a write invalidates it. */
+export function useDueSchedules(bookId: string, on?: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.dueSchedules(bookId, on),
+    queryFn: () => api.dueSchedules(bookId, on),
+    staleTime: 30_000,
+  });
+}
+
+export type ScheduleChange =
+  | { kind: "create"; body: ScheduleIn }
+  | { kind: "update"; scheduleId: string; body: SchedulePatch }
+  | { kind: "delete"; scheduleId: string };
+
+export function useChangeSchedule(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: async (change: ScheduleChange) => {
+      switch (change.kind) {
+        case "create":
+          return api.createSchedule(bookId, change.body);
+        case "update":
+          return api.updateSchedule(bookId, change.scheduleId, change.body);
+        case "delete":
+          await api.deleteSchedule(bookId, change.scheduleId);
+          return null;
+      }
+    },
+    onSuccess: invalidate,
+  });
+}
+
+export function usePostOccurrence(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: ({
+      scheduleId,
+      body,
+      idempotencyKey,
+    }: {
+      scheduleId: string;
+      body?: PostOccurrenceIn;
+      idempotencyKey?: string;
+    }) => api.postOccurrence(bookId, scheduleId, body ?? {}, idempotencyKey),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSkipOccurrence(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: ({ scheduleId, on }: { scheduleId: string; on?: string }) =>
+      api.skipOccurrence(bookId, scheduleId, on),
+    onSuccess: invalidate,
   });
 }
 

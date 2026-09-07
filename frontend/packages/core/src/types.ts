@@ -68,6 +68,20 @@ export type RegisterIn = Schemas["RegisterIn"];
 export type Pending = Schemas["PendingOut"];
 export type Health = Schemas["HealthOut"];
 
+// -- scheduled / recurring transactions -------------------------------------
+export type Schedule = Schemas["ScheduleOut"];
+export type ScheduleIn = Schemas["ScheduleIn"];
+export type SchedulePatch = Schemas["SchedulePatch"];
+export type Recurrence = Schemas["RecurrenceModel"];
+export type Frequency = Recurrence["frequency"];
+export type ScheduleTemplate = Schemas["ScheduleTemplateOut"];
+export type ScheduleTemplateIn = Schemas["ScheduleTemplateIn"];
+export type TemplateLeg = Schemas["TemplateLegOut"];
+export type TemplateLegIn = Schemas["TemplateLegIn"];
+export type DuePanel = Schemas["DuePanelOut"];
+export type DueSchedule = Schemas["DueScheduleOut"];
+export type PostOccurrenceIn = Schemas["PostOccurrenceIn"];
+
 // -- CSV statement import ----------------------------------------------------
 export type ColumnMapping = Schemas["ColumnMappingModel"];
 export type AmountKind = ColumnMapping["amount_kind"];

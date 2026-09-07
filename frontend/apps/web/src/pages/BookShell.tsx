@@ -6,6 +6,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { LanguageSwitch } from "../components/LanguageSwitch";
 import { Loading } from "../components/Loading";
 import { Logo } from "../components/Logo";
+import { DuePanel } from "../components/DuePanel";
 
 export interface BookContext {
   bookId: string;
@@ -73,6 +74,7 @@ export function BookShell() {
         </div>
       </header>
       <main className="page">
+        <DuePanel bookId={bookId} role={context.role} />
         <Outlet context={context} />
       </main>
     </div>

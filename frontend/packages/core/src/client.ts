@@ -24,6 +24,11 @@ import type {
   ColumnMapping,
   Commodity,
   CommodityIn,
+  DuePanel,
+  PostOccurrenceIn,
+  Schedule,
+  ScheduleIn,
+  SchedulePatch,
   CommodityPatch,
   CsvInspect,
   CsvPreview,
@@ -417,6 +422,60 @@ export class ApiClient {
   /** Irreversible. The server wants the book's exact name back as confirmation. */
   deleteBook(bookId: string, name: string): Promise<void> {
     return this.request<void>("DELETE", `/books/${bookId}`, { name });
+  }
+
+  // -- scheduled / recurring transactions ------------------------------
+  //
+  // Nothing posts on a timer. dueSchedules() is the panel's source; each
+  // occurrence is posted by postOccurrence() on confirmation, idempotently.
+
+  schedules(bookId: string): Promise<Schedule[]> {
+    return this.get<Schedule[]>(`/books/${bookId}/schedules`);
+  }
+
+  /** Schedules with an occurrence on or before `on` (default: the book's today). */
+  dueSchedules(bookId: string, on?: string): Promise<DuePanel> {
+    return this.get<DuePanel>(`/books/${bookId}/schedules/due${queryString({ on })}`);
+  }
+
+  schedule(bookId: string, scheduleId: string): Promise<Schedule> {
+    return this.get<Schedule>(`/books/${bookId}/schedules/${scheduleId}`);
+  }
+
+  createSchedule(bookId: string, body: ScheduleIn): Promise<Schedule> {
+    return this.post<Schedule>(`/books/${bookId}/schedules`, body);
+  }
+
+  updateSchedule(bookId: string, scheduleId: string, body: SchedulePatch): Promise<Schedule> {
+    return this.patch<Schedule>(`/books/${bookId}/schedules/${scheduleId}`, body);
+  }
+
+  deleteSchedule(bookId: string, scheduleId: string): Promise<void> {
+    return this.delete(`/books/${bookId}/schedules/${scheduleId}`);
+  }
+
+  /**
+   * Post the occurrence the schedule has due and advance it. `legs` on the
+   * body replace the template for this occurrence only. Pass an
+   * `idempotencyKey` when a retry is possible.
+   */
+  postOccurrence(
+    bookId: string,
+    scheduleId: string,
+    body: PostOccurrenceIn = {},
+    idempotencyKey?: string,
+  ): Promise<Transaction> {
+    return this.request<Transaction>(
+      "POST",
+      `/books/${bookId}/schedules/${scheduleId}/post`,
+      body,
+      idempotencyKey,
+    );
+  }
+
+  /** Advance past the due occurrence without posting anything. */
+  skipOccurrence(bookId: string, scheduleId: string, on?: string): Promise<Schedule> {
+    return this.post<Schedule>(`/books/${bookId}/schedules/${scheduleId}/skip`, { on: on ?? null });
   }
 
   // -- CSV statement import ---------------------------------------------

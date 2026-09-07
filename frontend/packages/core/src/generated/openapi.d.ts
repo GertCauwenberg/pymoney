@@ -884,6 +884,105 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/books/{book_id}/schedules": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List schedules */
+        readonly get: operations["list_schedules_books__book_id__schedules_get"];
+        readonly put?: never;
+        /** Create a schedule */
+        readonly post: operations["create_schedule_books__book_id__schedules_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/schedules/{schedule_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** One schedule */
+        readonly get: operations["get_schedule_books__book_id__schedules__schedule_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete a schedule */
+        readonly delete: operations["delete_schedule_books__book_id__schedules__schedule_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        /** Update a schedule */
+        readonly patch: operations["update_schedule_books__book_id__schedules__schedule_id__patch"];
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/schedules/{schedule_id}/post": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Post the occurrence this schedule has due
+         * @description Posts the due occurrence and advances the schedule in one revision.
+         *     ``legs`` replaces the template's legs for this occurrence only; the
+         *     template stays as it was. A second client posting the same occurrence
+         *     gets back the transaction that already exists.
+         */
+        readonly post: operations["post_occurrence_books__book_id__schedules__schedule_id__post_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/schedules/{schedule_id}/skip": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Advance past the occurrence this schedule has due, without posting */
+        readonly post: operations["skip_occurrence_books__book_id__schedules__schedule_id__skip_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/schedules/due": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Schedules with an occurrence due on or before a date
+         * @description One occurrence's amount is estimated from the template's first
+         *     non-residual leg, in the transaction currency -- a quick total for the
+         *     panel, ``null`` when it cannot be known without posting.
+         */
+        readonly get: operations["due_panel_books__book_id__schedules_due_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/books/{book_id}/transactions": {
         readonly parameters: {
             readonly query?: never;
@@ -1640,6 +1739,35 @@ export interface components {
             /** Kind */
             readonly kind: string;
         };
+        /** DuePanelOut */
+        readonly DuePanelOut: {
+            /**
+             * As Of
+             * Format: date
+             */
+            readonly as_of: string;
+            /** Due */
+            readonly due: readonly components["schemas"]["DueScheduleOut"][];
+            /**
+             * Occurrences
+             * @description Total pending occurrences across all schedules.
+             */
+            readonly occurrences: number;
+        };
+        /**
+         * DueScheduleOut
+         * @description A schedule with at least one occurrence on or before the asked date.
+         */
+        readonly DueScheduleOut: {
+            /** @description What one occurrence would post to the first non-residual leg, for a quick total. Null if it cannot be worked out without the book (an estimate leg, a price needed). */
+            readonly amount?: components["schemas"]["AmountOut"] | null;
+            /**
+             * Pending
+             * @description Every occurrence from the cursor up to the date, oldest first.
+             */
+            readonly pending: readonly string[];
+            readonly schedule: components["schemas"]["ScheduleOut"];
+        };
         /** EmailIn */
         readonly EmailIn: {
             /** Email */
@@ -2164,6 +2292,33 @@ export interface components {
             /** Unpriced */
             readonly unpriced: readonly string[];
         };
+        /**
+         * PostOccurrenceIn
+         * @description Confirm (and optionally adjust) the occurrence a schedule has due.
+         */
+        readonly PostOccurrenceIn: {
+            /**
+             * Legs
+             * @description Replace the template's legs for this occurrence only.
+             */
+            readonly legs?: readonly components["schemas"]["LegIn"][] | null;
+            /** Memo */
+            readonly memo?: string | null;
+            /** Number */
+            readonly number?: string | null;
+            /**
+             * On
+             * @description Pin which occurrence; must be the one due.
+             */
+            readonly on?: string | null;
+            /** Payee Id */
+            readonly payee_id?: string | null;
+            /**
+             * Transaction Id
+             * @description Id for the posted transaction; set by an offline client so its replica row and the server's are one on replay.
+             */
+            readonly transaction_id?: string | null;
+        };
         /** PriceIn */
         readonly PriceIn: {
             /**
@@ -2376,6 +2531,45 @@ export interface components {
          * @enum {string}
          */
         readonly ReconcileStateName: "NOT_RECONCILED" | "CLEARED" | "RECONCILED" | "FROZEN";
+        /**
+         * RecurrenceModel
+         * @description A recurrence rule: a small, exact subset of RFC 5545.
+         */
+        readonly RecurrenceModel: {
+            /**
+             * Count
+             * @description End after this many occurrences.
+             */
+            readonly count?: number | null;
+            /**
+             * Frequency
+             * @enum {string}
+             */
+            readonly frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+            /**
+             * Interval
+             * @description Every N units.
+             * @default 1
+             */
+            readonly interval: number;
+            /**
+             * Monthly By Weekday
+             * @description MONTHLY only: the nth weekday of the month (a 'third Friday') rather than a day number.
+             * @default false
+             */
+            readonly monthly_by_weekday: boolean;
+            /**
+             * Start
+             * Format: date
+             * @description The first occurrence.
+             */
+            readonly start: string;
+            /**
+             * Until
+             * @description End on or before this date (inclusive).
+             */
+            readonly until?: string | null;
+        };
         /** RegisterIn */
         readonly RegisterIn: {
             /**
@@ -2506,6 +2700,137 @@ export interface components {
          * @enum {string}
          */
         readonly RoundingMode: "UP" | "DOWN" | "CEILING" | "FLOOR" | "HALF_UP" | "HALF_DOWN" | "HALF_EVEN";
+        /** ScheduleIn */
+        readonly ScheduleIn: {
+            /**
+             * Auto Post
+             * @description A client may post a due occurrence of this schedule without a per-occurrence confirmation. The server never posts.
+             * @default false
+             */
+            readonly auto_post: boolean;
+            /** Id */
+            readonly id?: string | null;
+            /** Name */
+            readonly name: string;
+            /**
+             * Paused
+             * @default false
+             */
+            readonly paused: boolean;
+            readonly recurrence: components["schemas"]["RecurrenceModel"];
+            readonly template: components["schemas"]["ScheduleTemplateIn"];
+        };
+        /** ScheduleOut */
+        readonly ScheduleOut: {
+            /** Auto Post */
+            readonly auto_post: boolean;
+            /** Finished */
+            readonly finished: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Last Occurrence */
+            readonly last_occurrence?: string | null;
+            /** Name */
+            readonly name: string;
+            /**
+             * Next Due
+             * @description Null once the schedule has finished.
+             */
+            readonly next_due?: string | null;
+            /** Occurrences Done */
+            readonly occurrences_done: number;
+            /** Paused */
+            readonly paused: boolean;
+            readonly recurrence: components["schemas"]["RecurrenceModel"];
+            /**
+             * Recurrence Text
+             * @description The rule in words, e.g. 'every month on day 1'.
+             */
+            readonly recurrence_text: string;
+            /** Revision */
+            readonly revision: number;
+            readonly template: components["schemas"]["ScheduleTemplateOut"];
+            /**
+             * Total Occurrences
+             * @description Null for an open-ended rule.
+             */
+            readonly total_occurrences?: number | null;
+            /**
+             * Upcoming
+             * @description The next few occurrence dates, for a preview.
+             */
+            readonly upcoming?: readonly string[];
+        };
+        /** SchedulePatch */
+        readonly SchedulePatch: {
+            /** Auto Post */
+            readonly auto_post?: boolean | null;
+            /** Name */
+            readonly name?: string | null;
+            /** Paused */
+            readonly paused?: boolean | null;
+            readonly recurrence?: components["schemas"]["RecurrenceModel"] | null;
+            readonly template?: components["schemas"]["ScheduleTemplateIn"] | null;
+        };
+        /** ScheduleTemplateIn */
+        readonly ScheduleTemplateIn: {
+            /** Currency Id */
+            readonly currency_id?: string | null;
+            /**
+             * Estimate
+             * @description The amounts are a guess (a variable bill); shown as '≈'.
+             * @default false
+             */
+            readonly estimate: boolean;
+            /** Imbalance Account Id */
+            readonly imbalance_account_id?: string | null;
+            /** Legs */
+            readonly legs: readonly components["schemas"]["TemplateLegIn"][];
+            /**
+             * Memo
+             * @default
+             */
+            readonly memo: string;
+            /**
+             * Number
+             * @default
+             */
+            readonly number: string;
+            /** Payee Id */
+            readonly payee_id?: string | null;
+            /** @default HALF_EVEN */
+            readonly rounding: components["schemas"]["RoundingMode"];
+        };
+        /** ScheduleTemplateOut */
+        readonly ScheduleTemplateOut: {
+            /** Currency Id */
+            readonly currency_id?: string | null;
+            /**
+             * Estimate
+             * @default false
+             */
+            readonly estimate: boolean;
+            /** Imbalance Account Id */
+            readonly imbalance_account_id?: string | null;
+            /** Legs */
+            readonly legs: readonly components["schemas"]["TemplateLegOut"][];
+            /**
+             * Memo
+             * @default
+             */
+            readonly memo: string;
+            /**
+             * Number
+             * @default
+             */
+            readonly number: string;
+            /** Payee Id */
+            readonly payee_id?: string | null;
+            readonly rounding: components["schemas"]["RoundingMode"];
+        };
         /** SessionOut */
         readonly SessionOut: {
             /**
@@ -2546,6 +2871,14 @@ export interface components {
             /** On */
             readonly on?: string | null;
             readonly state: components["schemas"]["ReconcileStateName"];
+        };
+        /** SkipOccurrenceIn */
+        readonly SkipOccurrenceIn: {
+            /**
+             * On
+             * @description Pin which occurrence; must be the one due.
+             */
+            readonly on?: string | null;
         };
         /** SplitOut */
         readonly SplitOut: {
@@ -2660,6 +2993,8 @@ export interface components {
             readonly prices?: readonly components["schemas"]["PriceOut"][];
             /** Revision */
             readonly revision: number;
+            /** Schedules */
+            readonly schedules?: readonly components["schemas"]["ScheduleOut"][];
             /** Transactions */
             readonly transactions?: readonly components["schemas"]["TransactionOut"][];
         };
@@ -2684,6 +3019,53 @@ export interface components {
              * @description The client's new watermark.
              */
             readonly to_revision: number;
+        };
+        /** TemplateLegIn */
+        readonly TemplateLegIn: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            readonly account_id: string;
+            /**
+             * Memo
+             * @default
+             */
+            readonly memo: string;
+            /** Payee Id */
+            readonly payee_id?: string | null;
+            /** Price */
+            readonly price?: (number | string) | null;
+            /** Quantity */
+            readonly quantity?: (number | string) | null;
+            /** Value */
+            readonly value?: (number | string) | null;
+        };
+        /** TemplateLegOut */
+        readonly TemplateLegOut: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            readonly account_id: string;
+            /** Is Residual */
+            readonly is_residual: boolean;
+            /**
+             * Memo
+             * @default
+             */
+            readonly memo: string;
+            /** Payee Id */
+            readonly payee_id?: string | null;
+            /** Price */
+            readonly price?: string | null;
+            /** Quantity */
+            readonly quantity?: string | null;
+            /**
+             * Value
+             * @description Exact major-unit string,'10/3' form allowed.
+             */
+            readonly value?: string | null;
         };
         /** TransactionIn */
         readonly TransactionIn: {
@@ -6799,6 +7181,516 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PeriodTableOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly list_schedules_books__book_id__schedules_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly include_finished?: boolean;
+                readonly include_paused?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ScheduleOut"][];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly create_schedule_books__book_id__schedules_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ScheduleIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly get_schedule_books__book_id__schedules__schedule_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+                readonly schedule_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly delete_schedule_books__book_id__schedules__schedule_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+                readonly schedule_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly update_schedule_books__book_id__schedules__schedule_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+                readonly schedule_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SchedulePatch"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly post_occurrence_books__book_id__schedules__schedule_id__post_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+                readonly schedule_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PostOccurrenceIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly skip_occurrence_books__book_id__schedules__schedule_id__skip_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+                readonly schedule_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SkipOccurrenceIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly due_panel_books__book_id__schedules_due_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Defaults to the book's today. */
+                readonly on?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DuePanelOut"];
                 };
             };
             /** @description Not authenticated. */
