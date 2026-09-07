@@ -62,6 +62,8 @@ from pymoney.api.schemas import (
     CommodityOut,
     CsvInspectOut,
     CsvPreviewOut,
+    DuePanelOut,
+    DueScheduleOut,
     HoldingsOut,
     ImportDecisionIn,
     IncomeStatementOut,
@@ -69,12 +71,17 @@ from pymoney.api.schemas import (
     PayeeIn,
     PayeeOut,
     PeriodTableOut,
+    PostOccurrenceIn,
     ReconcileIn,
     ReconcileStateName,
     RegisterPage,
     ReportInterval,
+    ScheduleIn,
+    ScheduleOut,
+    SchedulePatch,
     SessionOut,
     SetSplitStateIn,
+    SkipOccurrenceIn,
     StatementImportOut,
     SyncPageOut,
     TransactionIn,
@@ -696,6 +703,71 @@ class OfflineClient(LedgerClient):
                     id=account.id,
                 ),
             )
+        if op.name == "create_schedule":
+            sched_in = ScheduleIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.CreateSchedule(
+                    id=sched_in.id,
+                    name=sched_in.name,
+                    template=sched_in.template.to_domain(),
+                    recurrence=sched_in.recurrence.to_domain(),
+                    auto_post=sched_in.auto_post,
+                    paused=sched_in.paused,
+                ),
+            )
+        if op.name == "update_schedule":
+            schedule_id = UUID(op.path.rsplit("/", 1)[1])
+            sched_patch = SchedulePatch.model_validate(body)
+            fields = sched_patch.model_dump(exclude_unset=True)
+            return self._execute(
+                book,
+                cmd.UpdateSchedule(
+                    schedule_id=schedule_id,
+                    name=fields.get("name", UNSET),
+                    template=(
+                        sched_patch.template.to_domain()
+                        if sched_patch.template is not None
+                        else UNSET
+                    ),
+                    recurrence=(
+                        sched_patch.recurrence.to_domain()
+                        if sched_patch.recurrence is not None
+                        else UNSET
+                    ),
+                    auto_post=fields.get("auto_post", UNSET),
+                    paused=fields.get("paused", UNSET),
+                ),
+            )
+        if op.name == "delete_schedule":
+            return self._execute(
+                book,
+                cmd.DeleteSchedule(schedule_id=UUID(op.path.rsplit("/", 1)[1])),
+            )
+        if op.name in ("post_occurrence", "skip_occurrence"):
+            schedule_id = UUID(op.path.split("/")[-2])
+            if op.name == "skip_occurrence":
+                skip_in = SkipOccurrenceIn.model_validate(body)
+                return self._execute(
+                    book,
+                    cmd.SkipScheduledOccurrence(
+                        schedule_id=schedule_id,
+                        on=UNSET if skip_in.on is None else skip_in.on,
+                    ),
+                )
+            post_in = PostOccurrenceIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.PostScheduledOccurrence(
+                    schedule_id=schedule_id,
+                    transaction_id=post_in.transaction_id,
+                    on=UNSET if post_in.on is None else post_in.on,
+                    legs=UNSET if post_in.legs is None else _legs(post_in.legs),
+                    memo=UNSET if post_in.memo is None else post_in.memo,
+                    payee_id=UNSET if post_in.payee_id is None else post_in.payee_id,
+                    number=UNSET if post_in.number is None else post_in.number,
+                ),
+            )
         raise ValueError(f"unknown local operation {op.name!r}")  # pragma: no cover
 
     def _write(self, book_id: UUID, op: _Op) -> Any:
@@ -814,6 +886,110 @@ class OfflineClient(LedgerClient):
             ),
         )
         return AccountOut.of(entity, self._book(book_id).path(entity.id))
+
+    # ======================================================================
+    # scheduled / recurring transactions -- local-first, queued like a post
+    # ======================================================================
+    def schedules(self, book_id: UUID) -> list[ScheduleOut]:
+        return [ScheduleOut.of(s) for s in self._ready(book_id).schedules()]
+
+    def due_schedules(self, book_id: UUID, *, on: date | None = None) -> DuePanelOut:
+        book = self._ready(book_id)
+        when = on or self._clock.today()
+
+        def read() -> DuePanelOut:
+            rows: list[DueScheduleOut] = []
+            total = 0
+            for schedule, pending in book.due_schedules(when):
+                total += len(pending)
+                rows.append(
+                    DueScheduleOut.of(schedule, pending, _one_amount(book, schedule))
+                )
+            return DuePanelOut(as_of=when, due=rows, occurrences=total)
+
+        return self._guarded(read)
+
+    def create_schedule(self, book_id: UUID, body: ScheduleIn) -> ScheduleOut:
+        body = body.model_copy(update={"id": body.id or new_id()})
+        entity = self._write(
+            book_id,
+            _Op(
+                "create_schedule",
+                "POST",
+                f"/books/{book_id}/schedules",
+                body.model_dump(mode="json"),
+                f"new schedule {body.name}",
+            ),
+        )
+        return ScheduleOut.of(entity)
+
+    def update_schedule(
+        self, book_id: UUID, schedule_id: UUID, body: SchedulePatch
+    ) -> ScheduleOut:
+        entity = self._write(
+            book_id,
+            _Op(
+                "update_schedule",
+                "PATCH",
+                f"/books/{book_id}/schedules/{schedule_id}",
+                body.model_dump(mode="json", exclude_unset=True),
+                f"edit schedule {schedule_id}",
+            ),
+        )
+        return ScheduleOut.of(entity)
+
+    def delete_schedule(self, book_id: UUID, schedule_id: UUID) -> None:
+        self._write(
+            book_id,
+            _Op(
+                "delete_schedule",
+                "DELETE",
+                f"/books/{book_id}/schedules/{schedule_id}",
+                None,
+                f"delete schedule {schedule_id}",
+            ),
+        )
+
+    def post_occurrence(
+        self, book_id: UUID, schedule_id: UUID, body: PostOccurrenceIn
+    ) -> TransactionOut:
+        # Pin the occurrence so the server posts the same one the replica did,
+        # and converges instead of drifting.
+        due = self._book(book_id).schedule(schedule_id).occurrence_due()
+        pinned = body.model_copy(
+            update={
+                "on": body.on or due,
+                "transaction_id": body.transaction_id or new_id(),
+            }
+        )
+        entity = self._write(
+            book_id,
+            _Op(
+                "post_occurrence",
+                "POST",
+                f"/books/{book_id}/schedules/{schedule_id}/post",
+                pinned.model_dump(mode="json", exclude_unset=True),
+                f"post scheduled {schedule_id} {pinned.on}",
+            ),
+        )
+        return TransactionOut.of(entity)
+
+    def skip_occurrence(
+        self, book_id: UUID, schedule_id: UUID, body: SkipOccurrenceIn
+    ) -> ScheduleOut:
+        due = self._book(book_id).schedule(schedule_id).occurrence_due()
+        pinned = body.model_copy(update={"on": body.on or due})
+        entity = self._write(
+            book_id,
+            _Op(
+                "skip_occurrence",
+                "POST",
+                f"/books/{book_id}/schedules/{schedule_id}/skip",
+                pinned.model_dump(mode="json"),
+                f"skip scheduled {schedule_id} {pinned.on}",
+            ),
+        )
+        return ScheduleOut.of(entity)
 
     # ======================================================================
     # CSV statement import -- the server's job, even offline
@@ -1074,6 +1250,25 @@ class OfflineClient(LedgerClient):
             book.close()
         self._books.clear()
         self._engine.dispose()
+
+
+def _one_amount(book: Book, schedule):
+    """A quick per-occurrence ``Amount`` for the due panel; None if it needs
+    the book (an estimate, a price)."""
+    from pymoney.core.amount import Amount
+
+    template = schedule.template
+    if template is None or template.estimate or book.base_currency_id is None:
+        return None
+    currency = (
+        book.commodity(template.currency_id)
+        if template.currency_id is not None
+        else book.base_currency
+    )
+    for leg in template.legs:
+        if leg.value is not None:
+            return Amount.from_major(currency, abs(leg.value))
+    return None
 
 
 def _legs(legs: list[wire.LegIn]) -> tuple[LegSpec, ...]:

@@ -2672,6 +2672,19 @@
               }
             ],
             "title": "Payee Id"
+          },
+          "transaction_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Id for the posted transaction; set by an offline client so its replica row and the server's are one on replay.",
+            "title": "Transaction Id"
           }
         },
         "title": "PostOccurrenceIn",

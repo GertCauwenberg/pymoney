@@ -201,6 +201,7 @@ def post_occurrence(
             memo=fields.get("memo", UNSET),
             payee_id=fields.get("payee_id", UNSET),
             number=fields.get("number", UNSET),
+            transaction_id=body.transaction_id,
             command_id=key,
         )
     )

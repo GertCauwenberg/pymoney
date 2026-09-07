@@ -17,6 +17,9 @@ from pymoney.api.schemas import (
     AccountIn,
     ImportDecisionIn,
     PayeeIn,
+    PostOccurrenceIn,
+    ScheduleIn,
+    SkipOccurrenceIn,
     TransactionIn,
     TransactionUpdateIn,
 )
@@ -566,6 +569,72 @@ class TestCsvImport:
             assert client.status().online is False
         finally:
             client.close()
+
+
+@pytest.mark.parametrize("kind", ["remote", "offline"])
+class TestSchedules:
+    def _rent(self, checking, rent):
+        return ScheduleIn.model_validate(
+            {
+                "name": "Rent",
+                "recurrence": {"frequency": "MONTHLY", "start": "2026-01-01"},
+                "template": {
+                    "legs": [
+                        {"account_id": str(checking), "value": "-1200.00"},
+                        {"account_id": str(rent)},
+                    ],
+                    "memo": "Monthly rent",
+                },
+            }
+        )
+
+    def test_create_due_post_and_skip(self, server, tmp_path, kind):
+        api, book_id, checking, food = server
+        client, _t = make_client(kind, api.http, tmp_path)
+        client.login(EMAIL, PASSWORD)
+        client.accounts(book_id)
+        try:
+            s = client.create_schedule(book_id, self._rent(checking, food))
+            assert s.recurrence_text == "every month on day 1"
+            panel = client.due_schedules(book_id)
+            assert panel.occurrences >= 1 and panel.due[0].schedule.name == "Rent"
+            assert panel.due[0].amount.text == "1200.00"
+
+            txn = client.post_occurrence(book_id, s.id, PostOccurrenceIn())
+            assert txn.imported_id == f"sched:{s.id}:2026-01-01"
+            assert client.schedules(book_id)[0].occurrences_done == 1
+
+            client.skip_occurrence(book_id, s.id, SkipOccurrenceIn())
+            assert client.schedules(book_id)[0].next_due.isoformat() == "2026-03-01"
+        finally:
+            client.close()
+
+    def test_offline_post_then_replay_converges(self, server, tmp_path, kind):
+        if kind != "offline":
+            pytest.skip("this is the offline outbox path")
+        api, book_id, checking, food = server
+        client, transport = make_client("offline", api.http, tmp_path)
+        client.login(EMAIL, PASSWORD)
+        s = client.create_schedule(book_id, self._rent(checking, food))
+        client.sync()
+
+        transport.plugged = False
+        txn = client.post_occurrence(book_id, s.id, PostOccurrenceIn())
+        assert txn.date.isoformat() == "2026-01-01"
+        assert client.schedules(book_id)[0].occurrences_done == 1  # locally advanced
+        assert client.status().queued == 1
+
+        transport.plugged = True
+        status = client.sync()
+        assert status.queued == 0 and status.rejections == ()
+        # The server has exactly one posted occurrence, same imported_id.
+        api.login(EMAIL)
+        rows = api.get(f"/books/{book_id}/accounts/{checking}/register").json()["items"]
+        assert len(rows) == 1
+        assert (
+            api.get(f"/books/{book_id}/schedules/{s.id}").json()["occurrences_done"] == 1
+        )
+        client.close()
 
 
 def test_new_ids_are_client_chosen_and_stable(server, tmp_path):

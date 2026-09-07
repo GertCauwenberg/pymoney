@@ -1523,6 +1523,11 @@ class PostOccurrenceIn(In):
     memo: str | None = None
     payee_id: UUID | None = None
     number: str | None = None
+    transaction_id: UUID | None = Field(
+        default=None,
+        description="Id for the posted transaction; set by an offline client "
+        "so its replica row and the server's are one on replay.",
+    )
 
 
 class SkipOccurrenceIn(In):

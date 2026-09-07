@@ -174,7 +174,7 @@ def post_scheduled_occurrence(
         if split.payee_id is not None:
             book.payee(split.payee_id)
     transaction = Transaction(
-        id=new_id(),
+        id=command.transaction_id or new_id(),
         book_id=book.id,
         date=occurrence,
         currency=currency,

@@ -36,7 +36,9 @@ from pymoney.core.commodity import Commodity, CommodityKind
 from pymoney.core.entity import EPOCH
 from pymoney.core.payee import Payee
 from pymoney.core.price import Price
+from pymoney.core.recurrence import Recurrence
 from pymoney.core.rounding import RoundingMode
+from pymoney.core.schedule import Schedule, ScheduleTemplate, TemplateLeg
 from pymoney.core.store import Store
 from pymoney.core.transaction import ReconcileState, Split, Transaction
 
@@ -48,6 +50,7 @@ _KINDS = {
     "PAYEE": EntityKind.PAYEE,
     "TRANSACTION": EntityKind.TRANSACTION,
     "PRICE": EntityKind.PRICE,
+    "SCHEDULE": EntityKind.SCHEDULE,
 }
 
 
@@ -105,6 +108,44 @@ def _payee(out: PayeeOut, book_id: UUID) -> Payee:
         match_keys=tuple(out.match_keys),
         default_account_id=out.default_account_id,
         revision=out.revision,
+    )
+
+
+def _schedule(out: Any, book_id: UUID) -> Schedule:
+    return Schedule(
+        id=out.id,
+        book_id=book_id,
+        name=out.name,
+        recurrence=Recurrence.from_dict(out.recurrence.to_domain().to_dict()),
+        template=out.template and _schedule_template(out.template),
+        occurrences_done=out.occurrences_done,
+        last_occurrence=out.last_occurrence,
+        auto_post=out.auto_post,
+        paused=out.paused,
+        revision=out.revision,
+    )
+
+
+def _schedule_template(out: Any) -> ScheduleTemplate:
+    return ScheduleTemplate(
+        legs=tuple(
+            TemplateLeg(
+                account_id=leg.account_id,
+                value=leg.value,
+                quantity=leg.quantity,
+                price=leg.price,
+                memo=leg.memo,
+                payee_id=leg.payee_id,
+            )
+            for leg in out.legs
+        ),
+        currency_id=out.currency_id,
+        memo=out.memo,
+        payee_id=out.payee_id,
+        number=out.number,
+        rounding=out.rounding,
+        imbalance_account_id=out.imbalance_account_id,
+        estimate=out.estimate,
     )
 
 
@@ -186,11 +227,20 @@ def apply_batch(store: Store, book_id: UUID, batch: SyncBatchOut) -> BookOut | N
             _put(store, EntityKind.PAYEE, _payee(p, book_id), at)
         for pr in batch.prices:
             _put(store, EntityKind.PRICE, _price(pr, store, book_id), at)
+        for sc in batch.schedules:
+            _put(store, EntityKind.SCHEDULE, _schedule(sc, book_id), at)
         for t in batch.transactions:
             _put(store, EntityKind.TRANSACTION, _transaction(t, store, book_id), at)
         # Deletions last: a transaction deleted in the same revision as the
         # account it posted to must go before the account can.
-        for kind_name in ("TRANSACTION", "PRICE", "PAYEE", "ACCOUNT", "COMMODITY"):
+        for kind_name in (
+            "TRANSACTION",
+            "SCHEDULE",
+            "PRICE",
+            "PAYEE",
+            "ACCOUNT",
+            "COMMODITY",
+        ):
             for d in batch.deletions:
                 if d.kind == kind_name:
                     store.delete(_KINDS[kind_name], d.id)

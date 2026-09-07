@@ -122,7 +122,7 @@ def fingerprint(command: Command) -> str:
 
     def canonical(value: Any, *, top: bool = False) -> Any:
         if is_dataclass(value) and not isinstance(value, type):
-            skipped = {"command_id", "actor"} if top else {"id"}
+            skipped = {"command_id", "actor", "transaction_id"} if top else {"id"}
             return [
                 type(value).__name__,
                 {
@@ -404,6 +404,9 @@ class PostScheduledOccurrence(Command):
     memo: Maybe[str] = UNSET
     payee_id: Maybe[UUID | None] = UNSET
     number: Maybe[str] = UNSET
+    transaction_id: UUID | None = None
+    """The id for the posted transaction; chosen by an offline client so its
+    replica row and the server's are one row on replay."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

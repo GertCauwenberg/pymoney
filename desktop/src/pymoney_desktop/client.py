@@ -39,6 +39,7 @@ from pymoney.api.schemas import (
     CommodityOut,
     CsvInspectOut,
     CsvPreviewOut,
+    DuePanelOut,
     HoldingsOut,
     ImportDecisionIn,
     IncomeStatementOut,
@@ -46,9 +47,14 @@ from pymoney.api.schemas import (
     PayeeIn,
     PayeeOut,
     PeriodTableOut,
+    PostOccurrenceIn,
     ReconcileStateName,
     RegisterPage,
     ReportInterval,
+    ScheduleIn,
+    ScheduleOut,
+    SchedulePatch,
+    SkipOccurrenceIn,
     StatementImportOut,
     TransactionIn,
     TransactionOut,
@@ -326,6 +332,38 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def create_account(self, book_id: UUID, body: AccountIn) -> AccountOut: ...
+
+    # -- scheduled / recurring transactions --------------------------------
+    @abstractmethod
+    def schedules(self, book_id: UUID) -> list[ScheduleOut]: ...
+
+    @abstractmethod
+    def due_schedules(self, book_id: UUID, *, on: date | None = None) -> DuePanelOut:
+        """Schedules with an occurrence on or before ``on`` (default: today),
+        each with its pending dates and a quick amount."""
+
+    @abstractmethod
+    def create_schedule(self, book_id: UUID, body: ScheduleIn) -> ScheduleOut: ...
+
+    @abstractmethod
+    def update_schedule(
+        self, book_id: UUID, schedule_id: UUID, body: SchedulePatch
+    ) -> ScheduleOut: ...
+
+    @abstractmethod
+    def delete_schedule(self, book_id: UUID, schedule_id: UUID) -> None: ...
+
+    @abstractmethod
+    def post_occurrence(
+        self, book_id: UUID, schedule_id: UUID, body: PostOccurrenceIn
+    ) -> TransactionOut:
+        """Post the occurrence the schedule has due and advance it. ``legs``
+        on the body override the template for this occurrence only."""
+
+    @abstractmethod
+    def skip_occurrence(
+        self, book_id: UUID, schedule_id: UUID, body: SkipOccurrenceIn
+    ) -> ScheduleOut: ...
 
     # -- CSV statement import ----------------------------------------------
     #

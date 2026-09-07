@@ -30,6 +30,7 @@ from pymoney.api.schemas import (
     CommodityOut,
     CsvInspectOut,
     CsvPreviewOut,
+    DuePanelOut,
     HoldingsOut,
     ImportDecisionIn,
     IncomeStatementOut,
@@ -37,10 +38,15 @@ from pymoney.api.schemas import (
     PayeeIn,
     PayeeOut,
     PeriodTableOut,
+    PostOccurrenceIn,
     ReconcileStateName,
     RegisterPage,
     ReportInterval,
+    ScheduleIn,
+    ScheduleOut,
+    SchedulePatch,
     SessionOut,
+    SkipOccurrenceIn,
     StatementImportOut,
     TransactionIn,
     TransactionOut,
@@ -460,6 +466,68 @@ class RemoteClient(LedgerClient):
         )
         self._written(book_id)
         return AccountOut.model_validate(payload)
+
+    # -- schedules ------------------------------------------------------------------
+    def schedules(self, book_id: UUID) -> list[ScheduleOut]:
+        return self._cached_list(
+            book_id, "schedules", ScheduleOut, f"/books/{book_id}/schedules"
+        )
+
+    def due_schedules(self, book_id: UUID, *, on: date | None = None) -> DuePanelOut:
+        query = _query({"on": on.isoformat() if on else None})
+        return DuePanelOut.model_validate(
+            self._call("GET", f"/books/{book_id}/schedules/due{query}", book_id=book_id)
+        )
+
+    def create_schedule(self, book_id: UUID, body: ScheduleIn) -> ScheduleOut:
+        out = self._call(
+            "POST",
+            f"/books/{book_id}/schedules",
+            body.model_dump(mode="json"),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return ScheduleOut.model_validate(out)
+
+    def update_schedule(
+        self, book_id: UUID, schedule_id: UUID, body: SchedulePatch
+    ) -> ScheduleOut:
+        out = self._call(
+            "PATCH",
+            f"/books/{book_id}/schedules/{schedule_id}",
+            body.model_dump(mode="json", exclude_unset=True),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return ScheduleOut.model_validate(out)
+
+    def delete_schedule(self, book_id: UUID, schedule_id: UUID) -> None:
+        self._call("DELETE", f"/books/{book_id}/schedules/{schedule_id}", book_id=book_id)
+        self._written(book_id)
+
+    def post_occurrence(
+        self, book_id: UUID, schedule_id: UUID, body: PostOccurrenceIn
+    ) -> TransactionOut:
+        out = self._call(
+            "POST",
+            f"/books/{book_id}/schedules/{schedule_id}/post",
+            body.model_dump(mode="json", exclude_unset=True),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return TransactionOut.model_validate(out)
+
+    def skip_occurrence(
+        self, book_id: UUID, schedule_id: UUID, body: SkipOccurrenceIn
+    ) -> ScheduleOut:
+        out = self._call(
+            "POST",
+            f"/books/{book_id}/schedules/{schedule_id}/skip",
+            body.model_dump(mode="json", exclude_unset=True),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return ScheduleOut.model_validate(out)
 
     # -- CSV statement import --------------------------------------------------------
     def inspect_csv(self, book_id: UUID, data: bytes) -> CsvInspectOut:
