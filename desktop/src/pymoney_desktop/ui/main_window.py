@@ -203,6 +203,12 @@ class MainWindow(QMainWindow):
         )
         self.reconcile_button.clicked.connect(self.reconcile_account)
         bar.addWidget(self.reconcile_button)
+        self.schedules_button = QPushButton(_("Scheduled…"))
+        self.schedules_button.clicked.connect(self.open_schedules)
+        bar.addWidget(self.schedules_button)
+        self.due_button = QPushButton(_("Due"))
+        self.due_button.clicked.connect(self.open_due)
+        bar.addWidget(self.due_button)
         self.import_button = QPushButton(_("Import CSV…"))
         self.import_button.setToolTip(
             _("Bring a bank statement into this account: map the columns, review, post")
@@ -320,6 +326,7 @@ class MainWindow(QMainWindow):
             self.books.setCurrentIndex(0)
             self._book_chosen(0)
         self._refresh_status()
+        self._refresh_due()
 
     def _book_chosen(self, index: int) -> None:
         book = self.books.itemData(index) if index >= 0 else None
@@ -521,6 +528,64 @@ class MainWindow(QMainWindow):
             ),
             lambda _result: self._reload_book(),
             self._failed(_("Could not reconcile")),
+        )
+
+    def open_schedules(self) -> None:
+        if self.book is None:
+            return
+        from .schedules import SchedulesDialog
+
+        self.run_dialog(
+            SchedulesDialog(
+                self.client,
+                self.book.id,
+                self.accounts,
+                run_dialog=self.run_dialog,
+                executor=self.executor,
+                parent=self,
+            )
+        )
+        self._refresh_due()
+        self._reload_book()
+
+    def open_due(self) -> None:
+        if self.book is None:
+            return
+        from .schedules import DueDialog
+
+        book_id = self.book.id
+
+        def show(panel) -> None:
+            if panel.occurrences == 0:
+                self.report_error(_("Scheduled transactions"), _("Nothing is due."))
+                return
+            dialog = DueDialog(
+                self.client, book_id, panel.due, executor=self.executor, parent=self
+            )
+            self.run_dialog(dialog)
+            if dialog.posted:
+                self._reload_book()
+            self._refresh_due()
+
+        self.executor.run(
+            lambda: self.client.due_schedules(book_id),
+            show,
+            self._failed(_("Could not load schedules")),
+        )
+
+    def _refresh_due(self) -> None:
+        if self.book is None:
+            self.due_button.setText(_("Due"))
+            return
+        book_id = self.book.id
+        self.executor.run(
+            lambda: self.client.due_schedules(book_id),
+            lambda panel: self.due_button.setText(
+                _("Due ({n})").format(n=panel.occurrences)
+                if panel.occurrences
+                else _("Due")
+            ),
+            lambda _e: None,
         )
 
     def import_statement(self) -> None:
