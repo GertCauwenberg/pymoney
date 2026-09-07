@@ -42,7 +42,7 @@ api = [
     # anyio 4.11 made `anyio.abc.BlockingPortal` a deprecated alias; Starlette's
     # test client still imports the old name, and our suites run with warnings
     # as errors, so collection fails. Cap it until Starlette catches up.
-    "anyio<4.11",
+    "anyio<4.16",
 ]
 postgres = ["psycopg[binary]>=3.1", "psycopg2-binary>=2.9"]
 # The desktop client is its own distribution: ../desktop (pymoney-desktop),
