@@ -128,13 +128,20 @@ describe("validateDraft", () => {
     expect(messages).toEqual(["Assets is a placeholder and takes no postings.", "Assets:Old is closed."]);
   });
 
-  it("asks for a quantity when the account is not held in the transaction currency", () => {
+  it("accepts a foreign-commodity leg with no quantity: the server prices it", () => {
     const draft = newDraft("chk", "2026-03-01");
     draft.legs[0]!.value = "-100";
     draft.legs[1]!.account_id = "wallet";
-    expect(validateDraft(draft, accounts, eur, commodities)).toEqual([
-      { leg: 1, message: "USD amount is needed: this account is not held in EUR." },
-    ]);
+    draft.legs[1]!.value = "100";
+    // No USD quantity: valued from the book's price history, server-side.
+    expect(validateDraft(draft, accounts, eur, commodities)).toEqual([]);
+  });
+
+  it("still rejects a quantity that the commodity cannot book", () => {
+    const draft = newDraft("chk", "2026-03-01");
+    draft.legs[0]!.value = "-100";
+    draft.legs[1]!.account_id = "wallet";
+    draft.legs[1]!.value = "100";
     draft.legs[1]!.quantity = "108.50";
     expect(validateDraft(draft, accounts, eur, commodities)).toEqual([]);
     draft.legs[1]!.quantity = "108.505";

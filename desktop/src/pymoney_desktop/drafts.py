@@ -192,15 +192,10 @@ def problems(
             blanks += 1
         elif parse_decimal(leg.value, currency.minor_unit_factor) is None:
             out.append(_("Leg {n}: not an amount in {code}.", n=i, code=currency.code))
-        if account.commodity_id != currency.id and not leg.quantity.strip():
-            out.append(
-                _(
-                    "Leg {n}: an amount in {own} is needed, the account is not held in {code}.",
-                    n=i,
-                    own=account.commodity,
-                    code=currency.code,
-                )
-            )
+        # A leg in another commodity may carry its quantity, but need not: left
+        # blank, the server values it from the book's price history; filled in,
+        # the value over the quantity becomes a "transaction" price. The server
+        # has the last word on what that commodity can book.
     if blanks > 1:
         out.append(_("Only one leg may be left blank to balance the entry."))
     return out

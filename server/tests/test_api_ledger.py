@@ -528,7 +528,9 @@ class TestTransactions:
         assert usd_leg["value"]["minor"] == 9174
         assert usd_leg["price"] == {"num": 4587, "den": 5000, "approx": "0.9174000000"}
 
-    def test_the_implied_price_is_exposed(self, ledger: Ledger):
+    def test_a_value_and_a_quantity_define_a_transaction_price(self, ledger: Ledger):
+        """Enter what you paid and what you got, and the rate follows: the leg
+        keeps it, and the book gains a price with source ``transaction``."""
         usd = ledger.client.post(
             f"/books/{ledger.book_id}/commodities", json={"code": "USD"}
         ).json()
@@ -540,12 +542,66 @@ class TestTransactions:
                 {"account_id": wallet["id"], "value": "91.74", "quantity": "100.00"},
             ],
         )
+        assert response.status_code == 201
         leg = next(
             s for s in response.json()["splits"] if s["account_id"] == wallet["id"]
         )
-        assert leg["price"] is None
+        assert leg["price"] == {"num": 4587, "den": 5000, "approx": "0.9174000000"}
         assert leg["implied_price"]["num"] == 4587
         assert leg["implied_price"]["den"] == 5000
+
+        prices = ledger.client.get(f"/books/{ledger.book_id}/prices").json()["items"]
+        assert len(prices) == 1
+        (price,) = prices
+        assert price["base"] == "USD" and price["quote"] == "EUR"
+        assert price["source"] == "transaction"
+        assert price["effective_date"] == "2026-02-01"
+        assert price["rate"] == {"num": 4587, "den": 5000, "approx": "0.9174000000"}
+
+    def test_a_foreign_leg_without_a_quantity_uses_the_price_history(
+        self, ledger: Ledger
+    ):
+        """No quantity: the server values the leg from the book's own prices."""
+        usd = ledger.client.post(
+            f"/books/{ledger.book_id}/commodities", json={"code": "USD"}
+        ).json()
+        wallet = ledger.client.account("Wallet", "CASH", commodity_id=usd["id"])
+        ledger.client.post(
+            f"/books/{ledger.book_id}/prices",
+            json={
+                "base_id": usd["id"],
+                "quote_id": ledger.eur,
+                "rate": "0.90",
+                "effective_date": "2026-02-01",
+            },
+        )
+        response = ledger.client.post_transaction(
+            "2026-02-01",
+            [
+                {"account_id": ledger.checking, "value": "-90.00"},
+                {"account_id": wallet["id"], "value": "90.00"},
+            ],
+        )
+        assert response.status_code == 201
+        leg = next(
+            s for s in response.json()["splits"] if s["account_id"] == wallet["id"]
+        )
+        assert leg["quantity"]["minor"] == 10000  # 90 EUR / 0.90 = 100 USD
+
+    def test_a_foreign_leg_without_a_price_anywhere_is_refused(self, ledger: Ledger):
+        usd = ledger.client.post(
+            f"/books/{ledger.book_id}/commodities", json={"code": "USD"}
+        ).json()
+        wallet = ledger.client.account("Wallet", "CASH", commodity_id=usd["id"])
+        response = ledger.client.post_transaction(
+            "2026-02-01",
+            [
+                {"account_id": ledger.checking, "value": "-90.00"},
+                {"account_id": wallet["id"], "value": "90.00"},
+            ],
+        )
+        assert response.status_code == 422
+        assert "price" in response.json()["error"]["message"]
 
     def test_update_replaces_the_legs(self, ledger: Ledger):
         posted = ledger.client.post_transaction(

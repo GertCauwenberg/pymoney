@@ -668,6 +668,19 @@ own commodity (10 shares, −1500 EUR); `value` is in the transaction currency a
 is the column that must balance. For single-currency entries they are identical
 and `Transaction.validate` enforces that.
 
+**Posting picks the currency; editing keeps it.** A new transaction's currency
+is chosen on the form (it defaults to the book's, which is what the register you
+started from uses); once the transaction exists the control is read-only,
+because its splits' `value`s are already denominated in it and reinterpreting
+them is never what an edit means. Give a leg in another commodity both its value
+and its quantity and `PostTransaction` mints a `PriceSource.TRANSACTION` rate for
+the day from the two; give it only a value and the leg is valued from the book's
+price history — the rate effective on the post date, or the most recent one
+before it (logged as a warning). A foreign leg with neither a quantity nor any
+usable price is refused: there is nothing to value it with. An importer that
+already carries its source's prices turns all of this off
+(`price_foreign_legs=False`).
+
 **Signs are stored raw,** KMyMoney-style: a credit card you owe 500 on has a
 balance of −500, income of 3000 is stored as −3000. `AccountClass.report_sign`
 flips it for display. This means `sum(all balances) == 0` always holds, which is

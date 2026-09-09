@@ -19,6 +19,7 @@ from pymoney.api.schemas import (
     AccountOut,
     CommodityOut,
     PayeeOut,
+    TransactionOut,
 )
 from pymoney.api.testing import PASSWORD, Client
 from PySide6.QtCore import Qt
@@ -388,6 +389,143 @@ def test_dialog_builds_the_wire_body(qtbot):
     assert dialog.windowTitle() == "New transaction"
     assert dialog.result() == QDialog.DialogCode.Rejected
     assert Qt.AlignmentFlag.AlignRight  # Qt imported for real
+
+
+def _commodity(n: int, code: str) -> CommodityOut:
+    return CommodityOut(
+        id=UUID(int=n),
+        code=code,
+        name=code,
+        kind="CURRENCY",
+        symbol=None,
+        minor_unit_factor=100,
+        display_precision=2,
+        isin=None,
+        quote_source=None,
+        revision=1,
+    )
+
+
+def _amount(commodity_id: UUID, code: str, minor: int) -> dict:
+    return {
+        "commodity_id": str(commodity_id),
+        "commodity": code,
+        "minor": minor,
+        "scale": 100,
+        "text": f"{minor / 100:.2f}",
+    }
+
+
+def _account(n: int, path: str, commodity: CommodityOut) -> AccountOut:
+    return AccountOut(
+        id=UUID(int=n),
+        name=path.split(":")[-1],
+        path=path,
+        type="CASH",
+        account_class="ASSET",
+        parent_id=None,
+        commodity_id=commodity.id,
+        commodity=commodity.code,
+        description="",
+        code="",
+        closed=False,
+        placeholder=False,
+        notes="",
+        institution="",
+        iban="",
+        revision=1,
+    )
+
+
+def test_dialog_lets_a_new_transaction_choose_its_currency(qtbot):
+    eur, usd = _commodity(1, "EUR"), _commodity(2, "USD")
+    cash = _account(10, "Assets:Cash", eur)
+    wallet = _account(11, "Assets:Dollar Wallet", usd)
+
+    dialog = TransactionDialog(
+        [cash, wallet], [], eur, commodities=[eur, usd], default_account_id=cash.id
+    )
+    qtbot.addWidget(dialog)
+    assert dialog.currency_box.isEnabled()
+    assert dialog.currency().code == "EUR"
+
+    dialog.currency_box.setCurrentIndex(dialog.currency_box.findData(str(usd.id)))
+    assert dialog.currency().code == "USD"
+    assert dialog.legs.horizontalHeaderItem(3).text() == "Amount (USD)"
+
+    # A leg in another commodity no longer demands a quantity: the server
+    # values it from the book's prices, or mints one if a quantity is given.
+    dialog.currency_box.setCurrentIndex(dialog.currency_box.findData(str(eur.id)))
+    dialog.legs.item(0, 3).setText("-90")
+    dialog.legs.cellWidget(1, 0).setCurrentIndex(
+        dialog.legs.cellWidget(1, 0).findData(str(wallet.id))
+    )
+    dialog.legs.item(1, 3).setText("90")
+    assert problems(dialog.draft(), {cash.id: cash, wallet.id: wallet}, eur) == []
+    body = dialog.draft().to_wire({cash.id: cash, wallet.id: wallet}, eur)
+    assert body.legs[1].quantity is None
+
+    dialog.legs.item(1, 2).setText("100")
+    body = dialog.draft().to_wire({cash.id: cash, wallet.id: wallet}, eur)
+    assert body.legs[1].quantity == "100"
+
+
+def test_dialog_fixes_the_currency_while_editing(qtbot):
+    eur, usd = _commodity(1, "EUR"), _commodity(2, "USD")
+    cash = _account(10, "Assets:Cash", eur)
+    food = _account(11, "Expenses:Food", eur)
+    existing = TransactionOut(
+        id=UUID(int=20),
+        date="2026-02-01",
+        currency_id=usd.id,
+        currency="USD",
+        memo="Lunch abroad",
+        payee_id=None,
+        number="",
+        rounding="HALF_EVEN",
+        entered_at=None,
+        imported_id=None,
+        reconcile_state="NOT_RECONCILED",
+        locked=False,
+        revision=1,
+        splits=[
+            {
+                "id": str(UUID(int=21)),
+                "account_id": str(cash.id),
+                "quantity": _amount(usd.id, "USD", -1000),
+                "value": _amount(usd.id, "USD", -1000),
+                "memo": "",
+                "payee_id": None,
+                "reconcile_state": "NOT_RECONCILED",
+                "reconcile_date": None,
+                "action": "",
+                "number": "",
+                "price": None,
+                "implied_price": None,
+            },
+            {
+                "id": str(UUID(int=22)),
+                "account_id": str(food.id),
+                "quantity": _amount(usd.id, "USD", 1000),
+                "value": _amount(usd.id, "USD", 1000),
+                "memo": "",
+                "payee_id": None,
+                "reconcile_state": "NOT_RECONCILED",
+                "reconcile_date": None,
+                "action": "",
+                "number": "",
+                "price": None,
+                "implied_price": None,
+            },
+        ],
+    )
+    dialog = TransactionDialog(
+        [cash, food], [], usd, commodities=[eur, usd], existing=existing
+    )
+    qtbot.addWidget(dialog)
+    assert not dialog.currency_box.isEnabled()
+    assert dialog.currency().code == "USD"
+    assert dialog.legs.horizontalHeaderItem(3).text() == "Amount (USD)"
 
 
 def test_the_threaded_executor_calls_back_on_the_ui_thread(qtbot):

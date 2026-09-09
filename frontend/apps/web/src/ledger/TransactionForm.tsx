@@ -64,6 +64,10 @@ export function TransactionForm({
   const [draft, setDraft] = useState<TransactionDraft>(() =>
     existing ? draftFromTransaction(existing, currency.id) : newDraft(defaultAccountId ?? "", today()),
   );
+  // The transaction currency is chosen when posting and fixed once a
+  // transaction exists: its splits' values are already denominated in it, and
+  // changing it would silently reinterpret every figure.
+  const [currencyId, setCurrencyId] = useState(currency.id);
   const [payeeChoice, setPayeeChoice] = useState<string>(draft.payee_id ?? "");
   const [newPayeeName, setNewPayeeName] = useState("");
   const [touched, setTouched] = useState(false);
@@ -78,8 +82,13 @@ export function TransactionForm({
   const commoditiesById = useMemo(() => new Map(commodities.map((c) => [c.id, c])), [commodities]);
   const postable = useMemo(() => postableAccounts(accounts), [accounts]);
   const sortedPayees = useMemo(() => [...payees].sort((a, b) => a.name.localeCompare(b.name)), [payees]);
+  const currencies = useMemo(
+    () => commodities.filter((c) => c.kind === "CURRENCY").sort((a, b) => a.code.localeCompare(b.code)),
+    [commodities],
+  );
+  const txCurrency = (existing ? undefined : commoditiesById.get(currencyId)) ?? currency;
 
-  const problems = validateDraft(draft, accountsById, currency, commoditiesById);
+  const problems = validateDraft(draft, accountsById, txCurrency, commoditiesById);
 
   /**
    * Choosing a payee fills in what is predictable, never what is typed:
@@ -103,7 +112,7 @@ export function TransactionForm({
       const previous = last.items[0];
       if (!previous) return;
       const split = previous.splits.find((sp) => sp.account_id === defaultAccountId) ?? previous.splits[0];
-      if (!split || split.value.commodity_id !== currency.id) return;
+      if (!split || split.value.commodity_id !== txCurrency.id) return;
       setDraft((d) => {
         const first = d.legs[0];
         if (!first || first.value.trim() !== "" || first.account_id !== split.account_id) return d;
@@ -113,10 +122,10 @@ export function TransactionForm({
       // A prefill is a convenience; a failed lookup is not an error.
     }
   };
-  const balance = draftBalance(draft, currency);
+  const balance = draftBalance(draft, txCurrency);
   const creatingPayee = payeeChoice === NEW_PAYEE;
   const payeeProblem = creatingPayee && newPayeeName.trim() === "" ? t("Give the new payee a name.") : null;
-  const showQuantity = draft.legs.some((leg) => needsQuantity(leg, accountsById, currency.id));
+  const showQuantity = draft.legs.some((leg) => needsQuantity(leg, accountsById, txCurrency.id));
   const busy = create.isPending || update.isPending || createPayee.isPending;
   const error = create.error ?? update.error ?? createPayee.error;
 
@@ -146,7 +155,7 @@ export function TransactionForm({
         // retry does not try to create it twice.
         setPayeeChoice(payee.id);
       }
-      const body = draftToTransactionIn({ ...draft, payee_id: payeeId }, accountsById, currency);
+      const body = draftToTransactionIn({ ...draft, payee_id: payeeId }, accountsById, txCurrency);
       const saved = existing
         ? await update.mutateAsync({
             transactionId: existing.id,
@@ -197,6 +206,19 @@ export function TransactionForm({
         <Field label={t("Number")} hint={t("Cheque or reference")}>
           <input type="text" value={draft.number} onChange={(e) => setDraft({ ...draft, number: e.target.value })} className="input--short" />
         </Field>
+        <Field label={t("Currency")} hint={existing ? undefined : t("Fixed once the transaction is posted.")}>
+          {existing ? (
+            <input type="text" value={txCurrency.code} disabled className="input--short" />
+          ) : (
+            <select value={currencyId} onChange={(e) => setCurrencyId(e.target.value)} className="input--short">
+              {currencies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.id === currency.id ? t("{code} (book currency)", { code: c.code }) : c.code}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
       </div>
 
       <table className="report transaction-form__legs">
@@ -210,7 +232,7 @@ export function TransactionForm({
               </th>
             )}
             <th scope="col" className="num">
-              Amount ({currency.code})
+              Amount ({txCurrency.code})
             </th>
             <th scope="col" />
           </tr>
@@ -236,7 +258,7 @@ export function TransactionForm({
                     {postable.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.path}
-                        {a.commodity_id !== currency.id ? ` (${a.commodity})` : ""}
+                        {a.commodity_id !== txCurrency.id ? ` (${a.commodity})` : ""}
                       </option>
                     ))}
                   </select>
@@ -256,7 +278,7 @@ export function TransactionForm({
                 </td>
                 {showQuantity && (
                   <td className="num">
-                    {account && needsQuantity(leg, accountsById, currency.id) ? (
+                    {account && needsQuantity(leg, accountsById, txCurrency.id) ? (
                       <input
                         type="text"
                         inputMode="decimal"
@@ -305,13 +327,13 @@ export function TransactionForm({
             <td className="num muted">
               {balance.blank ? (
                 <>
-                  {t("blank leg gets")} <Money amount={balanceAmount(-balance.sum, currency)} />
+                  {t("blank leg gets")} <Money amount={balanceAmount(-balance.sum, txCurrency)} />
                 </>
               ) : balance.sum === 0n ? (
                 "balanced"
               ) : (
                 <span className="money--negative">
-                  {t("off by")} <Money amount={balanceAmount(balance.sum, currency)} />
+                  {t("off by")} <Money amount={balanceAmount(balance.sum, txCurrency)} />
                 </span>
               )}
             </td>

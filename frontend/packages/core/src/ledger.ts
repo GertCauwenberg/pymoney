@@ -23,8 +23,11 @@ export interface LegDraft {
   /** In the transaction currency. "" means "balance the entry with this leg". */
   value: string;
   /**
-   * In the account's own commodity, only when that differs from the
-   * transaction currency (a USD wallet in a EUR book). "" otherwise.
+   * In the account's own commodity, only meaningful when that differs from the
+   * transaction currency (a USD wallet in a EUR book). Optional even then: left
+   * blank, the server values the leg from the book's own price history; filled
+   * in, the value over the quantity becomes a "transaction" price for the day.
+   * "" otherwise.
    */
   quantity: string;
   memo: string;
@@ -133,11 +136,9 @@ export function validateDraft(
     } else if (parseDecimal(leg.value, currency.minor_unit_factor) === null) {
       problems.push({ leg: i, message: `Not an amount in ${currency.code} (up to ${decimalsOf(currency.minor_unit_factor)} decimals).` });
     }
-    if (needsQuantity(leg, accounts, currency.id)) {
+    if (needsQuantity(leg, accounts, currency.id) && leg.quantity.trim() !== "") {
       const own = commodities.get(account.commodity_id);
-      if (leg.quantity.trim() === "") {
-        problems.push({ leg: i, message: `${account.commodity} amount is needed: this account is not held in ${currency.code}.` });
-      } else if (own && parseDecimal(leg.quantity, own.minor_unit_factor) === null) {
+      if (own && parseDecimal(leg.quantity, own.minor_unit_factor) === null) {
         problems.push({ leg: i, message: `Not an amount in ${account.commodity}.` });
       }
     }

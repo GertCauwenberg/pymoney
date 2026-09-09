@@ -209,6 +209,170 @@ class TestPosting:
         assert book.balance(chart.checking.id).is_zero
 
 
+class TestForeignCommodityPosting:
+    """A leg in a commodity other than the transaction currency is priced the
+    way the register forms are meant to drive it: a stated value *and* quantity
+    define a fresh 'transaction' rate, a value on its own borrows the book's
+    price history, and a value with nowhere to get a rate from is refused."""
+
+    def test_a_value_and_a_quantity_record_a_transaction_price(self, chart: Chart):
+        book = chart.book
+        transaction = book.post(
+            date(2026, 2, 1),
+            [
+                LegSpec.of(chart.checking.id, "-90.00"),
+                LegSpec.of(chart.usd_account.id, "90.00", quantity="100.00"),
+            ],
+        )
+        usd_leg = transaction.split_for(chart.usd_account.id)
+        assert usd_leg.quantity.minor == 10000
+        assert usd_leg.price == F(9, 10)
+
+        history = book.prices.history(chart.usd, chart.eur)
+        assert len(history) == 1
+        assert history[0].rate == F(9, 10)
+        assert history[0].effective_date == date(2026, 2, 1)
+        assert history[0].source == "transaction"
+
+    def test_a_stated_price_is_left_as_the_users_intent(self, chart: Chart):
+        """An explicit price is the user's figure, not a derived one: it is
+        kept verbatim and does not spawn a 'transaction' price."""
+        book = chart.book
+        transaction = book.post(
+            date(2026, 2, 1),
+            [
+                LegSpec.of(chart.checking.id, "-90.00"),
+                LegSpec.of(chart.usd_account.id, "90.00", price="9/10"),
+            ],
+        )
+        assert transaction.split_for(chart.usd_account.id).price == F(9, 10)
+        assert book.prices.history(chart.usd, chart.eur) == ()
+
+    def test_a_zero_quantity_leg_keeps_its_own_commodity(self, chart: Chart):
+        """A stock split moves shares at no cost; there is no rate to record."""
+        book = chart.book
+        book.post(
+            date(2026, 2, 1),
+            [LegSpec.of(chart.opening_usd.id, "1000.00"), LegSpec.of(chart.brokerage.id)],
+            currency=chart.usd,
+        )
+        transaction = book.post(
+            date(2026, 2, 2),
+            [
+                LegSpec.of(chart.aapl_account.id, "0", quantity="10"),
+                LegSpec.of(chart.opening_usd.id, "0"),
+            ],
+            currency=chart.usd,
+        )
+        assert transaction.split_for(chart.aapl_account.id).quantity.minor == 100000
+        assert book.prices.history(chart.aapl, chart.usd) == ()
+
+    def test_a_value_only_leg_uses_the_rate_for_the_day(self, chart: Chart):
+        book = chart.book
+        book.add_price(chart.usd, chart.eur, "0.80", effective_date=date(2026, 2, 5))
+        before = len(book.prices)
+        transaction = book.post(
+            date(2026, 2, 5),
+            [
+                LegSpec.of(chart.checking.id, "-80.00"),
+                LegSpec.of(chart.usd_account.id, "80.00"),
+            ],
+        )
+        assert transaction.split_for(chart.usd_account.id).quantity.minor == 10000
+        assert len(book.prices) == before  # the rate was read, not written
+
+    def test_a_value_only_leg_falls_back_to_the_last_known_rate(
+        self, chart: Chart, caplog
+    ):
+        book = chart.book
+        book.add_price(chart.usd, chart.eur, "0.80", effective_date=date(2026, 9, 1))
+        book.add_price(chart.usd, chart.eur, "0.95", effective_date=date(2026, 9, 8))
+        with caplog.at_level("WARNING", logger="pymoney.core.transactions"):
+            transaction = book.post(
+                date(2026, 9, 5),
+                [
+                    LegSpec.of(chart.checking.id, "-80.00"),
+                    LegSpec.of(chart.usd_account.id, "80.00"),
+                ],
+            )
+        # 0.80 is effective 1 Sep, 0.95 is 8 Sep; 5 Sep is valued at 0.80.
+        assert transaction.split_for(chart.usd_account.id).quantity.minor == 10000
+        assert any(
+            "2026-09-01" in record.message and "2026-09-05" in record.message
+            for record in caplog.records
+        )
+
+    def test_a_value_only_leg_with_no_rate_at_all_is_refused(self, chart: Chart):
+        book = chart.book
+        before = book.revision
+        with pytest.raises(ValidationError, match=r"USD.*price on or before 2026-02-05"):
+            book.post(
+                date(2026, 2, 5),
+                [
+                    LegSpec.of(chart.checking.id, "-80.00"),
+                    LegSpec.of(chart.usd_account.id, "80.00"),
+                ],
+            )
+        assert book.revision == before
+
+    def test_a_rate_dated_after_the_transaction_is_no_help(self, chart: Chart):
+        book = chart.book
+        book.add_price(chart.usd, chart.eur, "0.80", effective_date=date(2026, 2, 10))
+        with pytest.raises(ValidationError, match="price on or before 2026-02-05"):
+            book.post(
+                date(2026, 2, 5),
+                [
+                    LegSpec.of(chart.checking.id, "-80.00"),
+                    LegSpec.of(chart.usd_account.id, "80.00"),
+                ],
+            )
+
+    def test_a_foreign_residual_leg_is_valued_from_the_history(self, chart: Chart):
+        book = chart.book
+        book.add_price(chart.usd, chart.eur, "0.80", effective_date=date(2026, 2, 5))
+        transaction = book.post(
+            date(2026, 2, 5),
+            [
+                LegSpec.of(chart.checking.id, "-80.00"),
+                LegSpec.of(chart.usd_account.id),
+            ],
+        )
+        assert transaction.split_for(chart.usd_account.id).quantity.minor == 10000
+
+    def test_a_foreign_residual_leg_without_a_rate_is_refused(self, chart: Chart):
+        with pytest.raises(ValidationError, match="price on or before"):
+            chart.book.post(
+                date(2026, 2, 5),
+                [
+                    LegSpec.of(chart.checking.id, "-80.00"),
+                    LegSpec.of(chart.usd_account.id),
+                ],
+            )
+
+    def test_editing_a_transaction_invents_no_price(self, chart: Chart):
+        """The currency is fixed once a transaction exists; re-sending its legs
+        (value and quantity, as the form does) must not mint a new rate."""
+        book = chart.book
+        transaction = book.post(
+            date(2026, 2, 1),
+            [
+                LegSpec.of(chart.checking.id, "-90.00"),
+                LegSpec.of(chart.usd_account.id, "90.00", quantity="100.00"),
+            ],
+        )
+        assert len(book.prices) == 1
+        book.execute(
+            c.UpdateTransaction(
+                transaction_id=transaction.id,
+                legs=(
+                    LegSpec.of(chart.checking.id, "-95.00"),
+                    LegSpec.of(chart.usd_account.id, "95.00", quantity="100.00"),
+                ),
+            )
+        )
+        assert len(book.prices) == 1  # still just the original post's rate
+
+
 class TestQueries:
     def test_transactions_are_date_ordered(self, funded: Chart):
         dates = [t.date for t in funded.book.transactions()]

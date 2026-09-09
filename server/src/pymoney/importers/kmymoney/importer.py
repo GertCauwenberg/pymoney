@@ -746,6 +746,10 @@ class KmyImporter:
             payee_id=next(iter(payees)) if len(payees) == 1 else None,
             entered_at=_as_instant(kmy.entry_date, self.book.clock.now()),
             imported_id=f"{self.options.id_prefix}{kmy.id}" if kmy.id else None,
+            # The file carries its own price history; a leg whose advisory
+            # price we had to drop keeps its booked value and quantity as they
+            # are, rather than minting a second, synthetic rate for the day.
+            price_foreign_legs=False,
         )
         self.report.count("transactions")
 

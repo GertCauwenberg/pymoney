@@ -708,13 +708,14 @@ class MainWindow(QMainWindow):
         return self.rows[index] if 0 <= index < len(self.rows) else None
 
     def new_transaction(self) -> None:
-        currency = self._currency()
-        if self.book is None or currency is None or self.current_account is None:
+        base_currency = self._currency()
+        if self.book is None or base_currency is None or self.current_account is None:
             return
         dialog = TransactionDialog(
             self.accounts,
             self.payees,
-            currency,
+            base_currency,
+            commodities=self.commodities,
             default_account_id=self.current_account.id,
             parent=self,
         )
@@ -722,6 +723,7 @@ class MainWindow(QMainWindow):
             return
         book_id, accounts = self.book.id, {a.id: a for a in self.accounts}
         draft = dialog.draft()
+        currency = dialog.currency()
 
         def work():
             payee_id = draft.payee_id
@@ -740,14 +742,20 @@ class MainWindow(QMainWindow):
 
     def edit_transaction(self) -> None:
         row = self._selected_row()
-        currency = self._currency()
-        if row is None or self.book is None or currency is None or not self._can_write():
+        if row is None or self.book is None or not self._can_write():
             return
         book_id = self.book.id
         try:
             existing = self.client.transaction(book_id, row.transaction_id)
         except (ApiError, OfflineError) as exc:
             self._failed(_("Could not load the transaction"))(exc)
+            return
+        # A transaction's currency never changes; the dialog shows it, disabled.
+        currency = next(
+            (c for c in self.commodities if c.id == existing.currency_id),
+            self._currency(),
+        )
+        if currency is None:
             return
         if existing.locked:
             QMessageBox.information(
@@ -759,7 +767,12 @@ class MainWindow(QMainWindow):
             )
             return
         dialog = TransactionDialog(
-            self.accounts, self.payees, currency, existing=existing, parent=self
+            self.accounts,
+            self.payees,
+            currency,
+            commodities=self.commodities,
+            existing=existing,
+            parent=self,
         )
         if self.run_dialog(dialog) != QDialog.DialogCode.Accepted:
             return

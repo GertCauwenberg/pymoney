@@ -6,7 +6,10 @@ never exist, not even transiently."""
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
+from datetime import date
+from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -14,13 +17,16 @@ from .. import commands as cmd
 from ..account import Account
 from ..changelog import EntityKind
 from ..commodity import Commodity
-from ..errors import ConflictError, NotFoundError, ValidationError
+from ..errors import ConflictError, NoPriceError, NotFoundError, ValidationError
 from ..ids import new_id
 from ..posting import LegSpec, book_legs
+from ..price import Price, PriceSource
 from ..transaction import Split, Transaction
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..book import Book
+
+log = logging.getLogger("pymoney.core.transactions")
 
 
 def account_for_posting(book: Book, account_id: UUID) -> Account:
@@ -52,6 +58,88 @@ def build_splits(
     return booked.splits
 
 
+def _looked_up_rate(
+    book: Book, commodity: Commodity, currency: Commodity, on: date, account: Account
+) -> Fraction:
+    """The book's own rate for ``commodity -> currency`` on ``on``.
+
+    Uses the price effective on the transaction date, or -- with a warning --
+    the most recent one before it.  A foreign leg that states neither a
+    quantity nor a price has nothing else to go on, so without any usable
+    price at all the transaction cannot be booked.
+    """
+    policy = book.default_policy(as_of=on).for_target(currency)
+    try:
+        conversion = book.prices.convert(commodity, currency, policy)
+    except NoPriceError:
+        raise ValidationError(
+            f"{book.path(account)!r} is held in {commodity.code}, not the "
+            f"transaction currency {currency.code}: enter a quantity, or add "
+            f"a {commodity.code}->{currency.code} price on or before {on}"
+        ) from None
+    used = max((price.effective_date for price in conversion.prices), default=on)
+    if used != on:
+        log.warning(
+            "no %s->%s price for %s; valuing the leg at the rate from %s (1 %s = %s %s)",
+            commodity.code,
+            currency.code,
+            on.isoformat(),
+            used.isoformat(),
+            commodity.code,
+            conversion.rate,
+            currency.code,
+        )
+    return conversion.rate
+
+
+def price_foreign_legs(
+    book: Book, legs: tuple[LegSpec, ...], currency: Commodity, on: date
+) -> tuple[tuple[LegSpec, ...], tuple[Price, ...]]:
+    """Give every foreign-commodity leg a price, the way the register forms do.
+
+    A leg that states *both* its value and its quantity has defined a rate by
+    the act of entering the trade: that becomes a fresh
+    :attr:`~pymoney.core.price.PriceSource.TRANSACTION` price.  A leg that
+    states only one of the two (or the residual leg, which states neither)
+    borrows the book's existing price history instead.
+
+    Returns the legs with their ``price`` filled in and the new prices to
+    record.  Legs that already carry a price, and legs in the transaction
+    currency, are passed through untouched.
+    """
+    resolved: list[LegSpec] = []
+    implied: list[Price] = []
+    for leg in legs:
+        account = book.account(leg.account_id)
+        commodity = account.commodity
+        if commodity.id == currency.id or leg.price is not None:
+            resolved.append(leg)
+            continue
+        value, quantity = leg.value, leg.quantity
+        if value is not None and value != 0 and quantity is not None and quantity != 0:
+            rate = abs(value) / abs(quantity)
+            resolved.append(replace(leg, price=rate))
+            implied.append(
+                Price.of(
+                    commodity,
+                    currency,
+                    rate,
+                    effective_date=on,
+                    as_of=book.clock.now(),
+                    source=PriceSource.TRANSACTION,
+                    id=new_id(),
+                    book_id=book.id,
+                )
+            )
+        elif (value is not None and value != 0) or leg.is_residual:
+            rate = _looked_up_rate(book, commodity, currency, on, account)
+            resolved.append(replace(leg, price=rate))
+        else:
+            # Quantity only, or a genuine zero leg: book_legs decides.
+            resolved.append(leg)
+    return tuple(resolved), tuple(implied)
+
+
 def post_transaction(book: Book, command: cmd.PostTransaction) -> Transaction:
     currency = (
         book.commodity(command.currency_id)
@@ -67,9 +155,13 @@ def post_transaction(book: Book, command: cmd.PostTransaction) -> Transaction:
         raise ConflictError(
             f"a transaction with imported_id {command.imported_id!r} already exists"
         )
+    legs: tuple[LegSpec, ...] = tuple(command.legs)
+    implied_prices: tuple[Price, ...] = ()
+    if command.price_foreign_legs:
+        legs, implied_prices = price_foreign_legs(book, legs, currency, command.date)
     splits = build_splits(
         book,
-        tuple(command.legs),
+        legs,
         currency,
         command.rounding,
         command.imbalance_account_id,
@@ -93,7 +185,10 @@ def post_transaction(book: Book, command: cmd.PostTransaction) -> Transaction:
     transaction.validate()
     if book.store.exists(EntityKind.TRANSACTION, transaction.id):
         raise ConflictError(f"transaction {transaction.id} already exists")
-    return book.put(EntityKind.TRANSACTION, transaction, created=True)
+    stored = book.put(EntityKind.TRANSACTION, transaction, created=True)
+    for price in implied_prices:
+        book.put(EntityKind.PRICE, price, created=True)
+    return stored
 
 
 def update_transaction(book: Book, command: cmd.UpdateTransaction) -> Transaction:

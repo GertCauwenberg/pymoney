@@ -51,6 +51,7 @@ class TransactionDialog(QDialog):
         payees: list[PayeeOut],
         currency: CommodityOut,
         *,
+        commodities: list[CommodityOut] | None = None,
         existing: TransactionOut | None = None,
         default_account_id: UUID | None = None,
         parent: QWidget | None = None,
@@ -64,7 +65,14 @@ class TransactionDialog(QDialog):
             key=lambda a: a.path,
         )
         self._payees = sorted(payees, key=lambda p: p.name.lower())
+        self._base_currency = currency
         self._currency = currency
+        self._currencies = sorted(
+            (c for c in (commodities or [currency]) if c.kind == "CURRENCY"),
+            key=lambda c: c.code,
+        )
+        if all(c.id != currency.id for c in self._currencies):
+            self._currencies.insert(0, currency)
         self.existing = existing
         draft = (
             draft_from_transaction(existing)
@@ -108,6 +116,24 @@ class TransactionDialog(QDialog):
         self.number = QLineEdit(draft.number)
         self.number.setPlaceholderText(_("Cheque or reference"))
         form.addRow(_("Number"), self.number)
+
+        # The transaction currency is chosen when posting and fixed once the
+        # transaction exists: its splits' values are denominated in it.
+        self.currency_box = QComboBox()
+        for c in self._currencies:
+            label = (
+                _("{code} (book currency)", code=c.code)
+                if c.id == self._base_currency.id
+                else c.code
+            )
+            self.currency_box.addItem(label, str(c.id))
+        self.currency_box.setCurrentIndex(
+            max(0, self.currency_box.findData(str(currency.id)))
+        )
+        self.currency_box.setDisabled(existing is not None)
+        self.currency_box.setToolTip(_("Fixed once the transaction is posted."))
+        self.currency_box.currentIndexChanged.connect(lambda _: self._currency_changed())
+        form.addRow(_("Currency"), self.currency_box)
 
         self.legs = QTableWidget(0, 4)
         self.legs.setHorizontalHeaderLabels(
@@ -213,6 +239,22 @@ class TransactionDialog(QDialog):
     def _cell(self, row: int, col: int) -> str:
         item = self.legs.item(row, col)
         return item.text() if item is not None else ""
+
+    def currency(self) -> CommodityOut:
+        """The transaction currency: the user's choice for a new entry, the
+        stored one for an edit (where the control is disabled)."""
+        return self._currency
+
+    def _currency_changed(self) -> None:
+        chosen = self.currency_box.currentData()
+        for candidate in self._currencies:
+            if str(candidate.id) == chosen:
+                self._currency = candidate
+                break
+        header = self.legs.horizontalHeaderItem(3)
+        if header is not None:
+            header.setText(f"Amount ({self._currency.code})")
+        self._refresh_footer()
 
     def draft(self) -> TransactionDraft:
         legs = []

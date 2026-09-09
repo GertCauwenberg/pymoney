@@ -188,7 +188,7 @@ describe("posting from the register", () => {
     expect(calls.filter((c) => c.method === "GET" && c.path.endsWith("/register")).length).toBeGreaterThan(1);
   });
 
-  it("asks for a quantity when a leg's account is held in another currency", async () => {
+  it("shows an optional quantity field for a leg in another currency", async () => {
     const user = userEvent.setup();
     const { fetch, calls } = server({
       ...reads,
@@ -199,15 +199,69 @@ describe("posting from the register", () => {
     const form = screen.getByRole("form", { name: "New transaction" });
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-100");
     await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "wallet");
-    await user.click(within(form).getByRole("button", { name: "Post" }));
-    expect(await within(form).findByText("USD amount is needed: this account is not held in EUR.")).toBeInTheDocument();
-    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    await user.type(within(form).getByLabelText("Amount of leg 2"), "100");
 
+    // A quantity may be given, but is not required: left blank, the server
+    // values the leg from the book's prices.
+    await user.click(within(form).getByRole("button", { name: "Post" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect((calls.find((c) => c.method === "POST")!.body as { legs: object[] }).legs[1]).toMatchObject({
+      account_id: "wallet",
+      value: "100",
+      quantity: null,
+    });
+  });
+
+  it("sends a quantity on a foreign leg when one is typed", async () => {
+    const user = userEvent.setup();
+    const { fetch, calls } = server({
+      ...reads,
+      "POST /books/b1/transactions": ({ body }) => ({ status: 201, body: transaction({ id: "t9", ...(body as object) }) }),
+    });
+    mount(fetch, "/books/b1/accounts/chk");
+    await user.click(await screen.findByRole("button", { name: "New transaction" }));
+    const form = screen.getByRole("form", { name: "New transaction" });
+    await user.type(within(form).getByLabelText("Amount of leg 1"), "-100");
+    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "wallet");
+    await user.type(within(form).getByLabelText("Amount of leg 2"), "100");
     await user.type(within(form).getByLabelText("Quantity of leg 2 in USD"), "108.50");
     await user.click(within(form).getByRole("button", { name: "Post" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
-    const post = calls.find((c) => c.method === "POST")!;
-    expect((post.body as { legs: object[] }).legs[1]).toMatchObject({ account_id: "wallet", value: null, quantity: "108.50" });
+    expect((calls.find((c) => c.method === "POST")!.body as { legs: object[] }).legs[1]).toMatchObject({
+      account_id: "wallet",
+      value: "100",
+      quantity: "108.50",
+    });
+  });
+
+  it("posts in a chosen currency, and fixes it once the transaction exists", async () => {
+    const user = userEvent.setup();
+    const { fetch, calls } = server({
+      ...reads,
+      "POST /books/b1/transactions": ({ body }) => ({ status: 201, body: transaction({ id: "t9", ...(body as object) }) }),
+    });
+    mount(fetch, "/books/b1/accounts/wallet");
+    await user.click(await screen.findByRole("button", { name: "New transaction" }));
+    const form = screen.getByRole("form", { name: "New transaction" });
+    const currency = within(form).getByLabelText("Currency");
+    expect(currency).toHaveValue("eur");
+    await user.selectOptions(currency, "usd");
+    await user.type(within(form).getByLabelText("Amount of leg 1"), "-10");
+    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
+    await user.click(within(form).getByRole("button", { name: "Post" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect((calls.find((c) => c.method === "POST")!.body as { currency_id: string }).currency_id).toBe("usd");
+  });
+
+  it("does not let the currency be changed while editing", async () => {
+    const user = userEvent.setup();
+    const { fetch } = server({ ...reads, "PATCH /books/b1/transactions/t1": ({ body }) => ({ body: transaction(body as object) }) });
+    mount(fetch, "/books/b1/transactions/t1");
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    const form = screen.getByRole("form", { name: "Edit transaction" });
+    const currency = within(form).getByLabelText("Currency");
+    expect(currency).toBeDisabled();
+    expect(currency).toHaveValue("EUR");
   });
 
   it("does not send an incomplete draft, and shows the server's refusal", async () => {

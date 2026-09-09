@@ -436,6 +436,14 @@ class PostTransaction(Command):
     entered_at: datetime | None = None
     imported_id: str | None = None
     id: UUID | None = None
+    price_foreign_legs: bool = True
+    """Resolve a rate for every leg that is not in the transaction currency.
+
+    What the register forms rely on: a leg stating both its value and its
+    quantity mints a :attr:`~pymoney.core.price.PriceSource.TRANSACTION` price,
+    and a leg stating only its value is valued from the book's price history.
+    An importer that already carries its source's prices turns this off.
+    """
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
