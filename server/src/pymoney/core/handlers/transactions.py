@@ -140,6 +140,15 @@ def price_foreign_legs(
     return tuple(resolved), tuple(implied)
 
 
+def _validate_split_references(book: Book, splits: tuple[Split, ...]) -> None:
+    """Every payee and tag a leg names must exist in the book."""
+    for split in splits:
+        if split.payee_id is not None:
+            book.payee(split.payee_id)
+        for tag_id in split.tag_ids:
+            book.tag(tag_id)
+
+
 def post_transaction(book: Book, command: cmd.PostTransaction) -> Transaction:
     currency = (
         book.commodity(command.currency_id)
@@ -166,9 +175,7 @@ def post_transaction(book: Book, command: cmd.PostTransaction) -> Transaction:
         command.rounding,
         command.imbalance_account_id,
     )
-    for split in splits:
-        if split.payee_id is not None:
-            book.payee(split.payee_id)
+    _validate_split_references(book, splits)
     transaction = Transaction(
         id=command.id or new_id(),
         book_id=book.id,
@@ -222,9 +229,7 @@ def update_transaction(book: Book, command: cmd.UpdateTransaction) -> Transactio
             rounding,
             command.imbalance_account_id,
         )
-        for split in splits:
-            if split.payee_id is not None:
-                book.payee(split.payee_id)
+        _validate_split_references(book, splits)
         updated = replace(updated, splits=splits)
     elif currency is not current.currency:
         raise ValidationError(

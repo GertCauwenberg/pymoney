@@ -14,6 +14,7 @@ const accounts = [
   { id: "food", name: "Food", path: "Expenses:Food", account_class: "EXPENSE", type: "EXPENSE", commodity_id: "eur", commodity: "EUR", parent_id: null, closed: false, placeholder: false },
 ];
 const payees = [{ id: "p1", name: "Acme Groceries", notes: "", address: "", match_keys: [], default_account_id: null, revision: 1 }];
+const tags = [{ id: "g1", name: "Holiday", notes: "", colour: null, closed: false, revision: 1 }];
 const commodities = [{ id: "eur", code: "EUR", name: "Euro", kind: "CURRENCY", minor_unit_factor: 100 }];
 const split = (id: string, account_id: string, minor: number) => ({
   id, account_id, quantity: eur(minor), value: eur(minor), memo: "", payee_id: null, reconcile_state: "NOT_RECONCILED", reconcile_date: null, action: "", number: "", price: null, implied_price: null,
@@ -56,6 +57,7 @@ function mount(fetch: typeof globalThis.fetch, path: string) {
 const reads = {
   "/books/b1/accounts": () => accounts,
   "/books/b1/payees": () => payees,
+  "/books/b1/tags": () => tags,
   "/books/b1/commodities": () => commodities,
 };
 
@@ -114,6 +116,23 @@ describe("SearchPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("plain decimals");
     await user.clear(screen.getByLabelText("Largest amount"));
     expect(await screen.findByRole("status")).toHaveTextContent(/More than 0 transactions match/);
+  });
+
+  it("filters by a tag, which travels as tag_id", async () => {
+    const user = userEvent.setup();
+    const { fetch, urls } = server({
+      ...reads,
+      "/transactions/search": (url) => ({
+        items: url.searchParams.get("tag_id") === "g1" ? [tx] : [],
+        has_more: false,
+        limit: 200,
+      }),
+    });
+    mount(fetch, "/books/b1/search");
+    await screen.findByRole("heading", { name: "Find transactions" });
+    await user.selectOptions(await screen.findByLabelText("Tag"), "g1");
+    await screen.findByRole("row", { name: /Supermarket/ });
+    expect(urls.filter((u) => u.includes("/transactions/search")).at(-1)!).toContain("tag_id=g1");
   });
 
   it("describes where money came from and went", () => {

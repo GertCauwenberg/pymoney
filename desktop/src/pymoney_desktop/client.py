@@ -56,6 +56,8 @@ from pymoney.api.schemas import (
     SchedulePatch,
     SkipOccurrenceIn,
     StatementImportOut,
+    TagIn,
+    TagOut,
     TransactionIn,
     TransactionOut,
     TransactionSearchOut,
@@ -94,6 +96,7 @@ class SearchCriteria:
     account_id: UUID | None = None
     include_children: bool = False
     payee_id: UUID | None = None
+    tag_id: UUID | None = None
     limit: int = 100
 
     @property
@@ -108,6 +111,7 @@ class SearchCriteria:
                 self.end,
                 self.account_id,
                 self.payee_id,
+                self.tag_id,
             )
         )
 
@@ -226,6 +230,9 @@ class LedgerClient(ABC):
     def payees(self, book_id: UUID) -> list[PayeeOut]: ...
 
     @abstractmethod
+    def tags(self, book_id: UUID) -> list[TagOut]: ...
+
+    @abstractmethod
     def balance(
         self, book_id: UUID, account_id: UUID, *, as_of: date | None = None
     ) -> AccountBalanceOut: ...
@@ -329,6 +336,9 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def create_payee(self, book_id: UUID, body: PayeeIn) -> PayeeOut: ...
+
+    @abstractmethod
+    def create_tag(self, book_id: UUID, body: TagIn) -> TagOut: ...
 
     @abstractmethod
     def create_account(self, book_id: UUID, body: AccountIn) -> AccountOut: ...

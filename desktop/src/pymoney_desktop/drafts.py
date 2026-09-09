@@ -66,6 +66,11 @@ class LegDraft:
     value: str = ""
     quantity: str = ""
     memo: str = ""
+    tag_ids: list[UUID] = field(default_factory=list)
+    """Ids of the tags on this leg, in the order the user arranged them."""
+    new_tag_names: list[str] = field(default_factory=list)
+    """Names typed that did not match an existing tag; created on save, then
+    appended to ``tag_ids`` -- the twin of ``TransactionDraft.new_payee``."""
     keep: dict = field(default_factory=dict)
     """Reconciliation mark, action, number, per-split payee: kept, not edited."""
 
@@ -82,6 +87,7 @@ class LegDraft:
                 if foreign
                 else None,
                 "memo": self.memo.strip(),
+                "tag_ids": [str(i) for i in self.tag_ids],
                 **self.keep,
             }
         )
@@ -145,6 +151,7 @@ def draft_from_transaction(tx: TransactionOut) -> TransactionDraft:
                 if s.quantity.commodity_id == tx.currency_id
                 else minor_to_text(s.quantity.minor, s.quantity.scale),
                 memo=s.memo,
+                tag_ids=list(s.tag_ids),
                 keep={
                     "reconcile_state": s.reconcile_state.value,
                     "reconcile_date": s.reconcile_date.isoformat()

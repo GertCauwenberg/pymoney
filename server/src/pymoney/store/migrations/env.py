@@ -25,7 +25,10 @@ from pymoney.store.schema import metadata
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep `fileConfig` from silencing every logger it does not name: migrations
+    # run in-process during the test suite, and the application's loggers
+    # (`pymoney.core.*`) must keep working afterwards.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = metadata
 

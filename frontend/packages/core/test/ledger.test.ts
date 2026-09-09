@@ -182,8 +182,8 @@ describe("draftToTransactionIn", () => {
       payee_id: "p1",
       rounding: "HALF_EVEN",
       legs: [
-        { account_id: "chk", value: "-100", quantity: null, memo: "", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null },
-        { account_id: "wallet", value: null, quantity: "108.5", memo: "cash", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null },
+        { account_id: "chk", value: "-100", quantity: null, memo: "", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null, tag_ids: [] },
+        { account_id: "wallet", value: null, quantity: "108.5", memo: "cash", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null, tag_ids: [] },
       ],
     });
     // No floats anywhere in the payload.
@@ -227,6 +227,7 @@ describe("draftFromTransaction", () => {
         number: "",
         price: null,
         implied_price: null,
+        tag_ids: [],
       },
       {
         id: "s2",
@@ -241,6 +242,7 @@ describe("draftFromTransaction", () => {
         number: "",
         price: { num: 217, den: 200, approx: "1.0850000000" },
         implied_price: null,
+        tag_ids: ["g-holiday", "g-spain"],
       },
     ],
   };
@@ -256,10 +258,15 @@ describe("draftFromTransaction", () => {
     expect(draft.legs[0]!.keep).toEqual({ reconcile_state: "CLEARED", reconcile_date: "2026-02-03", action: "", number: "", payee_id: null });
     expect(draft.legs[1]!.keep.action).toBe("BUY");
     expect(draft.legs[1]!.keep.payee_id).toBe("p9");
-    // A round trip re-sends the marks, so an edit to the memo does not
-    // silently un-clear a split.
+    // Tags ride along on the leg they were put on, in order.
+    expect(draft.legs.map((l) => l.tag_ids)).toEqual([[], ["g-holiday", "g-spain"]]);
+    expect(draft.legs.every((l) => l.new_tag_names.length === 0)).toBe(true);
+    // A round trip re-sends the marks and the tags, so an edit to the memo
+    // does not silently un-clear a split or strip its labels.
     const body = draftToTransactionIn(draft, accounts, eur);
     expect(body.legs[0]!.reconcile_state).toBe("CLEARED");
+    expect(body.legs[0]!.tag_ids).toEqual([]);
+    expect(body.legs[1]!.tag_ids).toEqual(["g-holiday", "g-spain"]);
     expect(body.legs[1]!.quantity).toBe("108.50");
     expect(body.legs[1]).not.toHaveProperty("price");
   });

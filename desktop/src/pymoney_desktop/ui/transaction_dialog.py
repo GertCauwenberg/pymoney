@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pymoney.api.schemas import AccountOut, CommodityOut, PayeeOut, TransactionOut
+from pymoney.api.schemas import AccountOut, CommodityOut, PayeeOut, TagOut, TransactionOut
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QComboBox,
+    QCompleter,
     QDateEdit,
     QDialog,
     QDialogButtonBox,
@@ -37,12 +38,35 @@ __all__ = ["TransactionDialog"]
 
 NEW_PAYEE = "__new__"
 
+# Columns of the legs table. Tags go last so the indices the amount, memo and
+# account sit at do not move.
+ACCOUNT, MEMO, QUANTITY, AMOUNT, TAGS = range(5)
+_TAG_SEPARATORS = ",;"
+
+
+def _split_tag_names(text: str) -> list[str]:
+    """``"Holiday; work ,, Holiday"`` -> ``["Holiday", "work"]`` (order kept,
+    case-folded duplicates dropped)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    working = text
+    for sep in _TAG_SEPARATORS[1:]:
+        working = working.replace(sep, _TAG_SEPARATORS[0])
+    for chunk in working.split(_TAG_SEPARATORS[0]):
+        name = chunk.strip()
+        if name and name.casefold() not in seen:
+            seen.add(name.casefold())
+            out.append(name)
+    return out
+
 
 class TransactionDialog(QDialog):
     """Date, payee (or a new one), memo, number, and a table of legs.
 
     Leave one amount blank and it balances the entry; the footer shows what it
     will receive. Amounts are sent as typed; see :mod:`pymoney_desktop.drafts`.
+    Each leg carries its own tags: type names, separated by commas; one the
+    book does not have yet is created when the transaction is saved.
     """
 
     def __init__(
@@ -52,19 +76,23 @@ class TransactionDialog(QDialog):
         currency: CommodityOut,
         *,
         commodities: list[CommodityOut] | None = None,
+        tags: list[TagOut] | None = None,
         existing: TransactionOut | None = None,
         default_account_id: UUID | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(_("Edit transaction") if existing else _("New transaction"))
-        self.setMinimumWidth(720)
+        self.setMinimumWidth(820)
         self._accounts = {a.id: a for a in accounts}
         self._postable = sorted(
             (a for a in accounts if not a.placeholder and not a.closed),
             key=lambda a: a.path,
         )
         self._payees = sorted(payees, key=lambda p: p.name.lower())
+        self._tags = sorted(tags or [], key=lambda t: t.name.lower())
+        self._tag_name_by_id = {t.id: t.name for t in self._tags}
+        self._tag_id_by_key = {t.name.casefold(): t.id for t in self._tags}
         self._base_currency = currency
         self._currency = currency
         self._currencies = sorted(
@@ -135,13 +163,20 @@ class TransactionDialog(QDialog):
         self.currency_box.currentIndexChanged.connect(lambda _: self._currency_changed())
         form.addRow(_("Currency"), self.currency_box)
 
-        self.legs = QTableWidget(0, 4)
+        self.legs = QTableWidget(0, 5)
         self.legs.setHorizontalHeaderLabels(
-            [_("Account"), _("Leg memo"), _("Quantity"), f"Amount ({currency.code})"]
+            [
+                _("Account"),
+                _("Leg memo"),
+                _("Quantity"),
+                f"Amount ({currency.code})",
+                _("Tags"),
+            ]
         )
-        self.legs.horizontalHeader().setStretchLastSection(False)
-        self.legs.setColumnWidth(0, 280)
-        self.legs.setColumnWidth(1, 160)
+        self.legs.horizontalHeader().setStretchLastSection(True)
+        self.legs.setColumnWidth(ACCOUNT, 250)
+        self.legs.setColumnWidth(MEMO, 130)
+        self.legs.setColumnWidth(AMOUNT, 120)
         for leg in draft.legs:
             self._add_leg(leg)
 
@@ -204,14 +239,27 @@ class TransactionDialog(QDialog):
         if leg.account_id is not None:
             combo.setCurrentIndex(max(0, combo.findData(str(leg.account_id))))
         combo.currentIndexChanged.connect(lambda _: self._refresh_footer())
-        self.legs.setCellWidget(row, 0, combo)
-        self.legs.setItem(row, 1, QTableWidgetItem(leg.memo))
-        self.legs.setItem(row, 2, QTableWidgetItem(leg.quantity))
+        self.legs.setCellWidget(row, ACCOUNT, combo)
+        self.legs.setItem(row, MEMO, QTableWidgetItem(leg.memo))
+
+        known = [
+            self._tag_name_by_id[i] for i in leg.tag_ids if i in self._tag_name_by_id
+        ]
+        tags = QLineEdit(", ".join(known + list(leg.new_tag_names)))
+        tags.setPlaceholderText(_("comma-separated"))
+        if self._tags:
+            completer = QCompleter([t.name for t in self._tags], tags)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            tags.setCompleter(completer)
+        self.legs.setCellWidget(row, TAGS, tags)
+
+        self.legs.setItem(row, QUANTITY, QTableWidgetItem(leg.quantity))
         amount = QTableWidgetItem(leg.value)
         amount.setTextAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        self.legs.setItem(row, 3, amount)
+        self.legs.setItem(row, AMOUNT, amount)
         if len(self._keep) <= row:
             self._keep.append({})
 
@@ -229,7 +277,7 @@ class TransactionDialog(QDialog):
         if payee is None or payee.default_account_id is None:
             return
         for row in range(1, self.legs.rowCount()):
-            combo = self.legs.cellWidget(row, 0)
+            combo = self.legs.cellWidget(row, ACCOUNT)
             if isinstance(combo, QComboBox) and not combo.currentData():
                 index = combo.findData(str(payee.default_account_id))
                 if index >= 0:
@@ -239,6 +287,10 @@ class TransactionDialog(QDialog):
     def _cell(self, row: int, col: int) -> str:
         item = self.legs.item(row, col)
         return item.text() if item is not None else ""
+
+    def _tags_text(self, row: int) -> str:
+        widget = self.legs.cellWidget(row, TAGS)
+        return widget.text() if isinstance(widget, QLineEdit) else ""
 
     def currency(self) -> CommodityOut:
         """The transaction currency: the user's choice for a new entry, the
@@ -251,7 +303,7 @@ class TransactionDialog(QDialog):
             if str(candidate.id) == chosen:
                 self._currency = candidate
                 break
-        header = self.legs.horizontalHeaderItem(3)
+        header = self.legs.horizontalHeaderItem(AMOUNT)
         if header is not None:
             header.setText(f"Amount ({self._currency.code})")
         self._refresh_footer()
@@ -259,15 +311,25 @@ class TransactionDialog(QDialog):
     def draft(self) -> TransactionDraft:
         legs = []
         for row in range(self.legs.rowCount()):
-            combo = self.legs.cellWidget(row, 0)
+            combo = self.legs.cellWidget(row, ACCOUNT)
             chosen = combo.currentData() if isinstance(combo, QComboBox) else None
             account_id = UUID(chosen) if chosen else None
+            tag_ids: list[UUID] = []
+            new_tag_names: list[str] = []
+            for name in _split_tag_names(self._tags_text(row)):
+                existing = self._tag_id_by_key.get(name.casefold())
+                if existing is not None:
+                    tag_ids.append(existing)
+                else:
+                    new_tag_names.append(name)
             legs.append(
                 LegDraft(
                     account_id=account_id,
-                    memo=self._cell(row, 1),
-                    quantity=self._cell(row, 2),
-                    value=self._cell(row, 3),
+                    memo=self._cell(row, MEMO),
+                    quantity=self._cell(row, QUANTITY),
+                    value=self._cell(row, AMOUNT),
+                    tag_ids=tag_ids,
+                    new_tag_names=new_tag_names,
                     keep=self._keep[row],
                 )
             )

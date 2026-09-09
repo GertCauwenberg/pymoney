@@ -696,9 +696,14 @@ class TestReport:
     def test_nothing_is_dropped_silently(self, imported):
         _, report = imported
         assert report.skipped["budgets"] == 1
-        assert report.skipped["tags"] == 2
         assert report.skipped["split bank id (import reference)"] == 1
         assert any("account setting" in key for key in report.skipped)
+
+    def test_tags_are_imported_not_skipped(self, imported):
+        book, report = imported
+        assert report.imported["tags"] == 2
+        assert "tags" not in report.skipped and "split tags" not in report.skipped
+        assert {t.name for t in book.tags()} == {"holiday", "work"}
 
     def test_counts(self, imported):
         _, report = imported
@@ -1062,24 +1067,60 @@ class TestAwkwardFiles:
         transaction = book.transactions()[0]
         assert all(s.price is None for s in transaction.splits)
 
-    def test_split_tags_are_counted_as_unmapped(self, store_backend, clock, tmp_path):
+    def test_tags_and_their_split_links_are_imported(
+        self, store_backend, clock, tmp_path
+    ):
+        """The example from the feature request: a tag defined at the top of
+        the file, worn by one leg of one transaction."""
         path = write(
             tmp_path / "tagged.xml",
             body=(
-                '<TAGS count="1"><TAG id="G1" name="holiday"/></TAGS>'
+                '<TAGS count="2">'
+                '<TAG id="G000009" name="holiday"/>'
+                '<TAG id="G000010" name="work"/>'
+                "</TAGS>"
                 f"{CASH_AND_FOOD}"
-                '<TRANSACTIONS count="1"><TRANSACTION id="T1" postdate="2026-01-01" '
-                'commodity="EUR"><SPLITS>'
-                '<SPLIT account="A1" shares="-100/100" value="-100/100"/>'
-                '<SPLIT account="A2" shares="100/100" value="100/100">'
-                '<TAG id="G1"/></SPLIT>'
+                '<TRANSACTIONS count="1"><TRANSACTION id="T000000000000004495" '
+                'postdate="2026-05-18" commodity="EUR"><SPLITS>'
+                '<SPLIT account="A1" shares="-4750/1" value="-4750/1"/>'
+                '<SPLIT account="A2" shares="4750/1" value="4750/1">'
+                '<TAG id="G000009"/></SPLIT>'
                 "</SPLITS></TRANSACTION></TRANSACTIONS>"
             ),
         )
         book = store_backend.open(clock=clock)
         report = import_kmymoney(path, book)
-        assert report.skipped["split tags"] == 1
-        assert report.skipped["tags"] == 1
+        assert report.imported["tags"] == 2
+        holiday = book.find_tag("holiday")
+        assert holiday is not None
+        (transaction,) = book.transactions()
+        spent, categorised = transaction.splits
+        assert spent.tag_ids == ()
+        assert categorised.tag_ids == (holiday.id,)
+        assert "tags" not in report.skipped
+        assert "split tags" not in report.skipped
+
+    def test_a_split_naming_an_undefined_tag_is_warned_not_fatal(
+        self, store_backend, clock, tmp_path
+    ):
+        path = write(
+            tmp_path / "dangling-tag.xml",
+            body=(
+                '<TAGS count="0"/>'
+                f"{CASH_AND_FOOD}"
+                '<TRANSACTIONS count="1"><TRANSACTION id="T1" postdate="2026-01-01" '
+                'commodity="EUR"><SPLITS>'
+                '<SPLIT account="A1" shares="-100/100" value="-100/100"/>'
+                '<SPLIT account="A2" shares="100/100" value="100/100">'
+                '<TAG id="G404"/></SPLIT>'
+                "</SPLITS></TRANSACTION></TRANSACTIONS>"
+            ),
+        )
+        book = store_backend.open(clock=clock)
+        report = import_kmymoney(path, book)
+        assert report.imported["transactions"] == 1
+        assert all(s.tag_ids == () for s in book.transactions()[0].splits)
+        assert any("G404" in p.message for p in report.warnings)
 
     def test_a_lone_zero_split_cannot_be_balanced(self, store_backend, clock, tmp_path):
         """Nothing to post against, and nothing to balance: skip and say so."""

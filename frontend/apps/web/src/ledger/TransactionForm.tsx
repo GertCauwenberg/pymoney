@@ -12,9 +12,9 @@ import {
   minorToDecimal,
   validateDraft,
 } from "@pymoney/core";
-import type { Account, Commodity, DraftProblem, Payee, Transaction, TransactionDraft } from "@pymoney/core";
-import { useApi, useCreatePayee, useCreateTransaction, useUpdateTransaction } from "@pymoney/core/hooks";
-import { useMemo, useState, type FormEvent } from "react";
+import type { Account, Commodity, DraftProblem, LegDraft, Payee, Tag, Transaction, TransactionDraft } from "@pymoney/core";
+import { useApi, useCreatePayee, useCreateTag, useCreateTransaction, useTags, useUpdateTransaction } from "@pymoney/core/hooks";
+import { useId, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Money } from "../components/Money";
@@ -77,11 +77,16 @@ export function TransactionForm({
   const create = useCreateTransaction(bookId);
   const update = useUpdateTransaction(bookId);
   const createPayee = useCreatePayee(bookId);
+  const createTag = useCreateTag(bookId);
+  const tags = useTags(bookId).data ?? [];
 
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const commoditiesById = useMemo(() => new Map(commodities.map((c) => [c.id, c])), [commodities]);
+  const tagsById = useMemo(() => new Map(tags.map((tg) => [tg.id, tg])), [tags]);
+  const tagIdByName = useMemo(() => new Map(tags.map((tg) => [tg.name.toLowerCase(), tg.id])), [tags]);
   const postable = useMemo(() => postableAccounts(accounts), [accounts]);
   const sortedPayees = useMemo(() => [...payees].sort((a, b) => a.name.localeCompare(b.name)), [payees]);
+  const sortedTags = useMemo(() => [...tags].sort((a, b) => a.name.localeCompare(b.name)), [tags]);
   const currencies = useMemo(
     () => commodities.filter((c) => c.kind === "CURRENCY").sort((a, b) => a.code.localeCompare(b.code)),
     [commodities],
@@ -126,15 +131,53 @@ export function TransactionForm({
   const creatingPayee = payeeChoice === NEW_PAYEE;
   const payeeProblem = creatingPayee && newPayeeName.trim() === "" ? t("Give the new payee a name.") : null;
   const showQuantity = draft.legs.some((leg) => needsQuantity(leg, accountsById, txCurrency.id));
-  const busy = create.isPending || update.isPending || createPayee.isPending;
-  const error = create.error ?? update.error ?? createPayee.error;
+  const busy = create.isPending || update.isPending || createPayee.isPending || createTag.isPending;
+  const error = create.error ?? update.error ?? createPayee.error ?? createTag.error;
 
   const setLeg = (index: number, patch: Partial<TransactionDraft["legs"][number]>) =>
     setDraft((d) => ({ ...d, legs: d.legs.map((leg, i) => (i === index ? { ...leg, ...patch } : leg)) }));
   const removeLeg = (index: number) => setDraft((d) => ({ ...d, legs: d.legs.filter((_, i) => i !== index) }));
   const addLeg = () => setDraft((d) => ({ ...d, legs: [...d.legs, emptyLeg()] }));
 
+  /** Put a typed name on a leg: an existing tag by id, a new one by name,
+   * never the same tag twice. */
+  const addTag = (index: number, raw: string) => {
+    const name = raw.trim();
+    if (!name) return;
+    setLeg(index, addTagToLeg(draft.legs[index]!, name, tagIdByName));
+  };
+  const removeTag = (index: number, ref: { id?: string; name?: string }) => {
+    const leg = draft.legs[index]!;
+    setLeg(index, {
+      tag_ids: ref.id ? leg.tag_ids.filter((id) => id !== ref.id) : leg.tag_ids,
+      new_tag_names: ref.name ? leg.new_tag_names.filter((n) => n !== ref.name) : leg.new_tag_names,
+    });
+  };
+
   const problemsFor = (leg: number | null): DraftProblem[] => problems.filter((p) => p.leg === leg);
+
+  /** Create every tag typed but not yet in the book (once per distinct name),
+   * and return a draft whose legs name only ids. */
+  const materialiseTags = async (source: TransactionDraft): Promise<TransactionDraft> => {
+    const fresh = new Map<string, string>();
+    for (const leg of source.legs) {
+      for (const name of leg.new_tag_names) {
+        const key = name.toLowerCase();
+        if (tagIdByName.has(key) || fresh.has(key)) continue;
+        const tag = await createTag.mutateAsync({ name, notes: "", colour: null, closed: false });
+        fresh.set(key, tag.id);
+      }
+    }
+    const idOf = (name: string) => tagIdByName.get(name.toLowerCase()) ?? fresh.get(name.toLowerCase())!;
+    return {
+      ...source,
+      legs: source.legs.map((leg) => ({
+        ...leg,
+        tag_ids: [...new Set([...leg.tag_ids, ...leg.new_tag_names.map(idOf)])],
+        new_tag_names: [],
+      })),
+    };
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -155,7 +198,9 @@ export function TransactionForm({
         // retry does not try to create it twice.
         setPayeeChoice(payee.id);
       }
-      const body = draftToTransactionIn({ ...draft, payee_id: payeeId }, accountsById, txCurrency);
+      const resolved = await materialiseTags(draft);
+      if (resolved !== draft) setDraft(resolved);
+      const body = draftToTransactionIn({ ...resolved, payee_id: payeeId }, accountsById, txCurrency);
       const saved = existing
         ? await update.mutateAsync({
             transactionId: existing.id,
@@ -226,6 +271,7 @@ export function TransactionForm({
           <tr>
             <th scope="col">{t("Account")}</th>
             <th scope="col">{t("Leg memo")}</th>
+            <th scope="col">{t("Tags")}</th>
             {showQuantity && (
               <th scope="col" className="num">
                 {t("Quantity")}
@@ -276,6 +322,16 @@ export function TransactionForm({
                     onChange={(e) => setLeg(i, { memo: e.target.value })}
                   />
                 </td>
+                <td>
+                  <LegTags
+                    leg={i}
+                    value={leg}
+                    tagsById={tagsById}
+                    suggestions={sortedTags}
+                    onAdd={(name) => addTag(i, name)}
+                    onRemove={(ref) => removeTag(i, ref)}
+                  />
+                </td>
                 {showQuantity && (
                   <td className="num">
                     {account && needsQuantity(leg, accountsById, txCurrency.id) ? (
@@ -319,7 +375,7 @@ export function TransactionForm({
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={showQuantity ? 3 : 2}>
+            <td colSpan={showQuantity ? 4 : 3}>
               <button type="button" className="btn btn--small" onClick={addLeg}>
                 {t("Add leg")}
               </button>
@@ -361,5 +417,83 @@ export function TransactionForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/** Resolve a typed name to an edit of a leg: an existing tag becomes an id, a
+ * new one a name, and neither is added twice. Exported-shaped but kept local. */
+function addTagToLeg(leg: LegDraft, name: string, idByName: ReadonlyMap<string, string>): Partial<LegDraft> {
+  const existingId = idByName.get(name.toLowerCase());
+  if (existingId) {
+    return leg.tag_ids.includes(existingId) ? {} : { tag_ids: [...leg.tag_ids, existingId] };
+  }
+  return leg.new_tag_names.some((n) => n.toLowerCase() === name.toLowerCase()) ? {} : { new_tag_names: [...leg.new_tag_names, name] };
+}
+
+/** The tags on one leg: a removable chip per tag, plus an autocompleting
+ * input. Typing a name the book does not have yet creates it on save. */
+function LegTags({
+  leg,
+  value,
+  tagsById,
+  suggestions,
+  onAdd,
+  onRemove,
+}: {
+  leg: number;
+  value: LegDraft;
+  tagsById: ReadonlyMap<string, Tag>;
+  suggestions: readonly Tag[];
+  onAdd: (name: string) => void;
+  onRemove: (ref: { id?: string; name?: string }) => void;
+}) {
+  const t = useT();
+  const listId = useId();
+  const [text, setText] = useState("");
+  const commit = () => {
+    onAdd(text);
+    setText("");
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      commit();
+    } else if (e.key === "Backspace" && text === "") {
+      const last = value.new_tag_names.at(-1);
+      if (last !== undefined) onRemove({ name: last });
+      else if (value.tag_ids.length) onRemove({ id: value.tag_ids.at(-1)! });
+    }
+  };
+  const chips: { key: string; label: string; fresh: boolean; ref: { id?: string; name?: string } }[] = [
+    ...value.tag_ids.map((id) => ({ key: id, label: tagsById.get(id)?.name ?? "?", fresh: false, ref: { id } })),
+    ...value.new_tag_names.map((name) => ({ key: `new:${name}`, label: name, fresh: true, ref: { name } })),
+  ];
+  return (
+    <div className="tag-field">
+      {chips.map((chip) => (
+        <span key={chip.key} className={chip.fresh ? "tag-chip tag-chip--new" : "tag-chip"}>
+          {chip.label}
+          <button type="button" className="tag-chip__remove" aria-label={t("Remove tag {name}", { name: chip.label })} onClick={() => onRemove(chip.ref)}>
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        className="tag-field__input"
+        list={listId}
+        aria-label={t("Tags of leg {n}", { n: leg + 1 })}
+        placeholder={chips.length === 0 ? t("Add a tag…") : ""}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={onKeyDown}
+        onBlur={commit}
+      />
+      <datalist id={listId}>
+        {suggestions.map((tag) => (
+          <option key={tag.id} value={tag.name} />
+        ))}
+      </datalist>
+    </div>
   );
 }

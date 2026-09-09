@@ -42,6 +42,7 @@ from .payee import Payee
 from .price import PriceDB
 from .schedule import Schedule
 from .settings import BookSettings
+from .tag import Tag
 from .transaction import Transaction
 
 __all__ = [
@@ -57,6 +58,7 @@ _ENTITY_KINDS = (
     EntityKind.COMMODITY,
     EntityKind.ACCOUNT,
     EntityKind.PAYEE,
+    EntityKind.TAG,
     EntityKind.SCHEDULE,
     EntityKind.TRANSACTION,
 )
@@ -74,7 +76,8 @@ class TransactionSearch:
     entry whether you think of it as the money that left the account or the
     expense it became, and a single amount is a range with both ends equal.
     ``account_ids`` and ``payee_id`` match on any split (or the header, for the
-    payee). Results come newest first, ``limit`` at most.
+    payee); ``tag_id`` matches a transaction any of whose legs wears the tag.
+    Results come newest first, ``limit`` at most.
     """
 
     text: str | None = None
@@ -82,6 +85,7 @@ class TransactionSearch:
     amount_max: Fraction | None = None
     account_ids: frozenset[UUID] | None = None
     payee_id: UUID | None = None
+    tag_id: UUID | None = None
     start: date | None = None
     end: date | None = None
     limit: int | None = None
@@ -95,6 +99,7 @@ class TransactionSearch:
             and self.amount_max is None
             and self.account_ids is None
             and self.payee_id is None
+            and self.tag_id is None
             and self.start is None
             and self.end is None
         )
@@ -118,6 +123,10 @@ class TransactionSearch:
             self.payee_id is not None
             and t.payee_id != self.payee_id
             and not any(s.payee_id == self.payee_id for s in t.splits)
+        ):
+            return False
+        if self.tag_id is not None and not any(
+            self.tag_id in s.tag_ids for s in t.splits
         ):
             return False
         needle = (self.text or "").strip().casefold()
@@ -256,6 +265,9 @@ class Store(ABC):
     def payees(self) -> tuple[Payee, ...]: ...
 
     @abstractmethod
+    def tags(self) -> tuple[Tag, ...]: ...
+
+    @abstractmethod
     def schedules(self) -> tuple[Schedule, ...]: ...
 
     @abstractmethod
@@ -327,6 +339,10 @@ class Store(ABC):
     @abstractmethod
     def transactions_for_payee(self, payee_id: UUID) -> tuple[Transaction, ...]:
         """Transactions referencing a payee, on the header or on any split."""
+
+    @abstractmethod
+    def transactions_for_tag(self, tag_id: UUID) -> tuple[Transaction, ...]:
+        """Transactions any of whose legs wears ``tag_id``."""
 
     @abstractmethod
     def search(self, query: TransactionSearch) -> tuple[Transaction, ...]:
@@ -587,6 +603,9 @@ class MemoryStore(Store):
     def payees(self) -> tuple[Payee, ...]:
         return tuple(self._entities[EntityKind.PAYEE].values())
 
+    def tags(self) -> tuple[Tag, ...]:
+        return tuple(self._entities[EntityKind.TAG].values())
+
     def schedules(self) -> tuple[Schedule, ...]:
         return tuple(self._entities[EntityKind.SCHEDULE].values())
 
@@ -672,6 +691,15 @@ class MemoryStore(Store):
             t
             for t in self._entities[EntityKind.TRANSACTION].values()
             if t.payee_id == payee_id or any(s.payee_id == payee_id for s in t.splits)
+        ]
+        out.sort(key=lambda t: (t.date, t.id.int))
+        return tuple(out)
+
+    def transactions_for_tag(self, tag_id: UUID) -> tuple[Transaction, ...]:
+        out = [
+            t
+            for t in self._entities[EntityKind.TRANSACTION].values()
+            if any(tag_id in s.tag_ids for s in t.splits)
         ]
         out.sort(key=lambda t: (t.date, t.id.int))
         return tuple(out)

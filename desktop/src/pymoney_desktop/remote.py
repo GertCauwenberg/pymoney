@@ -48,6 +48,8 @@ from pymoney.api.schemas import (
     SessionOut,
     SkipOccurrenceIn,
     StatementImportOut,
+    TagIn,
+    TagOut,
     TransactionIn,
     TransactionOut,
     TransactionSearchOut,
@@ -209,6 +211,9 @@ class RemoteClient(LedgerClient):
     def payees(self, book_id: UUID) -> list[PayeeOut]:
         return self._cached_list(book_id, "payees", PayeeOut, f"/books/{book_id}/payees")
 
+    def tags(self, book_id: UUID) -> list[TagOut]:
+        return self._cached_list(book_id, "tags", TagOut, f"/books/{book_id}/tags")
+
     def balance(
         self, book_id: UUID, account_id: UUID, *, as_of: date | None = None
     ) -> AccountBalanceOut:
@@ -364,6 +369,7 @@ class RemoteClient(LedgerClient):
                 "account_id": criteria.account_id,
                 "include_children": criteria.include_children or None,
                 "payee_id": criteria.payee_id,
+                "tag_id": criteria.tag_id,
                 "limit": criteria.limit,
             }
         )
@@ -456,6 +462,16 @@ class RemoteClient(LedgerClient):
         )
         self._written(book_id)
         return PayeeOut.model_validate(payload)
+
+    def create_tag(self, book_id: UUID, body: TagIn) -> TagOut:
+        payload = self._call(
+            "POST",
+            f"/books/{book_id}/tags",
+            body.model_dump(mode="json"),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return TagOut.model_validate(payload)
 
     def create_account(self, book_id: UUID, body: AccountIn) -> AccountOut:
         payload = self._call(

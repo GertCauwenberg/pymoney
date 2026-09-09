@@ -24,6 +24,7 @@ from . import (
     prices,
     schedules,
     settings,
+    tags,
     transactions,
 )
 
@@ -52,6 +53,10 @@ HANDLERS: dict[type[cmd.Command], Callable[..., Any]] = {
     cmd.UpdatePayee: payees.update_payee,
     cmd.MergePayees: payees.merge_payees,
     cmd.DeletePayee: payees.delete_payee,
+    # tags
+    cmd.CreateTag: tags.create_tag,
+    cmd.UpdateTag: tags.update_tag,
+    cmd.DeleteTag: tags.delete_tag,
     cmd.CreateSchedule: schedules.create_schedule,
     cmd.UpdateSchedule: schedules.update_schedule,
     cmd.DeleteSchedule: schedules.delete_schedule,

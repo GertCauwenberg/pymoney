@@ -19,6 +19,7 @@ from pymoney.api.schemas import (
     AccountOut,
     CommodityOut,
     PayeeOut,
+    TagOut,
     TransactionOut,
 )
 from pymoney.api.testing import PASSWORD, Client
@@ -526,6 +527,98 @@ def test_dialog_fixes_the_currency_while_editing(qtbot):
     assert not dialog.currency_box.isEnabled()
     assert dialog.currency().code == "USD"
     assert dialog.legs.horizontalHeaderItem(3).text() == "Amount (USD)"
+
+
+def _tag(n: int, name: str) -> TagOut:
+    return TagOut(
+        id=UUID(int=n), name=name, notes="", colour=None, closed=False, revision=1
+    )
+
+
+def test_dialog_separates_known_tags_from_typed_new_ones(qtbot):
+    from pymoney_desktop.ui.transaction_dialog import TAGS
+
+    eur = _commodity(1, "EUR")
+    cash = _account(10, "Assets:Cash", eur)
+    food = _account(11, "Expenses:Food", eur)
+    holiday = _tag(30, "Holiday")
+    dialog = TransactionDialog(
+        [cash, food], [], eur, tags=[holiday], default_account_id=cash.id
+    )
+    qtbot.addWidget(dialog)
+    dialog.legs.item(0, 3).setText("-40")
+    dialog.legs.cellWidget(1, 0).setCurrentIndex(
+        dialog.legs.cellWidget(1, 0).findData(str(food.id))
+    )
+    dialog.legs.cellWidget(1, TAGS).setText(" holiday , Spain; Spain ")
+    second = dialog.draft().legs[1]
+    assert second.tag_ids == [holiday.id]  # matched, case-insensitively
+    assert second.new_tag_names == ["Spain"]  # typed, not in the book, deduped
+
+    wire = second.to_wire({cash.id: cash, food.id: food}, eur.id)
+    assert wire.tag_ids == [holiday.id]  # only resolved ids travel
+
+
+def test_dialog_shows_the_tags_a_stored_leg_already_wears(qtbot):
+    from pymoney_desktop.ui.transaction_dialog import TAGS
+
+    eur = _commodity(1, "EUR")
+    cash = _account(10, "Assets:Cash", eur)
+    food = _account(11, "Expenses:Food", eur)
+    holiday, work = _tag(30, "Holiday"), _tag(31, "Work")
+    existing = TransactionOut(
+        id=UUID(int=40),
+        date="2026-05-18",
+        currency_id=eur.id,
+        currency="EUR",
+        memo="",
+        payee_id=None,
+        number="",
+        rounding="HALF_EVEN",
+        entered_at=None,
+        imported_id=None,
+        reconcile_state="NOT_RECONCILED",
+        locked=False,
+        revision=1,
+        splits=[
+            {
+                "id": str(UUID(int=41)),
+                "account_id": str(cash.id),
+                "quantity": _amount(eur.id, "EUR", -4000),
+                "value": _amount(eur.id, "EUR", -4000),
+                "memo": "",
+                "payee_id": None,
+                "reconcile_state": "NOT_RECONCILED",
+                "reconcile_date": None,
+                "action": "",
+                "number": "",
+                "price": None,
+                "implied_price": None,
+                "tag_ids": [],
+            },
+            {
+                "id": str(UUID(int=42)),
+                "account_id": str(food.id),
+                "quantity": _amount(eur.id, "EUR", 4000),
+                "value": _amount(eur.id, "EUR", 4000),
+                "memo": "",
+                "payee_id": None,
+                "reconcile_state": "NOT_RECONCILED",
+                "reconcile_date": None,
+                "action": "",
+                "number": "",
+                "price": None,
+                "implied_price": None,
+                "tag_ids": [str(holiday.id), str(work.id)],
+            },
+        ],
+    )
+    dialog = TransactionDialog(
+        [cash, food], [], eur, tags=[holiday, work], existing=existing
+    )
+    qtbot.addWidget(dialog)
+    assert dialog.legs.cellWidget(1, TAGS).text() == "Holiday, Work"
+    assert dialog.draft().legs[1].tag_ids == [holiday.id, work.id]
 
 
 def test_the_threaded_executor_calls_back_on_the_ui_thread(qtbot):

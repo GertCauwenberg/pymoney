@@ -844,6 +844,51 @@ button:focus-visible {
 .transaction-form__leg--invalid td {
   background: color-mix(in srgb, var(--negative) 8%, transparent);
 }
+.tag-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 10rem;
+}
+.tag-field__input {
+  flex: 1 1 4rem;
+  min-width: 4rem !important;
+  border: none;
+  background: transparent;
+  padding: 0.1rem 0.2rem;
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.05rem 0.1rem 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #3b82f6) 14%, transparent);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.tag-chip--new {
+  background: color-mix(in srgb, var(--positive, #16a34a) 16%, transparent);
+}
+.tag-chip__remove {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0 0.25rem;
+  color: inherit;
+}
+.split-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-left: 0.4rem;
+}
+.split-tags .tag-chip {
+  padding: 0.02rem 0.45rem;
+}
 .field__error {
   font-size: 0.75rem;
   color: var(--negative);

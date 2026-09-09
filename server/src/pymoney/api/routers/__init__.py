@@ -12,6 +12,7 @@ from . import (
     reports,
     sync,
     system,
+    tags,
     transactions,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "reports",
     "sync",
     "system",
+    "tags",
     "transactions",
 ]

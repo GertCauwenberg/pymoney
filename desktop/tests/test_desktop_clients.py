@@ -994,6 +994,47 @@ def test_search_finds_the_same_through_either_client(server, tmp_path, kind):
 
 
 @pytest.mark.parametrize("kind", ["remote", "offline"])
+def test_tags_round_trip_and_are_searchable_through_either_client(server, tmp_path, kind):
+    from pymoney.api.schemas import TagIn
+
+    from pymoney_desktop import SearchCriteria
+
+    api, book_id, checking, food = server
+    client, _ = make_client(kind, api.http, tmp_path)
+    client.login(EMAIL, PASSWORD)
+    holiday = client.create_tag(book_id, TagIn(name="Holiday", colour="#ff8800"))
+    assert [t.name for t in client.tags(book_id)] == ["Holiday"]
+
+    tagged = client.post_transaction(
+        book_id,
+        TransactionIn.model_validate(
+            {
+                "date": "2026-05-18",
+                "memo": "Seaside lunch",
+                "legs": [
+                    {"account_id": str(checking), "value": "-47.50"},
+                    {"account_id": str(food), "tag_ids": [str(holiday.id)]},
+                ],
+            }
+        ),
+    )
+    client.post_transaction(book_id, txn(checking, food, memo="Ordinary lunch"))
+    if kind == "offline":
+        client.sync()
+
+    categorised = next(s for s in tagged.splits if s.account_id == food)
+    assert categorised.tag_ids == [holiday.id]
+    round_tripped = client.transaction(book_id, tagged.id)
+    assert [s.tag_ids for s in round_tripped.splits if s.account_id == food] == [
+        [holiday.id]
+    ]
+
+    by_tag = client.search(book_id, SearchCriteria(tag_id=holiday.id))
+    assert [t.memo for t in by_tag.items] == ["Seaside lunch"]
+    client.close()
+
+
+@pytest.mark.parametrize("kind", ["remote", "offline"])
 def test_reconciling_through_either_client(server, tmp_path, kind):
     from pymoney.api.schemas import ReconcileStateName as S
 

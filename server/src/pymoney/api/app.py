@@ -45,6 +45,7 @@ from .routers import (
     schedules,
     sync,
     system,
+    tags,
     transactions,
 )
 from .settings import Settings
@@ -98,6 +99,13 @@ TAGS = [
         ),
     },
     {"name": "payees", "description": "Payees, and merging duplicates."},
+    {
+        "name": "tags",
+        "description": (
+            "Free-form labels on a transaction's legs. Used for slicing a "
+            "report by anything that is not a payee or a category."
+        ),
+    },
     {
         "name": "transactions",
         "description": "Posting, editing, reconciling, and account registers.",
@@ -312,6 +320,7 @@ def create_app(
     app.include_router(commodities.router)
     app.include_router(accounts.router)
     app.include_router(payees.router)
+    app.include_router(tags.router)
     app.include_router(transactions.router)
     app.include_router(prices.router)
     app.include_router(reports.router)

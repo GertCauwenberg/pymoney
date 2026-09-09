@@ -55,6 +55,11 @@ def _maybe_fraction(value: Numeric | None) -> Fraction | None:
     return None if value is None else to_fraction(value)
 
 
+def _unique(ids: Sequence[UUID]) -> tuple[UUID, ...]:
+    """The ids with duplicates removed, keeping the first occurrence."""
+    return tuple(dict.fromkeys(ids))
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class LegSpec:
     """One leg of a transaction as the user expressed it, before booking.
@@ -84,6 +89,8 @@ class LegSpec:
     number: str = ""
     reconcile_state: ReconcileState = ReconcileState.NOT_RECONCILED
     reconcile_date: date | None = None
+    tag_ids: tuple[UUID, ...] = ()
+    """Ids of the tags to put on this leg; duplicates are collapsed on booking."""
     id: UUID = field(default_factory=new_id)
 
     def __post_init__(self) -> None:
@@ -242,6 +249,7 @@ def book_legs(
                 reconcile_state=leg.reconcile_state,
                 reconcile_date=leg.reconcile_date,
                 price=r.price,
+                tag_ids=_unique(leg.tag_ids),
             )
         )
 

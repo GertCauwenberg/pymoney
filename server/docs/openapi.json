@@ -1972,6 +1972,15 @@
             "$ref": "#/components/schemas/ReconcileStateName",
             "default": "NOT_RECONCILED"
           },
+          "tag_ids": {
+            "description": "Tags to put on this leg; duplicates are collapsed.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Tag Ids",
+            "type": "array"
+          },
           "value": {
             "anyOf": [
               {
@@ -4064,6 +4073,15 @@
           "reconcile_state": {
             "$ref": "#/components/schemas/ReconcileStateName"
           },
+          "tag_ids": {
+            "description": "Tags on this leg, in the user's order.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Tag Ids",
+            "type": "array"
+          },
           "value": {
             "$ref": "#/components/schemas/AmountOut"
           }
@@ -4260,6 +4278,13 @@
             "title": "Schedules",
             "type": "array"
           },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/TagOut"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
           "transactions": {
             "items": {
               "$ref": "#/components/schemas/TransactionOut"
@@ -4315,6 +4340,158 @@
           "batches"
         ],
         "title": "SyncPageOut",
+        "type": "object"
+      },
+      "TagIn": {
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "default": false,
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "colour": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An optional CSS colour, e.g. #ff8800.",
+            "title": "Colour"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client-chosen id, for the offline client to fix on replay.",
+            "title": "Id"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "TagIn",
+        "type": "object"
+      },
+      "TagOut": {
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "notes",
+          "colour",
+          "closed",
+          "revision"
+        ],
+        "title": "TagOut",
+        "type": "object"
+      },
+      "TagPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed"
+          },
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "title": "TagPatch",
         "type": "object"
       },
       "TemplateLegIn": {
@@ -12399,6 +12576,525 @@
         ]
       }
     },
+    "/books/{book_id}/tags": {
+      "get": {
+        "operationId": "list_tags_books__book_id__tags_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive substring of the name.",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring of the name.",
+              "title": "Search"
+            }
+          },
+          {
+            "description": "Closed tags are hidden from pickers.",
+            "in": "query",
+            "name": "include_closed",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Closed tags are hidden from pickers.",
+              "title": "Include Closed",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TagOut"
+                  },
+                  "title": "Response List Tags Books  Book Id  Tags Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "List tags",
+        "tags": [
+          "tags"
+        ]
+      },
+      "post": {
+        "operationId": "create_tag_books__book_id__tags_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Create a tag",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/books/{book_id}/tags/{tag_id}": {
+      "delete": {
+        "operationId": "delete_tag_books__book_id__tags__tag_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tag Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Delete an unused tag",
+        "tags": [
+          "tags"
+        ]
+      },
+      "get": {
+        "operationId": "get_tag_books__book_id__tags__tag_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tag Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "One tag",
+        "tags": [
+          "tags"
+        ]
+      },
+      "patch": {
+        "operationId": "update_tag_books__book_id__tags__tag_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tag Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Update a tag",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
     "/books/{book_id}/transactions": {
       "get": {
         "operationId": "list_transactions_books__book_id__transactions_get",
@@ -12918,6 +13614,25 @@
                 }
               ],
               "title": "Payee Id"
+            }
+          },
+          {
+            "description": "A tag any of the transaction's legs wears.",
+            "in": "query",
+            "name": "tag_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A tag any of the transaction's legs wears.",
+              "title": "Tag Id"
             }
           },
           {
@@ -13567,6 +14282,10 @@
     {
       "description": "Payees, and merging duplicates.",
       "name": "payees"
+    },
+    {
+      "description": "Free-form labels on a transaction's legs. Used for slicing a report by anything that is not a payee or a category.",
+      "name": "tags"
     },
     {
       "description": "Posting, editing, reconciling, and account registers.",

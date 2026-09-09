@@ -31,6 +31,9 @@ import type {
   RegisterIn,
   RegisterQuery,
   SetSplitStateIn,
+  TagIn,
+  TagPatch,
+  TagsQuery,
   TransactionIn,
   TransactionSearchQuery,
   TransactionUpdateIn,
@@ -59,6 +62,7 @@ export const keys = {
     ["books", bookId, "reports", "period-table", q] as const,
   account: (bookId: string, accountId: string) => ["books", bookId, "accounts", accountId] as const,
   payees: (bookId: string, q: PayeesQuery) => ["books", bookId, "payees", q] as const,
+  tags: (bookId: string, q: TagsQuery) => ["books", bookId, "tags", q] as const,
   ledger: (bookId: string, accountId: string, q: Omit<RegisterQuery, "cursor">) =>
     ["books", bookId, "accounts", accountId, "register", q] as const,
   transaction: (bookId: string, transactionId: string) =>
@@ -290,6 +294,15 @@ export function usePayees(bookId: string, query: PayeesQuery = {}) {
   });
 }
 
+export function useTags(bookId: string, query: TagsQuery = {}) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.tags(bookId, query),
+    queryFn: () => api.tags(bookId, query),
+    staleTime: 5 * 60_000,
+  });
+}
+
 /**
  * An account's register, page by page. The server's cursor is opaque and
  * keyset-based, so a page never shifts under a concurrent insert; we just
@@ -464,6 +477,40 @@ export function useCreatePayee(bookId: string) {
   return useMutation({
     mutationFn: (body: PayeeIn) => api.createPayee(bookId, body),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["books", bookId, "payees"] }),
+  });
+}
+
+/** Every change to a tag, behind one hook -- the twin of `useChangePayee`. */
+export type TagChange =
+  | { kind: "create"; body: TagIn }
+  | { kind: "patch"; tagId: string; body: TagPatch }
+  | { kind: "delete"; tagId: string };
+
+export function useChangeTag(bookId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: async (change: TagChange) => {
+      switch (change.kind) {
+        case "create":
+          return api.createTag(bookId, change.body);
+        case "patch":
+          return api.patchTag(bookId, change.tagId, change.body);
+        case "delete":
+          await api.deleteTag(bookId, change.tagId);
+          return null;
+      }
+    },
+    onSuccess: invalidate,
+  });
+}
+
+export function useCreateTag(bookId: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: TagIn) => api.createTag(bookId, body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["books", bookId, "tags"] }),
   });
 }
 

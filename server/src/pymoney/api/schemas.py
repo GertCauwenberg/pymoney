@@ -48,6 +48,7 @@ from ..core.schedule import Schedule as _Schedule
 from ..core.schedule import ScheduleTemplate as _ScheduleTemplate
 from ..core.schedule import TemplateLeg as _TemplateLeg
 from ..core.settings import BookSettings
+from ..core.tag import Tag
 from ..core.transaction import ReconcileState, Split, Transaction
 from ..importers.statement import AmountKind as _AmountKind
 from ..importers.statement import ColumnMapping as _ColumnMapping
@@ -627,6 +628,54 @@ class MergePayeesIn(In):
 
 
 # ==========================================================================
+# tags
+# ==========================================================================
+_COLOUR = Field(
+    default=None,
+    max_length=16,
+    description="An optional CSS colour, e.g. #ff8800.",
+)
+
+
+class TagIn(In):
+    name: str = Field(min_length=1, max_length=255)
+    notes: str = ""
+    colour: str | None = _COLOUR
+    closed: bool = False
+    id: UUID | None = Field(
+        default=None,
+        description="Client-chosen id, for the offline client to fix on replay.",
+    )
+
+
+class TagPatch(In):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    notes: str | None = None
+    colour: str | None = None
+    closed: bool | None = None
+
+
+class TagOut(Out):
+    id: UUID
+    name: str
+    notes: str
+    colour: str | None
+    closed: bool
+    revision: int
+
+    @classmethod
+    def of(cls, tag: Tag) -> TagOut:
+        return cls(
+            id=tag.id,
+            name=tag.name,
+            notes=tag.notes,
+            colour=tag.colour,
+            closed=tag.closed,
+            revision=tag.revision,
+        )
+
+
+# ==========================================================================
 # transactions
 # ==========================================================================
 class LegIn(In):
@@ -653,6 +702,10 @@ class LegIn(In):
     number: str = ""
     reconcile_state: ReconcileStateName = ReconcileStateName.NOT_RECONCILED
     reconcile_date: date | None = None
+    tag_ids: list[UUID] = Field(
+        default_factory=list,
+        description="Tags to put on this leg; duplicates are collapsed.",
+    )
 
 
 class TransactionIn(In):
@@ -720,6 +773,9 @@ class SplitOut(Out):
         default=None,
         description="value / quantity, from the booked figures. Null if quantity is 0.",
     )
+    tag_ids: list[UUID] = Field(
+        default_factory=list, description="Tags on this leg, in the user's order."
+    )
 
     @classmethod
     def of(cls, split: Split) -> SplitOut:
@@ -737,6 +793,7 @@ class SplitOut(Out):
             number=split.number,
             price=None if split.price is None else RateOut.of(split.price),
             implied_price=None if implied is None else RateOut.of(implied),
+            tag_ids=list(split.tag_ids),
         )
 
 
@@ -1091,6 +1148,7 @@ class SyncBatchOut(Out):
     commodities: list[CommodityOut] = Field(default_factory=list)
     accounts: list[AccountOut] = Field(default_factory=list)
     payees: list[PayeeOut] = Field(default_factory=list)
+    tags: list[TagOut] = Field(default_factory=list)
     transactions: list[TransactionOut] = Field(default_factory=list)
     prices: list[PriceOut] = Field(default_factory=list)
     schedules: list[ScheduleOut] = Field(default_factory=list)

@@ -36,6 +36,7 @@ core/                           the domain. pure stdlib, no dependencies
     amount.py       Amount (booked) vs RationalAmount (exact) vs Balances
     account.py      typed, hierarchical accounts
     payee.py        payees, with merge support
+    tag.py          free-form labels put on a transaction's legs
     transaction.py  Transaction + Split, and their invariants
     posting.py      LegSpec -> booked splits (the rounding problem)
     price.py        bitemporal prices, valuation policy, conversion graph
@@ -356,12 +357,15 @@ posts nothing, if you would rather see the raw sums.
 
 ### What does not come across
 
-Budgets, saved reports, cost centres, tags, online
+Budgets, saved reports, cost centres, online
 banking jobs, and per-account settings like `PreferredAccount`. None of it is
 dropped quietly — the report counts every one. Also reported: KMyMoney types we
 narrow (a certificate of deposit becomes a savings account), colons stripped from
-account names (we use them as the path separator), duplicate payee names
-disambiguated, and any transaction that could not be stored at all.
+account names (we use them as the path separator), duplicate payee (and tag)
+names disambiguated, and any transaction that could not be stored at all.
+
+Tags *do* come across: KMyMoney's `<TAG>` definitions become our tags, and the
+`<TAG id="…">` link on a split is re-hung on the same leg, id for id.
 
 An import is one unit of work, so a failure leaves no half-imported book — but a
 single malformed transaction is skipped and reported rather than fatal, which is
@@ -523,12 +527,23 @@ where every field is optional.
 number, an exact amount or a range (matched against a leg's quantity in its own
 commodity *or* its value in the transaction currency, so 84.20 finds the
 supermarket entry either way you think of it), a date range, an account (with or
-without its sub-accounts), a payee -- any combination, all ANDed, newest first,
-with `has_more` when the limit cut the list short. The predicate is pushed down
-to SQL in exact integer arithmetic and held to the same answers as the Python
-reference implementation by the store contract tests. Both clients have a
-search screen over it (the web app's **Search** tab; the desktop's Ctrl+F), and
-a hit opens the transaction.
+without its sub-accounts), a payee, a tag -- any combination, all ANDed, newest
+first, with `has_more` when the limit cut the list short. The predicate is
+pushed down to SQL in exact integer arithmetic and held to the same answers as
+the Python reference implementation by the store contract tests. Both clients
+have a search screen over it (the web app's **Search** tab; the desktop's
+Ctrl+F), and a hit opens the transaction.
+
+**Tags** (`tag.py`, `/books/{id}/tags`) are the free-form axis a payee and an
+account cannot capture: a holiday, a renovation, a reimbursable run of
+expenses. They are put on a *leg*, not the whole transaction, so one entry can
+split a shared bill between "Holiday" and nothing at all. Like payees they are
+a small, cached, id-referenced lookup table -- a rename is one row -- and they
+are joined to legs through `split_tags` rather than a JSON column, so "every
+transaction with this tag" is an indexed query that SQLite and PostgreSQL agree
+on. Both transaction forms type-ahead over the existing tags and create a new
+one inline (the twin of the new-payee flow); a tag a transaction still wears
+cannot be deleted, only closed to hide it from the pickers.
 
 **Every write accepts `Idempotency-Key`.** Any string, hashed deterministically
 -- together with the caller's identity, so one user's key can never replay
@@ -720,9 +735,11 @@ report hands back the `Conversion` objects it used.
 
 investment lots and cost basis (`Holding.cost`
 is the naive value-column sum) · budgets · loan amortisation · other import
-formats (OFX, QIF) · attachments · tags · the desktop app's account, payee and
-commodity management (the web app has them under **Settings**; see
-[The web frontend](#the-web-frontend)).
+formats (OFX, QIF) · attachments · a dedicated tag-management page (tags are
+created and attached from the transaction form, and searched on; renaming or
+retiring one is an API call away but has no screen yet) · the desktop app's
+account, payee and commodity management (the web app has them under
+**Settings**; see [The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:
 

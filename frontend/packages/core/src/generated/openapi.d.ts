@@ -983,6 +983,43 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/books/{book_id}/tags": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List tags */
+        readonly get: operations["list_tags_books__book_id__tags_get"];
+        readonly put?: never;
+        /** Create a tag */
+        readonly post: operations["create_tag_books__book_id__tags_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/tags/{tag_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** One tag */
+        readonly get: operations["get_tag_books__book_id__tags__tag_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete an unused tag */
+        readonly delete: operations["delete_tag_books__book_id__tags__tag_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        /** Update a tag */
+        readonly patch: operations["update_tag_books__book_id__tags__tag_id__patch"];
+        readonly trace?: never;
+    };
     readonly "/books/{book_id}/transactions": {
         readonly parameters: {
             readonly query?: never;
@@ -2036,6 +2073,11 @@ export interface components {
             /** @default NOT_RECONCILED */
             readonly reconcile_state: components["schemas"]["ReconcileStateName"];
             /**
+             * Tag Ids
+             * @description Tags to put on this leg; duplicates are collapsed.
+             */
+            readonly tag_ids?: readonly string[];
+            /**
              * Value
              * @description Worth in the transaction currency.
              */
@@ -2908,6 +2950,11 @@ export interface components {
             /** Reconcile Date */
             readonly reconcile_date: string | null;
             readonly reconcile_state: components["schemas"]["ReconcileStateName"];
+            /**
+             * Tag Ids
+             * @description Tags on this leg, in the user's order.
+             */
+            readonly tag_ids?: readonly string[];
             readonly value: components["schemas"]["AmountOut"];
         };
         /**
@@ -2995,6 +3042,8 @@ export interface components {
             readonly revision: number;
             /** Schedules */
             readonly schedules?: readonly components["schemas"]["ScheduleOut"][];
+            /** Tags */
+            readonly tags?: readonly components["schemas"]["TagOut"][];
             /** Transactions */
             readonly transactions?: readonly components["schemas"]["TransactionOut"][];
         };
@@ -3019,6 +3068,60 @@ export interface components {
              * @description The client's new watermark.
              */
             readonly to_revision: number;
+        };
+        /** TagIn */
+        readonly TagIn: {
+            /**
+             * Closed
+             * @default false
+             */
+            readonly closed: boolean;
+            /**
+             * Colour
+             * @description An optional CSS colour, e.g. #ff8800.
+             */
+            readonly colour?: string | null;
+            /**
+             * Id
+             * @description Client-chosen id, for the offline client to fix on replay.
+             */
+            readonly id?: string | null;
+            /** Name */
+            readonly name: string;
+            /**
+             * Notes
+             * @default
+             */
+            readonly notes: string;
+        };
+        /** TagOut */
+        readonly TagOut: {
+            /** Closed */
+            readonly closed: boolean;
+            /** Colour */
+            readonly colour: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+            /** Notes */
+            readonly notes: string;
+            /** Revision */
+            readonly revision: number;
+        };
+        /** TagPatch */
+        readonly TagPatch: {
+            /** Closed */
+            readonly closed?: boolean | null;
+            /** Colour */
+            readonly colour?: string | null;
+            /** Name */
+            readonly name?: string | null;
+            /** Notes */
+            readonly notes?: string | null;
         };
         /** TemplateLegIn */
         readonly TemplateLegIn: {
@@ -7730,6 +7833,323 @@ export interface operations {
             };
         };
     };
+    readonly list_tags_books__book_id__tags_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Closed tags are hidden from pickers. */
+                readonly include_closed?: boolean;
+                /** @description Case-insensitive substring of the name. */
+                readonly search?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["TagOut"][];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly create_tag_books__book_id__tags_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TagIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TagOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly get_tag_books__book_id__tags__tag_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+                readonly tag_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TagOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly delete_tag_books__book_id__tags__tag_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+                readonly tag_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly update_tag_books__book_id__tags__tag_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+                readonly tag_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TagPatch"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TagOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     readonly list_transactions_books__book_id__transactions_get: {
         readonly parameters: {
             readonly query?: {
@@ -8138,6 +8558,8 @@ export interface operations {
                 readonly q?: string | null;
                 /** @description Inclusive post date. */
                 readonly start?: string | null;
+                /** @description A tag any of the transaction's legs wears. */
+                readonly tag_id?: string | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;

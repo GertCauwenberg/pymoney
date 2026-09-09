@@ -41,6 +41,7 @@ from .schedule import Schedule
 from .settings import BookSettings
 from .store import ChangeLogView, CommandRecord, MemoryStore, Store, TransactionSearch
 from .sync import RevisionBatch, SyncPage
+from .tag import Tag
 from .transaction import ReconcileState, Split, Transaction
 
 __all__ = ["Book", "SplitRef"]
@@ -53,6 +54,7 @@ _ENTITY_KINDS: dict[type, EntityKind] = {
     Commodity: EntityKind.COMMODITY,
     Account: EntityKind.ACCOUNT,
     Payee: EntityKind.PAYEE,
+    Tag: EntityKind.TAG,
     Transaction: EntityKind.TRANSACTION,
     Price: EntityKind.PRICE,
     Schedule: EntityKind.SCHEDULE,
@@ -291,6 +293,23 @@ class Book:
 
     def payees(self) -> tuple[Payee, ...]:
         return tuple(sorted(self._store.payees(), key=lambda p: p.name))
+
+    def tag(self, tag_id: UUID) -> Tag:
+        found = self._store.get(EntityKind.TAG, tag_id)
+        if found is None:
+            raise NotFoundError(f"no tag {tag_id}")
+        return cast(Tag, found)
+
+    def tags(self, *, include_closed: bool = True) -> tuple[Tag, ...]:
+        out = [t for t in self._store.tags() if include_closed or not t.closed]
+        return tuple(sorted(out, key=lambda t: t.name))
+
+    def find_tag(self, name: str) -> Tag | None:
+        key = name.strip().casefold()
+        for tag in self._store.tags():
+            if tag.key == key:
+                return tag
+        return None
 
     def schedule(self, schedule_id: UUID) -> Schedule:
         found = self._store.get(EntityKind.SCHEDULE, schedule_id)
@@ -956,6 +975,9 @@ class Book:
     def add_payee(self, name: str, **kwargs: Any) -> Payee:
         return self.execute(cmd.CreatePayee(name=name, **kwargs)).entity
 
+    def add_tag(self, name: str, **kwargs: Any) -> Tag:
+        return self.execute(cmd.CreateTag(name=name, **kwargs)).entity
+
     def post(
         self,
         on: date,
@@ -1074,6 +1096,7 @@ class Book:
         problems: list[str] = []
         commodity_ids = {c.id for c in self._store.commodities()}
         payee_ids = {p.id for p in self._store.payees()}
+        tag_ids = {t.id for t in self._store.tags()}
         accounts = {a.id: a for a in self._store.accounts()}
 
         for account in accounts.values():
@@ -1108,6 +1131,8 @@ class Book:
                         f"{split.commodity.code} to a "
                         f"{posted_to.commodity.code} account"
                     )
+                if any(tag_id not in tag_ids for tag_id in split.tag_ids):
+                    problems.append(f"transaction {transaction.id} wears a missing tag")
             if transaction.payee_id is not None and transaction.payee_id not in payee_ids:
                 problems.append(
                     f"transaction {transaction.id} references a missing payee"

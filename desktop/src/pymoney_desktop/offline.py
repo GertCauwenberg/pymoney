@@ -84,6 +84,8 @@ from pymoney.api.schemas import (
     SkipOccurrenceIn,
     StatementImportOut,
     SyncPageOut,
+    TagIn,
+    TagOut,
     TransactionIn,
     TransactionOut,
     TransactionSearchOut,
@@ -260,10 +262,12 @@ class OfflineClient(LedgerClient):
             # Children before parents: splits before transactions, transactions
             # before the payees and accounts they reference, and so on.
             for table in (
+                schema.split_tags,
                 schema.splits,
                 schema.transactions,
                 schema.prices,
                 schema.payees,
+                schema.tags,
                 schema.accounts,
                 schema.commodities,
                 schema.changes,
@@ -395,6 +399,9 @@ class OfflineClient(LedgerClient):
 
     def payees(self, book_id: UUID) -> list[PayeeOut]:
         return [PayeeOut.of(p) for p in self._ready(book_id).payees()]
+
+    def tags(self, book_id: UUID) -> list[TagOut]:
+        return [TagOut.of(t) for t in self._ready(book_id).tags()]
 
     def balance(
         self, book_id: UUID, account_id: UUID, *, as_of: date | None = None
@@ -553,6 +560,7 @@ class OfflineClient(LedgerClient):
             amount_min=None if amount_min is None else to_fraction(amount_min),
             amount_max=None if amount_max is None else to_fraction(amount_max),
             payee_id=criteria.payee_id,
+            tag_id=criteria.tag_id,
             start=criteria.start,
             end=criteria.end,
         )
@@ -683,6 +691,18 @@ class OfflineClient(LedgerClient):
                     match_keys=tuple(payee.match_keys),
                     default_account_id=payee.default_account_id,
                     id=payee.id,
+                ),
+            )
+        if op.name == "create_tag":
+            tag = TagIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.CreateTag(
+                    name=tag.name,
+                    notes=tag.notes,
+                    colour=tag.colour,
+                    closed=tag.closed,
+                    id=tag.id,
                 ),
             )
         if op.name == "create_account":
@@ -872,6 +892,20 @@ class OfflineClient(LedgerClient):
             ),
         )
         return PayeeOut.of(entity)
+
+    def create_tag(self, book_id: UUID, body: TagIn) -> TagOut:
+        body = body.model_copy(update={"id": body.id or new_id()})
+        entity = self._write(
+            book_id,
+            _Op(
+                "create_tag",
+                "POST",
+                f"/books/{book_id}/tags",
+                body.model_dump(mode="json"),
+                f"new tag {body.name}",
+            ),
+        )
+        return TagOut.of(entity)
 
     def create_account(self, book_id: UUID, body: AccountIn) -> AccountOut:
         body = body.model_copy(update={"id": body.id or new_id()})
@@ -1284,6 +1318,7 @@ def _legs(legs: list[wire.LegIn]) -> tuple[LegSpec, ...]:
             number=leg.number,
             reconcile_state=leg.reconcile_state.to_domain(),
             reconcile_date=leg.reconcile_date,
+            tag_ids=tuple(leg.tag_ids),
         )
         for leg in legs
     )

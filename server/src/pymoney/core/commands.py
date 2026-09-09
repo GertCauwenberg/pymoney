@@ -42,11 +42,13 @@ __all__ = [
     "CreateCommodity",
     "CreatePayee",
     "CreateSchedule",
+    "CreateTag",
     "DeleteAccount",
     "DeleteCommodity",
     "DeletePayee",
     "DeletePrice",
     "DeleteSchedule",
+    "DeleteTag",
     "DeleteTransaction",
     "MergeAccounts",
     "MergePayees",
@@ -63,6 +65,7 @@ __all__ = [
     "UpdateCommodity",
     "UpdatePayee",
     "UpdateSchedule",
+    "UpdateTag",
     "UpdateTransaction",
     "fingerprint",
 ]
@@ -352,6 +355,32 @@ class MergePayees(Command):
 @dataclass(frozen=True, slots=True, kw_only=True)
 class DeletePayee(Command):
     payee_id: UUID
+
+
+# -- tags ---------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CreateTag(Command):
+    name: str
+    notes: str = ""
+    colour: str | None = None
+    closed: bool = False
+    id: UUID | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class UpdateTag(Command):
+    tag_id: UUID
+    name: Maybe[str] = UNSET
+    notes: Maybe[str] = UNSET
+    colour: Maybe[str | None] = UNSET
+    closed: Maybe[bool] = UNSET
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DeleteTag(Command):
+    tag_id: UUID
 
 
 # -- scheduled / recurring transactions ---------------------------------

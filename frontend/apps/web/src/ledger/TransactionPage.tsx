@@ -1,7 +1,7 @@
 import { useT } from "@pymoney/core/hooks";
 import { formatRate } from "@pymoney/core";
 import type { ReconcileState, Split } from "@pymoney/core";
-import { useAccounts, useCommodities, useDeleteTransaction, useHistory, usePayees, useSetSplitState, useTransaction } from "@pymoney/core/hooks";
+import { useAccounts, useCommodities, useDeleteTransaction, useHistory, usePayees, useSetSplitState, useTags, useTransaction } from "@pymoney/core/hooks";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -30,6 +30,7 @@ export function TransactionPage() {
   const tx = useTransaction(bookId, transactionId);
   const accounts = useAccounts(bookId, { include_closed: true });
   const payees = usePayees(bookId);
+  const tags = useTags(bookId);
   const commodities = useCommodities(bookId);
   const remove = useDeleteTransaction(bookId);
   const mark = useSetSplitState(bookId);
@@ -40,6 +41,7 @@ export function TransactionPage() {
 
   const accountsById = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.id, a])), [accounts.data]);
   const payeesById = useMemo(() => new Map((payees.data ?? []).map((p) => [p.id, p.name])), [payees.data]);
+  const tagsById = useMemo(() => new Map((tags.data ?? []).map((tg) => [tg.id, tg.name])), [tags.data]);
 
   if (tx.isPending) return <Loading label={tr("Loading the transaction…")} />;
   if (tx.isError) {
@@ -200,6 +202,7 @@ export function TransactionPage() {
               key={s.id}
               split={s}
               accountPath={accountsById.get(s.account_id)?.path}
+              tagNames={(s.tag_ids ?? []).map((id) => tagsById.get(id) ?? "?")}
               onMark={
                 canWrite
                   ? (state) =>
@@ -249,12 +252,14 @@ export function TransactionPage() {
 function SplitRow({
   split,
   accountPath,
+  tagNames,
   onMark,
   canFreeze,
   busy,
 }: {
   split: Split;
   accountPath: string | undefined;
+  tagNames: readonly string[];
   onMark?: ((state: ReconcileState) => void) | undefined;
   canFreeze?: boolean;
   busy?: boolean;
@@ -271,7 +276,18 @@ function SplitRow({
         </Link>
         {split.action && <span className="muted"> · {split.action}</span>}
       </td>
-      <td className="muted">{split.memo}</td>
+      <td className="muted">
+        {split.memo}
+        {tagNames.length > 0 && (
+          <span className="split-tags">
+            {tagNames.map((name) => (
+              <span key={name} className="tag-chip">
+                {name}
+              </span>
+            ))}
+          </span>
+        )}
+      </td>
       <td className="register__mark">
         {onMark && !frozen ? (
           <select

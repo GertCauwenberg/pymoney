@@ -27,6 +27,7 @@ from pymoney.api.schemas import (
     PayeeOut,
     PriceOut,
     SyncBatchOut,
+    TagOut,
     TransactionOut,
 )
 from pymoney.core.account import Account, AccountType
@@ -40,6 +41,7 @@ from pymoney.core.recurrence import Recurrence
 from pymoney.core.rounding import RoundingMode
 from pymoney.core.schedule import Schedule, ScheduleTemplate, TemplateLeg
 from pymoney.core.store import Store
+from pymoney.core.tag import Tag
 from pymoney.core.transaction import ReconcileState, Split, Transaction
 
 __all__ = ["apply_batch"]
@@ -48,6 +50,7 @@ _KINDS = {
     "COMMODITY": EntityKind.COMMODITY,
     "ACCOUNT": EntityKind.ACCOUNT,
     "PAYEE": EntityKind.PAYEE,
+    "TAG": EntityKind.TAG,
     "TRANSACTION": EntityKind.TRANSACTION,
     "PRICE": EntityKind.PRICE,
     "SCHEDULE": EntityKind.SCHEDULE,
@@ -107,6 +110,18 @@ def _payee(out: PayeeOut, book_id: UUID) -> Payee:
         address=out.address,
         match_keys=tuple(out.match_keys),
         default_account_id=out.default_account_id,
+        revision=out.revision,
+    )
+
+
+def _tag(out: TagOut, book_id: UUID) -> Tag:
+    return Tag(
+        id=out.id,
+        book_id=book_id,
+        name=out.name,
+        notes=out.notes,
+        colour=out.colour,
+        closed=out.closed,
         revision=out.revision,
     )
 
@@ -179,6 +194,7 @@ def _transaction(out: TransactionOut, store: Store, book_id: UUID) -> Transactio
             action=s.action,
             number=s.number,
             price=None if s.price is None else Fraction(s.price.num, s.price.den),
+            tag_ids=tuple(s.tag_ids),
         )
         for s in out.splits
     )
@@ -225,6 +241,8 @@ def apply_batch(store: Store, book_id: UUID, batch: SyncBatchOut) -> BookOut | N
             _put(store, EntityKind.ACCOUNT, _account(a, store, book_id), at)
         for p in batch.payees:
             _put(store, EntityKind.PAYEE, _payee(p, book_id), at)
+        for tg in batch.tags:
+            _put(store, EntityKind.TAG, _tag(tg, book_id), at)
         for pr in batch.prices:
             _put(store, EntityKind.PRICE, _price(pr, store, book_id), at)
         for sc in batch.schedules:
@@ -237,6 +255,7 @@ def apply_batch(store: Store, book_id: UUID, batch: SyncBatchOut) -> BookOut | N
             "TRANSACTION",
             "SCHEDULE",
             "PRICE",
+            "TAG",
             "PAYEE",
             "ACCOUNT",
             "COMMODITY",

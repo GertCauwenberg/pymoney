@@ -65,6 +65,7 @@ from ..core.payee import Payee
 from ..core.price import PriceDB
 from ..core.schedule import Schedule
 from ..core.store import CommandRecord, Store, StoredBook, TransactionSearch
+from ..core.tag import Tag
 from ..core.transaction import Transaction
 from . import schema
 from .connections import write_connection
@@ -76,6 +77,7 @@ _TABLES = {
     EntityKind.COMMODITY: schema.commodities,
     EntityKind.ACCOUNT: schema.accounts,
     EntityKind.PAYEE: schema.payees,
+    EntityKind.TAG: schema.tags,
     EntityKind.SCHEDULE: schema.schedules,
     EntityKind.PRICE: schema.prices,
 }
@@ -134,6 +136,7 @@ class SqlStore(Store):
         self._commodities: dict[UUID, Commodity] = {}
         self._accounts: dict[UUID, Account] = {}
         self._payees: dict[UUID, Payee] = {}
+        self._tags: dict[UUID, Tag] = {}
         self._schedules: dict[UUID, Schedule] = {}
         self._prices = PriceDB()
         self._loaded = False
@@ -321,6 +324,12 @@ class SqlStore(Store):
                 select(schema.payees).where(schema.payees.c.book_id == self._book_id)
             )
         }
+        self._tags = {
+            r.id: Rows.tag_from_row(r)
+            for r in conn.execute(
+                select(schema.tags).where(schema.tags.c.book_id == self._book_id)
+            )
+        }
         self._schedules = {
             r.id: Rows.schedule_from_row(r)
             for r in conn.execute(
@@ -356,6 +365,8 @@ class SqlStore(Store):
             return self._accounts.get(entity_id)
         if kind is EntityKind.PAYEE:
             return self._payees.get(entity_id)
+        if kind is EntityKind.TAG:
+            return self._tags.get(entity_id)
         if kind is EntityKind.SCHEDULE:
             return self._schedules.get(entity_id)
         if kind is EntityKind.PRICE:
@@ -395,6 +406,11 @@ class SqlStore(Store):
             # Splits go with it: ON DELETE CASCADE covers PostgreSQL, and the
             # explicit delete covers SQLite builds without foreign_keys on.
             self._conn.execute(
+                delete(schema.split_tags).where(
+                    schema.split_tags.c.transaction_id == entity_id
+                )
+            )
+            self._conn.execute(
                 delete(schema.splits).where(schema.splits.c.transaction_id == entity_id)
             )
             result = self._conn.execute(
@@ -416,6 +432,8 @@ class SqlStore(Store):
             return Rows.account_to_row(entity, self._book_id)
         if kind is EntityKind.PAYEE:
             return Rows.payee_to_row(entity, self._book_id)
+        if kind is EntityKind.TAG:
+            return Rows.tag_to_row(entity, self._book_id)
         if kind is EntityKind.SCHEDULE:
             return Rows.schedule_to_row(entity, self._book_id)
         return Rows.price_to_row(entity, self._book_id)
@@ -427,6 +445,8 @@ class SqlStore(Store):
             self._accounts[entity.id] = entity
         elif kind is EntityKind.PAYEE:
             self._payees[entity.id] = entity
+        elif kind is EntityKind.TAG:
+            self._tags[entity.id] = entity
         elif kind is EntityKind.SCHEDULE:
             self._schedules[entity.id] = entity
         else:
@@ -439,6 +459,8 @@ class SqlStore(Store):
             del self._accounts[entity_id]
         elif kind is EntityKind.PAYEE:
             del self._payees[entity_id]
+        elif kind is EntityKind.TAG:
+            del self._tags[entity_id]
         elif kind is EntityKind.SCHEDULE:
             del self._schedules[entity_id]
         else:
@@ -455,6 +477,10 @@ class SqlStore(Store):
     def payees(self) -> tuple[Payee, ...]:
         self._ensure_loaded()
         return tuple(self._payees.values())
+
+    def tags(self) -> tuple[Tag, ...]:
+        self._ensure_loaded()
+        return tuple(self._tags.values())
 
     def schedules(self) -> tuple[Schedule, ...]:
         self._ensure_loaded()
@@ -477,8 +503,14 @@ class SqlStore(Store):
                 _update_by_id(schema.transactions),
                 _update_params(values, transaction.id),
             )
-            # Splits are replaced wholesale, exactly as the domain does: an
-            # edited transaction is a new set of legs, not a patch.
+            # Splits (and their tags) are replaced wholesale, exactly as the
+            # domain does: an edited transaction is a new set of legs, not a
+            # patch.
+            conn.execute(
+                delete(schema.split_tags).where(
+                    schema.split_tags.c.transaction_id == transaction.id
+                )
+            )
             conn.execute(
                 delete(schema.splits).where(
                     schema.splits.c.transaction_id == transaction.id
@@ -492,6 +524,13 @@ class SqlStore(Store):
                     for position, split in enumerate(transaction.splits)
                 ],
             )
+            tag_rows = [
+                row
+                for split in transaction.splits
+                for row in Rows.split_tag_rows(split, transaction, self._book_id)
+            ]
+            if tag_rows:
+                conn.execute(schema.split_tags.insert(), tag_rows)
 
     def _load_transaction(self, transaction_id: UUID) -> Transaction | None:
         with self._read() as conn:
@@ -510,7 +549,21 @@ class SqlStore(Store):
                     )
                 )
             )
-        return Rows.transaction_from_rows(row, split_rows, self._registry())
+            # The tag junction is only consulted when the book has tags at all,
+            # so a ledger that never uses them still loads a transaction in two
+            # queries.
+            tag_rows = (
+                list(
+                    conn.execute(
+                        select(schema.split_tags).where(
+                            schema.split_tags.c.transaction_id == transaction_id
+                        )
+                    )
+                )
+                if self._tags
+                else []
+            )
+        return Rows.transaction_from_rows(row, split_rows, self._registry(), tag_rows)
 
     def transaction_count(self) -> int:
         return int(
@@ -601,17 +654,17 @@ class SqlStore(Store):
     def _hydrate(
         self, conn: Connection, rows: list[Any], source: Any = None
     ) -> tuple[Transaction, ...]:
-        """Attach splits to a page of transactions with one extra query.
+        """Attach splits (and their tags) to a page of transactions.
 
-        Given the query that produced the rows, the splits are fetched with
-        ``transaction_id IN (<that query>)`` rather than an ``IN`` list of
-        thousands of literal ids. The database plans it as a join; a long bind
-        list defeats statement caching and, past a few hundred entries, the
-        planner too.
+        One extra query for the splits, and -- only when the book uses tags at
+        all -- one more for the junction. Given the query that produced the
+        rows, the children are fetched with ``transaction_id IN (<that query>)``
+        rather than an ``IN`` list of thousands of literal ids: the database
+        plans it as a join, where a long bind list defeats statement caching
+        and, past a few hundred entries, the planner too.
         """
         if not rows:
             return ()
-        splits_query = select(schema.splits)
         # A LIMIT without its ORDER BY is a different query: the subquery would
         # pick *some* N transactions, not the N just returned. A limited page is
         # small, so its ids go in as a list; the subquery form is for the
@@ -619,20 +672,33 @@ class SqlStore(Store):
         if source is not None and source._limit_clause is not None:
             source = None
         if source is not None:
-            ids_query = source.with_only_columns(schema.transactions.c.id).order_by(None)
-            splits_query = splits_query.where(
-                schema.splits.c.transaction_id.in_(ids_query)
-            )
+            belongs = source.with_only_columns(schema.transactions.c.id).order_by(None)
         else:
-            splits_query = splits_query.where(
-                schema.splits.c.transaction_id.in_([r.id for r in rows])
-            )
+            belongs = [r.id for r in rows]
+
         by_transaction: dict[UUID, list[Any]] = {r.id: [] for r in rows}
-        for split in conn.execute(splits_query):
+        for split in conn.execute(
+            select(schema.splits).where(schema.splits.c.transaction_id.in_(belongs))
+        ):
             by_transaction[split.transaction_id].append(split)
+
+        tags_by_transaction: dict[UUID, list[Any]] = {r.id: [] for r in rows}
+        if self._tags:
+            for tag_row in conn.execute(
+                select(schema.split_tags).where(
+                    schema.split_tags.c.transaction_id.in_(belongs)
+                )
+            ):
+                tags_by_transaction[tag_row.transaction_id].append(tag_row)
+
         registry = self._registry()
         return tuple(
-            Rows.transaction_from_rows(row, by_transaction[row.id], registry)
+            Rows.transaction_from_rows(
+                row,
+                by_transaction[row.id],
+                registry,
+                tags_by_transaction[row.id],
+            )
             for row in rows
         )
 
@@ -713,6 +779,20 @@ class SqlStore(Store):
         with self._read() as conn:
             return self._hydrate(conn, list(conn.execute(query)), query)
 
+    def transactions_for_tag(self, tag_id: UUID) -> tuple[Transaction, ...]:
+        self._ensure_loaded()
+        t, st = schema.transactions, schema.split_tags
+        wearing = select(st.c.transaction_id).where(
+            st.c.book_id == self._book_id, st.c.tag_id == tag_id
+        )
+        query = (
+            select(t)
+            .where(t.c.book_id == self._book_id, t.c.id.in_(wearing))
+            .order_by(t.c.post_date, t.c.id)
+        )
+        with self._read() as conn:
+            return self._hydrate(conn, list(conn.execute(query)), query)
+
     def search(self, query: TransactionSearch) -> tuple[Transaction, ...]:
         """The predicate of :meth:`TransactionSearch.matches`, in SQL.
 
@@ -736,6 +816,11 @@ class SqlStore(Store):
                 return ()
             conditions.append(
                 exists().where(s.c.transaction_id == t.c.id, s.c.account_id.in_(wanted))
+            )
+        if query.tag_id is not None:
+            st = schema.split_tags
+            conditions.append(
+                exists().where(st.c.transaction_id == t.c.id, st.c.tag_id == query.tag_id)
             )
         if query.payee_id is not None:
             conditions.append(

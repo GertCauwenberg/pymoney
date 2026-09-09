@@ -31,6 +31,7 @@ from ..schemas import (
     ScheduleOut,
     SyncBatchOut,
     SyncPageOut,
+    TagOut,
     TransactionOut,
 )
 from ._shared import set_revision
@@ -67,6 +68,8 @@ def _batch(book: Any, batch: Any) -> SyncBatchOut:
         out.accounts.append(AccountOut.of(entity, book.path(entity.id)))
     for entity in batch.upserts_of(EntityKind.PAYEE):
         out.payees.append(PayeeOut.of(entity))
+    for entity in batch.upserts_of(EntityKind.TAG):
+        out.tags.append(TagOut.of(entity))
     for entity in batch.upserts_of(EntityKind.TRANSACTION):
         out.transactions.append(TransactionOut.of(entity))
     for entity in batch.upserts_of(EntityKind.PRICE):

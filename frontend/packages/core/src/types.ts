@@ -58,6 +58,9 @@ export type QuoteFetchIn = Schemas["QuoteFetchIn"];
 export type QuoteRun = Schemas["QuoteRunOut"];
 export type PayeeIn = Schemas["PayeeIn"];
 export type PayeePatch = Schemas["PayeePatch"];
+export type Tag = Schemas["TagOut"];
+export type TagIn = Schemas["TagIn"];
+export type TagPatch = Schemas["TagPatch"];
 export type ReconcileState = Schemas["ReconcileStateName"];
 export type ReconcileIn = Schemas["ReconcileIn"];
 export type SetSplitStateIn = Schemas["SetSplitStateIn"];
@@ -124,6 +127,7 @@ export type CommoditiesQuery = Query<"list_commodities_books__book_id__commoditi
 export type RegisterQuery = Query<"register_books__book_id__accounts__account_id__register_get">;
 export type TransactionSearchQuery = Query<"search_transactions_route_books__book_id__transactions_search_get">;
 export type PayeesQuery = Query<"list_payees_books__book_id__payees_get">;
+export type TagsQuery = Query<"list_tags_books__book_id__tags_get">;
 export type PricesQuery = Query<"list_prices_books__book_id__prices_get">;
 
 /** The body of every non-2xx response the server produces itself. */

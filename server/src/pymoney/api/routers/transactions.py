@@ -110,6 +110,7 @@ def _legs(legs: list[LegIn]) -> tuple[LegSpec, ...]:
             number=leg.number,
             reconcile_state=leg.reconcile_state.to_domain(),
             reconcile_date=leg.reconcile_date,
+            tag_ids=tuple(leg.tag_ids),
         )
         for leg in legs
     )
@@ -226,6 +227,9 @@ def search_transactions_route(
         default=False, description="The account's whole subtree."
     ),
     payee_id: UUID | None = Query(default=None),
+    tag_id: UUID | None = Query(
+        default=None, description="A tag any of the transaction's legs wears."
+    ),
     limit: int | None = Query(default=None, ge=1),
 ) -> TransactionSearchOut:
     """Every criterion narrows; they combine with AND. At least one is needed.
@@ -239,6 +243,7 @@ def search_transactions_route(
         amount_min=None if amount_min is None else to_fraction(amount_min),
         amount_max=None if amount_max is None else to_fraction(amount_max),
         payee_id=payee_id,
+        tag_id=tag_id,
         start=start,
         end=end,
     )

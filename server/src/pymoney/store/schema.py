@@ -150,6 +150,22 @@ payees = Table(
     UniqueConstraint("book_id", "name_key", name="uq_payees_book_id_name_key"),
 )
 
+# A free-form label put on a transaction's legs. Small and cached like payees;
+# referenced by id from `split_tags`, so a rename is one row.
+tags = Table(
+    "tags",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("book_id", Uuid, ForeignKey("books.id", ondelete="CASCADE"), nullable=False),
+    Column("name", NAME, nullable=False),
+    Column("name_key", NAME, nullable=False),
+    Column("notes", Text, nullable=False),
+    Column("colour", String(16)),
+    Column("closed", Boolean, nullable=False, server_default="0"),
+    *_audit(),
+    UniqueConstraint("book_id", "name_key", name="uq_tags_book_id_name_key"),
+)
+
 # A recurring transaction: a date-less template, a recurrence rule, and a
 # cursor. Small and read constantly (the "what is due?" panel), so cached like
 # payees. `next_due` is denormalised from `occurrences_done` purely so the due
@@ -252,6 +268,30 @@ splits = Table(
     CheckConstraint("price_den IS NULL OR price_den > 0", name="price_den_positive"),
 )
 
+# Which tags are on which legs. A junction rather than a JSON column on
+# `splits`, so "every transaction with this tag" is an indexed lookup that
+# agrees across SQLite and PostgreSQL, not a portable-only-by-luck scan of JSON
+# text. `split_id` is not a foreign key: splits are rewritten wholesale with
+# their transaction, so these rows are owned and replaced by `transaction_id`.
+split_tags = Table(
+    "split_tags",
+    metadata,
+    Column("book_id", Uuid, ForeignKey("books.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "transaction_id",
+        Uuid,
+        ForeignKey("transactions.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("split_id", Uuid, nullable=False),
+    Column("tag_id", Uuid, ForeignKey("tags.id"), nullable=False),
+    # The order the user added them, so a round trip preserves it.
+    Column("position", SmallInteger, nullable=False),
+    Index("ix_split_tags_book_id_tag_id", "book_id", "tag_id"),
+    Index("ix_split_tags_transaction_id", "transaction_id"),
+    UniqueConstraint("split_id", "tag_id", name="uq_split_tags_split_id_tag_id"),
+)
+
 prices = Table(
     "prices",
     metadata,
@@ -340,9 +380,11 @@ ALL_TABLES = (
     commodities,
     accounts,
     payees,
+    tags,
     schedules,
     transactions,
     splits,
+    split_tags,
     prices,
     changes,
     command_results,

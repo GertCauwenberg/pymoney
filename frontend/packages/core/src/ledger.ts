@@ -31,6 +31,14 @@ export interface LegDraft {
    */
   quantity: string;
   memo: string;
+  /** Ids of existing tags on this leg, in the order the user arranged them. */
+  tag_ids: string[];
+  /**
+   * Names typed that do not match a tag the book has yet; created just before
+   * the transaction is posted and then folded into `tag_ids` -- the twin of
+   * `TransactionDraft.payee_id === "__new__"`.
+   */
+  new_tag_names: string[];
   /**
    * What the form does not edit but must not lose when it re-sends the legs:
    * a split's reconciliation mark, action, cheque number and per-split payee.
@@ -57,7 +65,7 @@ export function newLegKey(): string {
 }
 
 export function emptyLeg(account_id = ""): LegDraft {
-  return { key: newLegKey(), account_id, value: "", quantity: "", memo: "", keep: FRESH };
+  return { key: newLegKey(), account_id, value: "", quantity: "", memo: "", tag_ids: [], new_tag_names: [], keep: FRESH };
 }
 
 /**
@@ -186,6 +194,9 @@ function legToWire(leg: LegDraft, accounts: ReadonlyMap<string, Account>, curren
     value: value === "" ? null : value,
     quantity: quantity === "" ? null : quantity,
     memo: leg.memo.trim(),
+    // Only resolved ids travel: any new_tag_names must have been created and
+    // folded into tag_ids before the draft is sent.
+    tag_ids: [...leg.tag_ids],
     ...leg.keep,
   };
 }
@@ -224,6 +235,8 @@ export function draftFromTransaction(tx: Transaction, currencyId: string): Trans
       value: minorToDecimal(s.value.minor, s.value.scale),
       quantity: s.quantity.commodity_id === currencyId ? "" : minorToDecimal(s.quantity.minor, s.quantity.scale),
       memo: s.memo,
+      tag_ids: [...(s.tag_ids ?? [])],
+      new_tag_names: [],
       keep: {
         reconcile_state: s.reconcile_state,
         reconcile_date: s.reconcile_date ?? null,

@@ -27,6 +27,7 @@ from ..core.recurrence import Recurrence
 from ..core.rounding import RoundingMode
 from ..core.schedule import Schedule, ScheduleTemplate
 from ..core.store import CommandRecord, StoredBook
+from ..core.tag import Tag
 from ..core.transaction import ReconcileState, Split, Transaction
 from .types import fits_in_bigint
 
@@ -200,6 +201,36 @@ class Rows:
             revision=row.revision,
         )
 
+    # -- tags ------------------------------------------------------------
+    @staticmethod
+    def tag_to_row(tag: Tag, book_id: UUID) -> dict[str, Any]:
+        return {
+            "id": tag.id,
+            "book_id": book_id,
+            "name": tag.name,
+            "name_key": tag.key,
+            "notes": tag.notes,
+            "colour": tag.colour,
+            "closed": tag.closed,
+            "created_at": tag.created_at,
+            "updated_at": tag.updated_at,
+            "revision": tag.revision,
+        }
+
+    @staticmethod
+    def tag_from_row(row: Any) -> Tag:
+        return Tag(
+            id=row.id,
+            book_id=row.book_id,
+            name=row.name,
+            notes=row.notes,
+            colour=row.colour,
+            closed=row.closed,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            revision=row.revision,
+        )
+
     # -- schedules --------------------------------------------------------
     @staticmethod
     def schedule_to_row(schedule: Schedule, book_id: UUID) -> dict[str, Any]:
@@ -287,10 +318,36 @@ class Rows:
         }
 
     @staticmethod
+    def split_tag_rows(
+        split: Split, transaction: Transaction, book_id: UUID
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "book_id": book_id,
+                "transaction_id": transaction.id,
+                "split_id": split.id,
+                "tag_id": tag_id,
+                "position": position,
+            }
+            for position, tag_id in enumerate(split.tag_ids)
+        ]
+
+    @staticmethod
     def transaction_from_rows(
-        row: Any, split_rows: list[Any], registry: Registry
+        row: Any,
+        split_rows: list[Any],
+        registry: Registry,
+        tag_rows: list[Any] | None = None,
     ) -> Transaction:
         currency = registry.commodity(row.currency_id)
+        tags_by_split: dict[UUID, list[Any]] = {}
+        for tag_row in tag_rows or ():
+            tags_by_split.setdefault(tag_row.split_id, []).append(tag_row)
+
+        def tag_ids_of(split_id: UUID) -> tuple[UUID, ...]:
+            rows = sorted(tags_by_split.get(split_id, ()), key=lambda r: r.position)
+            return tuple(r.tag_id for r in rows)
+
         splits = tuple(
             Split(
                 id=s.id,
@@ -306,6 +363,7 @@ class Rows:
                 action=s.action,
                 number=s.number,
                 price=None if s.price_num is None else Fraction(s.price_num, s.price_den),
+                tag_ids=tag_ids_of(s.id),
             )
             for s in sorted(split_rows, key=lambda s: s.position)
         )

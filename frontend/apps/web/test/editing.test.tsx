@@ -46,6 +46,7 @@ const commodities = [
   { id: "usd", code: "USD", name: "US Dollar", kind: "CURRENCY", symbol: "$", minor_unit_factor: 100, display_precision: 2, isin: null, quote_source: null, revision: 1 },
 ];
 const payees = [{ id: "p1", name: "Acme Payroll", notes: "", address: "", match_keys: [], default_account_id: null, revision: 1 }];
+const tags = [{ id: "g-holiday", name: "Holiday", notes: "", colour: "#ff8800", closed: false, revision: 1 }];
 
 const split = (id: string, account_id: string, minor: number, extra: object = {}) => ({
   id,
@@ -60,6 +61,7 @@ const split = (id: string, account_id: string, minor: number, extra: object = {}
   number: "",
   price: null,
   implied_price: null,
+  tag_ids: [],
   ...extra,
 });
 const transaction = (extra: object = {}) => ({
@@ -131,6 +133,7 @@ const reads: Record<string, Handler> = {
   "GET /books/b1/accounts/chk": () => ({ body: accounts[1] }),
   "GET /books/b1/accounts/wallet": () => ({ body: accounts[2] }),
   "GET /books/b1/payees": () => ({ body: payees }),
+  "GET /books/b1/tags": () => ({ body: tags }),
   "GET /books/b1/commodities": () => ({ body: commodities }),
   "GET /books/b1/accounts/chk/register": () => ({
     body: { items: [], has_more: false, next_cursor: null, totals: { opening: eur(0), closing: eur(0) } },
@@ -177,8 +180,8 @@ describe("posting from the register", () => {
       payee_id: "p2",
       rounding: "HALF_EVEN",
       legs: [
-        { account_id: "chk", value: "-84.20", quantity: null, memo: "", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null },
-        { account_id: "food", value: null, quantity: null, memo: "", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null },
+        { account_id: "chk", value: "-84.20", quantity: null, memo: "", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null, tag_ids: [] },
+        { account_id: "food", value: null, quantity: null, memo: "", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null, tag_ids: [] },
       ],
     });
     // Amounts travel as strings, never as JSON numbers.
@@ -264,6 +267,58 @@ describe("posting from the register", () => {
     expect(currency).toHaveValue("EUR");
   });
 
+  it("tags a leg with an existing tag and a brand-new one, creating the latter first", async () => {
+    const user = userEvent.setup();
+    const { fetch, calls } = server({
+      ...reads,
+      "POST /books/b1/tags": ({ body }) => ({ status: 201, body: { id: "g-new", name: (body as { name: string }).name, notes: "", colour: null, closed: false, revision: 1 } }),
+      "POST /books/b1/transactions": ({ body }) => ({ status: 201, body: transaction({ id: "t9", ...(body as object) }) }),
+    });
+    mount(fetch, "/books/b1/accounts/chk");
+    await user.click(await screen.findByRole("button", { name: "New transaction" }));
+    const form = screen.getByRole("form", { name: "New transaction" });
+    await user.type(within(form).getByLabelText("Amount of leg 1"), "-40");
+    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
+
+    const tagsOfLeg2 = within(form).getByLabelText("Tags of leg 2");
+    await user.type(tagsOfLeg2, "Holiday{Enter}");
+    await user.type(tagsOfLeg2, "Spain{Enter}");
+    expect(within(form).getByText("Holiday")).toBeInTheDocument();
+    expect(within(form).getByText("Spain")).toBeInTheDocument();
+
+    await user.click(within(form).getByRole("button", { name: "Post" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path.endsWith("/transactions"))).toBe(true));
+    // The new tag is created before the transaction references it.
+    const tagCall = calls.find((c) => c.method === "POST" && c.path.endsWith("/tags"))!;
+    expect(tagCall.body).toMatchObject({ name: "Spain" });
+    const post = calls.find((c) => c.method === "POST" && c.path.endsWith("/transactions"))!;
+    expect((post.body as { legs: { tag_ids: string[] }[] }).legs[0]!.tag_ids).toEqual([]);
+    expect((post.body as { legs: { tag_ids: string[] }[] }).legs[1]!.tag_ids).toEqual(["g-holiday", "g-new"]);
+  });
+
+  it("keeps a leg's tags on a round trip through the editor", async () => {
+    const user = userEvent.setup();
+    const tagged = transaction({ splits: [split("s1", "chk", -8420), split("s2", "food", 8420, { tag_ids: ["g-holiday"] })] });
+    const { fetch, calls } = server({
+      ...reads,
+      "GET /books/b1/transactions/t1": () => ({ body: tagged }),
+      "PATCH /books/b1/transactions/t1": ({ body }) => ({ body: transaction(body as object) }),
+    });
+    mount(fetch, "/books/b1/transactions/t1");
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    const form = screen.getByRole("form", { name: "Edit transaction" });
+    expect(within(form).getByText("Holiday")).toBeInTheDocument();
+
+    const memo = within(form).getByLabelText("Memo");
+    await user.type(memo, " and wine");
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
+    const patch = calls.find((c) => c.method === "PATCH")!;
+    const legs = (patch.body as { legs: { account_id: string; tag_ids: string[] }[] }).legs;
+    expect(legs.find((l) => l.account_id === "food")!.tag_ids).toEqual(["g-holiday"]);
+    expect(legs.find((l) => l.account_id === "chk")!.tag_ids).toEqual([]);
+  });
+
   it("does not send an incomplete draft, and shows the server's refusal", async () => {
     const user = userEvent.setup();
     const { fetch, calls } = server({
@@ -338,8 +393,8 @@ describe("editing a transaction", () => {
       number: "",
       payee_id: "p1",
       legs: [
-        { account_id: "chk", value: "-84.20", quantity: null, memo: "", action: "", number: "", reconcile_state: "CLEARED", reconcile_date: "2026-02-02", payee_id: null },
-        { account_id: "food", value: "84.2", quantity: null, memo: "", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null },
+        { account_id: "chk", value: "-84.20", quantity: null, memo: "", action: "", number: "", reconcile_state: "CLEARED", reconcile_date: "2026-02-02", payee_id: null, tag_ids: [] },
+        { account_id: "food", value: "84.2", quantity: null, memo: "", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null, tag_ids: [] },
       ],
     });
   });

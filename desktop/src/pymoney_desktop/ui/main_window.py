@@ -22,6 +22,8 @@ from pymoney.api.schemas import (
     PayeeOut,
     ReconcileStateName,
     RegisterRowOut,
+    TagIn,
+    TagOut,
     TransactionOut,
 )
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
@@ -164,6 +166,7 @@ class MainWindow(QMainWindow):
         self.accounts: list[AccountOut] = []
         self.commodities: list[CommodityOut] = []
         self.payees: list[PayeeOut] = []
+        self.tags: list[TagOut] = []
         self.rows: list[RegisterRowOut] = []
         self.register_opening_minor = 0
         self.current_account: AccountOut | None = None
@@ -343,6 +346,7 @@ class MainWindow(QMainWindow):
                 self.client.accounts(book_id),
                 self.client.commodities(book_id),
                 self.client.payees(book_id),
+                self.client.tags(book_id),
                 self.client.account_balances(book_id),
             )
 
@@ -351,7 +355,7 @@ class MainWindow(QMainWindow):
         )
 
     def _book_loaded(self, loaded) -> None:
-        self.accounts, self.commodities, self.payees, subtree = loaded
+        self.accounts, self.commodities, self.payees, self.tags, subtree = loaded
         self.tree.blockSignals(True)
         self.tree.clear()
         items: dict[UUID, QTreeWidgetItem] = {}
@@ -625,6 +629,7 @@ class MainWindow(QMainWindow):
             self.book.id,
             self.accounts,
             self.payees,
+            self.tags,
             on_open=self.show_transaction,
             executor=self.executor,
             parent=self,
@@ -707,6 +712,22 @@ class MainWindow(QMainWindow):
         index = self.register.currentRow()
         return self.rows[index] if 0 <= index < len(self.rows) else None
 
+    def _materialise_tags(self, book_id: UUID, draft) -> None:
+        """Turn every leg's typed-but-unknown tag name into a real tag, once
+        per distinct name, and fold its id into the leg. The twin of the
+        new-payee round trip."""
+        resolved: dict[str, UUID] = {t.name.casefold(): t.id for t in self.tags}
+        for leg in draft.legs:
+            for name in leg.new_tag_names:
+                key = name.casefold()
+                tag_id = resolved.get(key)
+                if tag_id is None:
+                    tag_id = self.client.create_tag(book_id, TagIn(name=name)).id
+                    resolved[key] = tag_id
+                if tag_id not in leg.tag_ids:
+                    leg.tag_ids.append(tag_id)
+            leg.new_tag_names = []
+
     def new_transaction(self) -> None:
         base_currency = self._currency()
         if self.book is None or base_currency is None or self.current_account is None:
@@ -716,6 +737,7 @@ class MainWindow(QMainWindow):
             self.payees,
             base_currency,
             commodities=self.commodities,
+            tags=self.tags,
             default_account_id=self.current_account.id,
             parent=self,
         )
@@ -732,6 +754,7 @@ class MainWindow(QMainWindow):
                     book_id, PayeeIn(name=draft.new_payee)
                 ).id
             draft.payee_id = payee_id
+            self._materialise_tags(book_id, draft)
             return self.client.post_transaction(
                 book_id, draft.to_wire(accounts, currency)
             )
@@ -771,6 +794,7 @@ class MainWindow(QMainWindow):
             self.payees,
             currency,
             commodities=self.commodities,
+            tags=self.tags,
             existing=existing,
             parent=self,
         )
@@ -784,6 +808,7 @@ class MainWindow(QMainWindow):
                 draft.payee_id = self.client.create_payee(
                     book_id, PayeeIn(name=draft.new_payee)
                 ).id
+            self._materialise_tags(book_id, draft)
             return self.client.update_transaction(
                 book_id, existing.id, draft.to_update(accounts, currency)
             )

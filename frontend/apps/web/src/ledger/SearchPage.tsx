@@ -1,7 +1,7 @@
 import { useT } from "@pymoney/core/hooks";
 import { parseDecimal } from "@pymoney/core";
 import type { Account, Transaction, TransactionSearchQuery } from "@pymoney/core";
-import { useAccounts, useCommodities, usePayees, useTransactionSearch } from "@pymoney/core/hooks";
+import { useAccounts, useCommodities, usePayees, useTags, useTransactionSearch } from "@pymoney/core/hooks";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
@@ -22,6 +22,7 @@ const DEFAULTS = {
   account: "",
   children: false,
   payee: "",
+  tag: "",
 };
 
 /** `Checking → Groceries`: where the money came from and where it went. */
@@ -45,6 +46,7 @@ export function SearchPage() {
   const [params, update] = useReportParams(DEFAULTS);
   const accounts = useAccounts(bookId, { include_closed: true });
   const payees = usePayees(bookId);
+  const tags = useTags(bookId);
   const commodities = useCommodities(bookId);
   const currency = commodities.data?.find((c) => c.id === baseCurrencyId);
   const accountsById = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.id, a])), [accounts.data]);
@@ -57,7 +59,16 @@ export function SearchPage() {
       ? t("The smallest amount is larger than the largest.")
       : null;
   const dateProblem = params.start && params.end && params.start > params.end ? t("The period ends before it starts.") : null;
-  const empty = !params.q.trim() && !params.amount.trim() && !params.min.trim() && !params.max.trim() && !params.start && !params.end && !params.account && !params.payee;
+  const empty =
+    !params.q.trim() &&
+    !params.amount.trim() &&
+    !params.min.trim() &&
+    !params.max.trim() &&
+    !params.start &&
+    !params.end &&
+    !params.account &&
+    !params.payee &&
+    !params.tag;
 
   const query = useMemo<TransactionSearchQuery | null>(() => {
     if (empty || amountProblem || dateProblem) return null;
@@ -70,6 +81,7 @@ export function SearchPage() {
       ...(params.end ? { end: params.end } : {}),
       ...(params.account ? { account_id: params.account, include_children: params.children } : {}),
       ...(params.payee ? { payee_id: params.payee } : {}),
+      ...(params.tag ? { tag_id: params.tag } : {}),
       limit: 200,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,6 +90,7 @@ export function SearchPage() {
 
   const sortedAccounts = useMemo(() => [...(accounts.data ?? [])].sort((a, b) => a.path.localeCompare(b.path)), [accounts.data]);
   const sortedPayees = useMemo(() => [...(payees.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)), [payees.data]);
+  const sortedTags = useMemo(() => [...(tags.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)), [tags.data]);
 
   return (
     <article className="report-page">
@@ -124,6 +137,16 @@ export function SearchPage() {
             {sortedPayees.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label={t("Tag")}>
+          <select value={params.tag} onChange={(e) => update({ tag: e.target.value })}>
+            <option value="">{t("Any tag")}</option>
+            {sortedTags.map((tg) => (
+              <option key={tg.id} value={tg.id}>
+                {tg.name}
               </option>
             ))}
           </select>

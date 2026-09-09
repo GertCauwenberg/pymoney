@@ -41,10 +41,12 @@ from .commands import (
     CreateAccount,
     CreateCommodity,
     CreatePayee,
+    CreateTag,
     DeleteAccount,
     DeleteCommodity,
     DeletePayee,
     DeletePrice,
+    DeleteTag,
     DeleteTransaction,
     InitialiseBook,
     MergeAccounts,
@@ -62,6 +64,7 @@ from .commands import (
     UpdateAccount,
     UpdateCommodity,
     UpdatePayee,
+    UpdateTag,
     UpdateTransaction,
 )
 from .commodity import Commodity, CommodityKind
@@ -115,6 +118,7 @@ from .schedule import Schedule, ScheduleTemplate, TemplateLeg
 from .settings import BookSettings
 from .store import TransactionSearch
 from .sync import RevisionBatch, SyncPage
+from .tag import Tag
 from .transaction import ReconcileState, Split, Transaction
 
 __version__ = "0.1.0"
@@ -152,6 +156,7 @@ __all__ = [  # noqa: RUF022
     "ACCOUNT_SEPARATOR",
     "Frequency",
     "Payee",
+    "Tag",
     "Recurrence",
     "Schedule",
     "ScheduleTemplate",
@@ -202,6 +207,9 @@ __all__ = [  # noqa: RUF022
     "UpdatePayee",
     "MergePayees",
     "DeletePayee",
+    "CreateTag",
+    "UpdateTag",
+    "DeleteTag",
     "PostTransaction",
     "UpdateTransaction",
     "DeleteTransaction",

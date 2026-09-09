@@ -16,7 +16,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from pymoney.api.schemas import AccountOut, PayeeOut, TransactionOut
+from pymoney.api.schemas import AccountOut, PayeeOut, TagOut, TransactionOut
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -73,6 +73,7 @@ class SearchWindow(QMainWindow):
         book_id: UUID,
         accounts: list[AccountOut],
         payees: list[PayeeOut],
+        tags: list[TagOut] | None = None,
         *,
         on_open: Callable[[TransactionOut], None] | None = None,
         executor: Executor | None = None,
@@ -84,6 +85,7 @@ class SearchWindow(QMainWindow):
         self.book_id = book_id
         self.accounts = {a.id: a for a in accounts}
         self.payees = {p.id: p for p in payees}
+        self.tags = {t.id: t for t in (tags or [])}
         self.on_open = on_open or (lambda transaction: None)
         self.executor = executor or ThreadedExecutor()
         self.today = today or date.today()
@@ -153,6 +155,12 @@ class SearchWindow(QMainWindow):
             self.payee.addItem(payee.name, str(payee.id))
         form.addRow(_("Payee"), self.payee)
 
+        self.tag = QComboBox()
+        self.tag.addItem(_("Any tag"), "")
+        for tag in sorted(tags or [], key=lambda t: t.name.lower()):
+            self.tag.addItem(tag.name, str(tag.id))
+        form.addRow(_("Tag"), self.tag)
+
         buttons = QHBoxLayout()
         self.search_button = QPushButton(_("Search"))
         self.search_button.setDefault(True)
@@ -213,6 +221,7 @@ class SearchWindow(QMainWindow):
 
         account = self.account.currentData()
         payee = self.payee.currentData()
+        tag = self.tag.currentData()
         return SearchCriteria(
             text=self.text.text().strip() or None,
             amount=text_or_none(self.amount),
@@ -223,6 +232,7 @@ class SearchWindow(QMainWindow):
             account_id=UUID(account) if account else None,
             include_children=self.subtree.isChecked(),
             payee_id=UUID(payee) if payee else None,
+            tag_id=UUID(tag) if tag else None,
         )
 
     def clear(self) -> None:
@@ -233,6 +243,7 @@ class SearchWindow(QMainWindow):
         self.account.setCurrentIndex(0)
         self.subtree.setChecked(False)
         self.payee.setCurrentIndex(0)
+        self.tag.setCurrentIndex(0)
         self._show([], False)
         self.status.setText(_("Fill in one or more criteria and search."))
 
@@ -324,6 +335,7 @@ def open_search(
     book_id: UUID,
     accounts: list[AccountOut],
     payees: list[PayeeOut],
+    tags: list[TagOut] | None = None,
     *,
     on_open: Callable[[TransactionOut], None] | None = None,
     executor: Executor | None = None,
@@ -335,6 +347,7 @@ def open_search(
         book_id,
         accounts,
         payees,
+        tags,
         on_open=on_open,
         executor=executor,
         parent=parent,

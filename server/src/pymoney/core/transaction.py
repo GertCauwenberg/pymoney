@@ -80,6 +80,8 @@ class Split:
     memo: str = ""
     payee_id: UUID | None = None
     """Per-split payee; overrides the transaction's payee when set."""
+    tag_ids: tuple[UUID, ...] = ()
+    """Free-form labels on this leg, in the order the user added them."""
     reconcile_state: ReconcileState = ReconcileState.NOT_RECONCILED
     reconcile_date: date | None = None
     action: str = ""

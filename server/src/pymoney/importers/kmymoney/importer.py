@@ -120,6 +120,7 @@ class KmyImporter:
         self.commodities: dict[str, Commodity] = {}
         self.accounts: dict[str, Account] = {}
         self.payees: dict[str, UUID] = {}
+        self.tags: dict[str, UUID] = {}
         self.roots: dict[str, Account] = {}
         self._tally: dict[str, _AccountTally] = defaultdict(_AccountTally)
         self._adjustment_accounts: dict[str, Account] = {}
@@ -143,6 +144,7 @@ class KmyImporter:
             self._import_commodities()
             self._choose_base_currency()
             self._import_payees()
+            self._import_tags()
             self._import_accounts()
             self._import_transactions()
             if not self.options.skip_prices:
@@ -324,6 +326,32 @@ class KmyImporter:
             payee = self.book.add_payee(final, notes=notes, address=kmy.address)
             self.payees[kmy.id] = payee.id
             self.report.count("payees")
+
+    # ====================================================================
+    # tags
+    # ====================================================================
+    def _import_tags(self) -> None:
+        """Carry KMyMoney's ``<TAG>`` definitions across as our own tags.
+
+        The file's tag ids (``G000009``) are remembered so the splits that
+        reference them can be hooked up in :meth:`_import_transaction`."""
+        for tag_id, name in sorted(self.source.tags.items()):
+            label = name.strip() or f"Unnamed tag {tag_id}"
+            final = label
+            suffix = 1
+            while self.book.find_tag(final) is not None:
+                suffix += 1
+                final = f"{label} ({suffix})"
+            if final != label:
+                self.report.warn(
+                    "tag",
+                    f"two tags are called {label!r}; the second was imported "
+                    f"as {final!r}",
+                    source_id=tag_id,
+                )
+            tag = self.book.add_tag(final)
+            self.tags[tag_id] = tag.id
+            self.report.count("tags")
 
     # ====================================================================
     # accounts
@@ -710,8 +738,19 @@ class KmyImporter:
             price = self._usable_price(split, currency, account)
             if split.bank_id:
                 self._unmapped["split bank id (import reference)"] += 1
-            if split.tag_ids:
-                self._unmapped["split tags"] += len(split.tag_ids)
+
+            tag_ids: list[UUID] = []
+            for source_tag_id in split.tag_ids:
+                resolved = self.tags.get(source_tag_id)
+                if resolved is None:
+                    self.report.warn(
+                        "transaction",
+                        f"split {split.id} wears tag {source_tag_id!r}, which "
+                        f"is not defined in the file",
+                        source_id=kmy.id,
+                    )
+                    continue
+                tag_ids.append(resolved)
 
             legs.append(
                 LegSpec(
@@ -725,6 +764,7 @@ class KmyImporter:
                     number=split.number,
                     reconcile_state=split.reconcile_state,
                     reconcile_date=split.reconcile_date,
+                    tag_ids=tuple(tag_ids),
                 )
             )
             self.report.count("splits")
@@ -991,7 +1031,6 @@ class KmyImporter:
             "scheduled transactions",
             max(declared - self.report.imported.get("schedules", 0), 0),
         )
-        self.report.skip("tags", len(self.source.tags))
         for name, count in sorted(self._unmapped.items()):
             self.report.skip(name, count)
 

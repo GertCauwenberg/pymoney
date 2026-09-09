@@ -67,6 +67,10 @@ import type {
   RegisterQuery,
   Session,
   StatementImport,
+  Tag,
+  TagIn,
+  TagPatch,
+  TagsQuery,
   Transaction,
   TransactionIn,
   TransactionSearchQuery,
@@ -629,6 +633,23 @@ export class ApiClient {
 
   createPayee(bookId: string, body: PayeeIn): Promise<Payee> {
     return this.post<Payee>(`/books/${bookId}/payees`, body);
+  }
+
+  tags(bookId: string, query: TagsQuery = {}): Promise<Tag[]> {
+    return this.get<Tag[]>(`/books/${bookId}/tags${queryString(query)}`);
+  }
+
+  createTag(bookId: string, body: TagIn): Promise<Tag> {
+    return this.post<Tag>(`/books/${bookId}/tags`, body);
+  }
+
+  patchTag(bookId: string, tagId: string, body: TagPatch): Promise<Tag> {
+    return this.patch<Tag>(`/books/${bookId}/tags/${tagId}`, body);
+  }
+
+  /** Only a tag no transaction wears can be deleted; the server refuses (409) otherwise. */
+  deleteTag(bookId: string, tagId: string): Promise<void> {
+    return this.delete(`/books/${bookId}/tags/${tagId}`);
   }
 
   // -- ledger ------------------------------------------------------------
