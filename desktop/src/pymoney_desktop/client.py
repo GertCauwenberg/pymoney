@@ -32,6 +32,7 @@ from pymoney.api.schemas import (
     AccountBalanceOut,
     AccountIn,
     AccountOut,
+    AttachmentOut,
     BalanceSheetOut,
     BookIn,
     BookOut,
@@ -339,6 +340,27 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def create_tag(self, book_id: UUID, body: TagIn) -> TagOut: ...
+
+    # -- attachments: receipts/invoices, server-side only -----------------
+    @abstractmethod
+    def attachments(self, book_id: UUID, transaction_id: UUID) -> list[AttachmentOut]: ...
+
+    @abstractmethod
+    def upload_attachment(
+        self,
+        book_id: UUID,
+        transaction_id: UUID,
+        *,
+        filename: str,
+        data: bytes,
+        content_type: str,
+    ) -> AttachmentOut: ...
+
+    @abstractmethod
+    def download_attachment(self, book_id: UUID, attachment_id: UUID) -> bytes: ...
+
+    @abstractmethod
+    def delete_attachment(self, book_id: UUID, attachment_id: UUID) -> None: ...
 
     @abstractmethod
     def create_account(self, book_id: UUID, body: AccountIn) -> AccountOut: ...

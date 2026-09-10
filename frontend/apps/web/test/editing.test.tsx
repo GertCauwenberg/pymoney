@@ -89,7 +89,13 @@ function server(handlers: Record<string, Handler>) {
   const fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input), "http://test");
     const method = init?.method ?? "GET";
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    const raw = init?.body;
+    const body =
+      raw instanceof FormData
+        ? { file: (raw.get("file") as File | null)?.name ?? null }
+        : raw
+          ? JSON.parse(String(raw))
+          : undefined;
     const headers = Object.fromEntries(Object.entries((init?.headers as Record<string, string>) ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
     const path = url.pathname.replace(/^\/api/, "");
     calls.push({ method, path, body, headers });
@@ -142,7 +148,20 @@ const reads: Record<string, Handler> = {
     body: { items: [], has_more: false, next_cursor: null, totals: { opening: usd(0), closing: usd(0) } },
   }),
   "GET /books/b1/transactions/t1": () => ({ body: transaction() }),
+  "GET /books/b1/transactions/t1/attachments": () => ({ body: [] }),
 };
+
+const attachment = (extra: object = {}) => ({
+  id: "at1",
+  transaction_id: "t1",
+  filename: "receipt.png",
+  content_type: "image/png",
+  byte_size: 2048,
+  sha256: "0".repeat(64),
+  uploaded_by: "owner@example.invalid",
+  uploaded_at: "2026-02-02T10:00:00Z",
+  ...extra,
+});
 
 describe("posting from the register", () => {
   it("posts a transaction with a residual leg and a payee created on the spot", async () => {
@@ -397,6 +416,52 @@ describe("editing a transaction", () => {
         { account_id: "food", value: "84.2", quantity: null, memo: "", action: "", number: "", reconcile_state: "NOT_RECONCILED", reconcile_date: null, payee_id: null, tag_ids: [] },
       ],
     });
+  });
+
+  it("lists, uploads and removes attachments", async () => {
+    const user = userEvent.setup();
+    let stored: ReturnType<typeof attachment>[] = [];
+    const { fetch, calls } = server({
+      ...reads,
+      "GET /books/b1/transactions/t1/attachments": () => ({ body: stored }),
+      "POST /books/b1/transactions/t1/attachments": () => {
+        stored = [attachment()];
+        return { status: 201, body: stored[0] };
+      },
+      "DELETE /books/b1/attachments/at1": () => {
+        stored = [];
+        return {};
+      },
+    });
+    mount(fetch, "/books/b1/transactions/t1");
+
+    const section = (await screen.findByRole("heading", { name: "Attachments" })).closest("section")!;
+    expect(within(section).getByText(/No receipts or invoices/)).toBeInTheDocument();
+
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "receipt.png", { type: "image/png" });
+    await user.upload(within(section).getByLabelText("Add an attachment"), file);
+
+    const link = await within(section).findByRole("link", { name: "receipt.png" });
+    expect(link).toHaveAttribute("href", "/api/books/b1/attachments/at1");
+    expect(within(section).getByText(/2\.0 kB/)).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/books/b1/transactions/t1/attachments")).toBe(true);
+
+    await user.click(within(section).getByRole("button", { name: "Remove" }));
+    await user.click(within(section).getByRole("button", { name: "Yes, remove" }));
+    await waitFor(() => expect(within(section).queryByRole("link", { name: "receipt.png" })).toBeNull());
+    expect(calls.some((c) => c.method === "DELETE" && c.path === "/books/b1/attachments/at1")).toBe(true);
+  });
+
+  it("shows attachments read-only to a viewer", async () => {
+    const { fetch } = server({
+      ...reads,
+      "GET /books/b1/transactions/t1/attachments": () => ({ body: [attachment()] }),
+    });
+    mount(fetch, "/books/b1/transactions/t1", "viewer");
+    const section = (await screen.findByRole("heading", { name: "Attachments" })).closest("section")!;
+    expect(await within(section).findByRole("link", { name: "receipt.png" })).toBeInTheDocument();
+    expect(within(section).queryByLabelText("Add an attachment")).toBeNull();
+    expect(within(section).queryByRole("button", { name: "Remove" })).toBeNull();
   });
 
   it("deletes after confirmation and returns to the account's register", async () => {

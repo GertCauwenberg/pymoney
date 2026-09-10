@@ -54,6 +54,15 @@ COPY --from=builder /dist/*.whl /tmp/
 RUN pip install --no-cache-dir "$(echo /tmp/*.whl)[api,store,postgres]" \
     && rm -f /tmp/*.whl
 
+# Attachment blobs live here. The directory is created and handed to the
+# unprivileged user now, so a volume mounted over it at run time inherits the
+# right ownership -- the process writes per-book subdirectories under it, and
+# the rest of the image filesystem stays read-only.
+RUN mkdir -p /var/lib/pymoney/attachments \
+    && chown -R pymoney:pymoney /var/lib/pymoney
+ENV PYMONEY_ATTACHMENTS_DIR=/var/lib/pymoney/attachments
+VOLUME ["/var/lib/pymoney/attachments"]
+
 USER pymoney
 WORKDIR /home/pymoney
 

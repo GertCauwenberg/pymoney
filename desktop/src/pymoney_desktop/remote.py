@@ -23,6 +23,7 @@ from pymoney.api.schemas import (
     AccountIn,
     AccountOut,
     AmountOut,
+    AttachmentOut,
     BalanceSheetOut,
     BookIn,
     BookOut,
@@ -66,7 +67,7 @@ from .client import (
     ReportOptions,
     SearchCriteria,
 )
-from .transport import Transport, raise_for_problem
+from .transport import Transport, download, raise_for_problem
 
 __all__ = ["RemoteClient"]
 
@@ -473,6 +474,41 @@ class RemoteClient(LedgerClient):
         self._written(book_id)
         return TagOut.model_validate(payload)
 
+    # -- attachments -----------------------------------------------------
+    def attachments(self, book_id: UUID, transaction_id: UUID) -> list[AttachmentOut]:
+        payload = self._call(
+            "GET", f"/books/{book_id}/transactions/{transaction_id}/attachments"
+        )
+        return [AttachmentOut.model_validate(a) for a in payload]
+
+    def upload_attachment(
+        self,
+        book_id: UUID,
+        transaction_id: UUID,
+        *,
+        filename: str,
+        data: bytes,
+        content_type: str,
+    ) -> AttachmentOut:
+        status, _headers, payload = self._guarded()(
+            "POST",
+            f"/books/{book_id}/transactions/{transaction_id}/attachments",
+            {},
+            {},
+            files={"file": (filename, data, content_type)},
+        )
+        raise_for_problem(status, payload)
+        return AttachmentOut.model_validate(payload)
+
+    def download_attachment(self, book_id: UUID, attachment_id: UUID) -> bytes:
+        content = download(
+            self._guarded(), f"/books/{book_id}/attachments/{attachment_id}"
+        )
+        return content
+
+    def delete_attachment(self, book_id: UUID, attachment_id: UUID) -> None:
+        self._call("DELETE", f"/books/{book_id}/attachments/{attachment_id}")
+
     def create_account(self, book_id: UUID, body: AccountIn) -> AccountOut:
         payload = self._call(
             "POST",
@@ -598,10 +634,10 @@ class RemoteClient(LedgerClient):
         """The transport, wrapped so a dropped connection flips to offline and
         a server error reads as it does everywhere else in this client."""
 
-        def transport(method, path, body=None, headers=None, *, files=None):
+        def transport(method, path, body=None, headers=None, *, files=None, raw=False):
             try:
                 status, result_headers, payload = self._transport(
-                    method, path, body, headers or {}, files=files
+                    method, path, body, headers or {}, files=files, raw=raw
                 )
             except OfflineError as exc:
                 self._online, self._last_error = False, str(exc)

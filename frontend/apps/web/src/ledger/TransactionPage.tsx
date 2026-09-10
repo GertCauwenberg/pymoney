@@ -1,8 +1,20 @@
-import { useT } from "@pymoney/core/hooks";
+import { useApi, useT } from "@pymoney/core/hooks";
 import { formatRate } from "@pymoney/core";
 import type { ReconcileState, Split } from "@pymoney/core";
-import { useAccounts, useCommodities, useDeleteTransaction, useHistory, usePayees, useSetSplitState, useTags, useTransaction } from "@pymoney/core/hooks";
-import { useMemo, useState } from "react";
+import {
+  useAccounts,
+  useAttachments,
+  useCommodities,
+  useDeleteAttachment,
+  useDeleteTransaction,
+  useHistory,
+  usePayees,
+  useSetSplitState,
+  useTags,
+  useTransaction,
+  useUploadAttachment,
+} from "@pymoney/core/hooks";
+import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -233,6 +245,8 @@ export function TransactionPage() {
         </tfoot>
       </table>
 
+      <Attachments bookId={bookId} transactionId={t.id} canWrite={canWrite} />
+
       <details className="valuation history-panel">
         <summary>
           {tr("History")}
@@ -320,5 +334,92 @@ function SplitRow({
         <Money amount={split.value} />
       </td>
     </tr>
+  );
+}
+
+/** Human-readable file size: 1536 -> "1.5 kB". */
+function fileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} kB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * Receipts and invoices for a transaction. Server-side only: the list is
+ * metadata, the bytes are fetched from a link that carries the session cookie.
+ * An editor can add (image or PDF) and remove; everyone who can see the book
+ * can view.
+ */
+function Attachments({ bookId, transactionId, canWrite }: { bookId: string; transactionId: string; canWrite: boolean }) {
+  const tr = useT();
+  const api = useApi();
+  const list = useAttachments(bookId, transactionId);
+  const upload = useUploadAttachment(bookId, transactionId);
+  const remove = useDeleteAttachment(bookId, transactionId);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  const onPick = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      await upload.mutateAsync(file);
+    } catch {
+      // Shown below.
+    }
+    if (fileInput.current) fileInput.current.value = "";
+  };
+
+  const rows = list.data ?? [];
+  return (
+    <section className="valuation attachments">
+      <h2>{tr("Attachments")}</h2>
+      {(upload.error || remove.error) && <ErrorBanner error={upload.error ?? remove.error} title={tr("Could not change the attachments")} />}
+      {rows.length === 0 ? (
+        <p className="muted">{tr("No receipts or invoices attached yet.")}</p>
+      ) : (
+        <ul className="attachments__list">
+          {rows.map((a) => (
+            <li key={a.id}>
+              <a href={api.attachmentHref(bookId, a.id)} target="_blank" rel="noreferrer">
+                {a.filename}
+              </a>
+              <span className="muted">
+                {" "}
+                · {a.content_type} · {fileSize(a.byte_size)}
+              </span>
+              {canWrite &&
+                (confirming === a.id ? (
+                  <span className="actions actions--inline">
+                    <button type="button" className="btn btn--small btn--danger" disabled={remove.isPending} onClick={() => void remove.mutateAsync(a.id).then(() => setConfirming(null))}>
+                      {tr("Yes, remove")}
+                    </button>
+                    <button type="button" className="btn btn--small" onClick={() => setConfirming(null)}>
+                      {tr("No")}
+                    </button>
+                  </span>
+                ) : (
+                  <button type="button" className="btn btn--small btn--link" onClick={() => setConfirming(a.id)}>
+                    {tr("Remove")}
+                  </button>
+                ))}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canWrite && (
+        <p>
+          <input
+            ref={fileInput}
+            type="file"
+            aria-label={tr("Add an attachment")}
+            accept="image/*,application/pdf"
+            disabled={upload.isPending}
+            onChange={(e) => void onPick(e.target.files?.[0] ?? undefined)}
+          />
+          {upload.isPending && <span className="muted"> {tr("Uploading…")}</span>}
+        </p>
+      )}
+    </section>
   );
 }

@@ -90,6 +90,8 @@ api/                              the HTTP API
     security.py     password hashing, session tokens, idempotency keys
     registry.py     one open Book per book id, one lock per book
     deps.py         who is calling, what they may do, which book
+    uploads.py      chunked, size-limited read shared by the upload endpoints
+    blobs.py        attachment bytes on disk, one file per attachment
     errors.py       domain errors -> status codes, in one place
     testing.py      the in-process API and HTTP client both test suites drive
     routers/        one module per resource
@@ -173,6 +175,43 @@ Registration is closed by default in the compose environment. Either open it
 book some other way — the KMyMoney importer's `--owner you@example.org`, or
 `python -m pymoney.store.grants BOOK_ID you@example.org owner` afterwards. A
 book nobody holds a grant on is invisible to every user, by design.
+
+### Attachments and state on disk
+
+Receipts, invoices and scans attached to a transaction are the one thing the
+server keeps **outside the database**: the bytes are plain files under
+`PYMONEY_ATTACHMENTS_DIR` (`/var/lib/pymoney/attachments` in the image), one per
+attachment, in a per-book subdirectory; the `attachments` table holds only the
+link and the metadata (name, type, size, SHA-256, who and when). The uploader is
+not trusted — the read is chunked against `PYMONEY_MAX_ATTACHMENT_MB` (the
+`Content-Length` header is ignored), the type must be a common image format or a
+PDF, and a magic-byte sniff catches a mislabelled file. The server stores the
+bytes as received and does no image processing. Every route needs a grant on the
+book; `viewer` to list or download, `editor` to add or remove.
+
+The API container runs **read-only** (`read_only: true`, only `/tmp` and the
+attachments volume writable), so the directory has to be a mounted volume or the
+blobs vanish on the next `docker compose up`. `compose.yaml` mounts the named
+volume `attachments`; `compose-production.yaml` uses `pymoney-attachments`,
+overridable with a bind mount (`PYMONEY_ATTACHMENTS_VOLUME=/srv/pymoney/receipts`)
+if you would rather keep them in a directory you already manage. Deleting a
+transaction removes its attachments (rows and blobs); deleting a book removes
+its whole blob directory.
+
+**Backups.** A database dump is no longer the whole picture. Two things must be
+captured *together*, or the metadata and the files drift apart:
+
+1. the database (`pg_dump` for PostgreSQL, or the SQLite file) — accounts,
+   transactions, the change log, and the attachment rows;
+2. `PYMONEY_ATTACHMENTS_DIR` — the blobs those rows point at.
+
+Order does not matter much (a blob with no row is ignored; a row whose blob is
+missing serves a clear `410`, and the metadata still shows what it was), but
+skipping the directory loses every receipt, and skipping the database loses
+which transaction each one belonged to. A consistent snapshot is: dump the
+database, then copy the directory — any file added in between is an extra blob,
+not a broken reference. The directory only grows with what users upload; it is
+hash-named and safe to rsync incrementally.
 
 ### CI
 

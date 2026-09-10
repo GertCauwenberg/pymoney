@@ -55,6 +55,7 @@ from pymoney.api.schemas import (
     AccountIn,
     AccountOut,
     AmountOut,
+    AttachmentOut,
     BalanceSheetOut,
     BookIn,
     BookOut,
@@ -130,7 +131,7 @@ from .client import (
     SearchCriteria,
 )
 from .replica import apply_batch
-from .transport import Transport, raise_for_problem
+from .transport import Transport, download, raise_for_problem
 
 __all__ = ["OfflineClient"]
 
@@ -1034,9 +1035,11 @@ class OfflineClient(LedgerClient):
     # fall together. So, like create_book, these need the connection; the
     # transport raising OfflineError is the "come back online" message.
     def _net(self) -> Transport:
-        def transport(method, path, body=None, headers=None, *, files=None):
+        def transport(method, path, body=None, headers=None, *, files=None, raw=False):
             try:
-                result = self._transport(method, path, body, headers or {}, files=files)
+                result = self._transport(
+                    method, path, body, headers or {}, files=files, raw=raw
+                )
             except OfflineError as exc:
                 self._online, self._last_error = False, str(exc)
                 raise
@@ -1044,6 +1047,48 @@ class OfflineClient(LedgerClient):
             return result
 
         return transport
+
+    # ======================================================================
+    # attachments -- server-side only; need the connection
+    # ======================================================================
+    # Receipts and invoices live on the server and nowhere else. A book edited
+    # offline syncs its transactions on reconnect; an attachment can only be
+    # added once there is a server to hold it, so these raise OfflineError
+    # while unplugged, like the CSV import above.
+    def attachments(self, book_id: UUID, transaction_id: UUID) -> list[AttachmentOut]:
+        status, _headers, payload = self._net()(
+            "GET", f"/books/{book_id}/transactions/{transaction_id}/attachments"
+        )
+        raise_for_problem(status, payload)
+        return [AttachmentOut.model_validate(a) for a in payload]
+
+    def upload_attachment(
+        self,
+        book_id: UUID,
+        transaction_id: UUID,
+        *,
+        filename: str,
+        data: bytes,
+        content_type: str,
+    ) -> AttachmentOut:
+        status, _headers, payload = self._net()(
+            "POST",
+            f"/books/{book_id}/transactions/{transaction_id}/attachments",
+            {},
+            {},
+            files={"file": (filename, data, content_type)},
+        )
+        raise_for_problem(status, payload)
+        return AttachmentOut.model_validate(payload)
+
+    def download_attachment(self, book_id: UUID, attachment_id: UUID) -> bytes:
+        return download(self._net(), f"/books/{book_id}/attachments/{attachment_id}")
+
+    def delete_attachment(self, book_id: UUID, attachment_id: UUID) -> None:
+        status, _headers, payload = self._net()(
+            "DELETE", f"/books/{book_id}/attachments/{attachment_id}"
+        )
+        raise_for_problem(status, payload)
 
     def inspect_csv(self, book_id: UUID, data: bytes) -> CsvInspectOut:
         return statement_import.inspect_csv(self._net(), book_id, data)

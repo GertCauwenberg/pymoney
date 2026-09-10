@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from . import (
     accounts,
+    attachments,
     auth,
     books,
     commodities,
@@ -18,6 +19,7 @@ from . import (
 
 __all__ = [
     "accounts",
+    "attachments",
     "auth",
     "books",
     "commodities",

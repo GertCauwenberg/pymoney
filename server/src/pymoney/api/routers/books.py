@@ -17,10 +17,12 @@ from ...store import identity, write_transaction
 from ...store.admin import delete_book as delete_book_rows
 from ...store.grants import LastOwnerError, grant, revoke
 from ...store.identity import normalize_subject
+from ..blobs import BlobStore
 from ..deps import (
     CurrentUser,
     OwnedBook,
     ReadableBook,
+    get_blobs,
     get_engine,
     get_registry,
     readable_books,
@@ -115,6 +117,7 @@ def delete_book(
     book: OwnedBook,
     engine: Annotated[Engine, Depends(get_engine)],
     registry: Annotated[BookRegistry, Depends(get_registry)],
+    blobs: Annotated[BlobStore, Depends(get_blobs)],
 ) -> None:
     """Everything goes: accounts, transactions, prices, the change log, and
     every grant. There is no undo, which is why the request has to repeat the
@@ -130,6 +133,9 @@ def delete_book(
     with write_transaction(engine) as conn:
         delete_book_rows(conn, book_id)
     registry.forget(book_id)
+    # The receipt blobs are not in the database, so the row delete above does
+    # not touch them: take the whole per-book directory with the book.
+    blobs.delete_book(book_id)
 
 
 # -- access control --------------------------------------------------------

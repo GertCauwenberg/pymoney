@@ -45,6 +45,7 @@ import type {
   LoginIn,
   NetWorthQuery,
   NetWorthSeries,
+  Attachment,
   Payee,
   PayeeIn,
   PayeePatch,
@@ -650,6 +651,31 @@ export class ApiClient {
   /** Only a tag no transaction wears can be deleted; the server refuses (409) otherwise. */
   deleteTag(bookId: string, tagId: string): Promise<void> {
     return this.delete(`/books/${bookId}/tags/${tagId}`);
+  }
+
+  // -- attachments (receipts, invoices) --------------------------------
+
+  /** The receipts/invoices pinned to a transaction. Metadata only; the bytes
+   *  come from {@link attachmentHref}. */
+  attachments(bookId: string, transactionId: string): Promise<Attachment[]> {
+    return this.get<Attachment[]>(`/books/${bookId}/transactions/${transactionId}/attachments`);
+  }
+
+  /** Upload an image or a PDF and pin it to the transaction. */
+  uploadAttachment(bookId: string, transactionId: string, file: Blob): Promise<Attachment> {
+    const form = new FormData();
+    form.append("file", file, fileName(file, "attachment"));
+    return this.postForm<Attachment>(`/books/${bookId}/transactions/${transactionId}/attachments`, form);
+  }
+
+  deleteAttachment(bookId: string, attachmentId: string): Promise<void> {
+    return this.delete(`/books/${bookId}/attachments/${attachmentId}`);
+  }
+
+  /** A URL that serves an attachment's bytes. Same-origin on the web, so a
+   *  normal link or `window.open` carries the session cookie. */
+  attachmentHref(bookId: string, attachmentId: string): string {
+    return `${this.baseUrl}/books/${bookId}/attachments/${attachmentId}`;
   }
 
   // -- ledger ------------------------------------------------------------

@@ -194,6 +194,7 @@ def test_settings(tmp_path: Path, **overrides: Any) -> Settings:
     schedulers, mail kept in memory."""
     values: dict[str, Any] = {
         "database_url": f"sqlite+pysqlite:///{tmp_path / 'api.sqlite'}",
+        "attachments_dir": str(tmp_path / "attachments"),
         "create_schema": True,
         "cookie_secure": False,
         "allow_registration": True,

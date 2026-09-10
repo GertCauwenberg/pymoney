@@ -21,13 +21,12 @@ from ..deps import CurrentUser, get_registry, get_settings_dep
 from ..registry import BookRegistry
 from ..schemas import BookOut, ImportOut, ImportProblemOut
 from ..settings import Settings
+from ..uploads import stream_to_file
 
 # Starlette renamed this status constant; 422 is the number either way.
 UNPROCESSABLE = 422
 
 router = APIRouter(tags=["books"])
-
-CHUNK = 1024 * 1024
 
 
 @router.post(
@@ -53,16 +52,9 @@ def import_kmymoney_file(
     limit = settings.max_upload_mb * 1024 * 1024
     with tempfile.TemporaryDirectory(prefix="pymoney-import-") as scratch:
         path = Path(scratch) / (Path(file.filename or "upload.kmy").name or "upload.kmy")
-        size = 0
-        with path.open("wb") as out:
-            while chunk := file.file.read(CHUNK):
-                size += len(chunk)
-                if size > limit:
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"the file is larger than {settings.max_upload_mb} MB",
-                    )
-                out.write(chunk)
+        # The same chunked, Content-Length-ignoring size guard the attachment
+        # endpoint uses; 413 the moment the stream passes the limit.
+        stream_to_file(file.file, path, limit)
 
         # The uploader owns the book from the moment it exists (the grant is
         # part of BookRegistry.create), so even if the cleanup below could not

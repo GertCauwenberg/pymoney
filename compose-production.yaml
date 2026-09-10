@@ -10,6 +10,12 @@ services:
       PYMONEY_COOKIE_SECURE: ${PYMONEY_COOKIE_SECURE:-true}
       PYMONEY_ALLOW_REGISTRATION: ${PYMONEY_ALLOW_REGISTRATION:-false}
       PYMONEY_CORS_ORIGINS: ${PYMONEY_CORS_ORIGINS:-[]}
+      # Receipt/invoice blobs: on the mounted volume, never the image. Include
+      # this path in your backups next to the database dump (see README).
+      PYMONEY_ATTACHMENTS_DIR: /var/lib/pymoney/attachments
+      PYMONEY_MAX_ATTACHMENT_MB: ${PYMONEY_MAX_ATTACHMENT_MB:-25}
+    volumes:
+      - ${PYMONEY_ATTACHMENTS_VOLUME:-pymoney-attachments}:/var/lib/pymoney/attachments
     command:
       - uvicorn 
       - pymoney.api:app
@@ -33,3 +39,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+volumes:
+  # Override with a bind mount (PYMONEY_ATTACHMENTS_VOLUME=/srv/pymoney/receipts)
+  # if you would rather the blobs sit in a directory you already back up.
+  pymoney-attachments:

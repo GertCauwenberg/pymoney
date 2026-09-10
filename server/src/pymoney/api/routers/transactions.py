@@ -24,11 +24,13 @@ from ...core import commands as cmd
 from ...core.commands import UNSET
 from ...core.posting import LegSpec
 from ...core.store import TransactionSearch
+from ..blobs import BlobStore
 from ..deps import (
     CurrentUser,
     IdempotencyKey,
     ReadableBook,
     WritableBook,
+    get_blobs,
     get_engine,
     role_on,
 )
@@ -310,9 +312,30 @@ def update_transaction(
     summary="Delete a transaction",
 )
 def delete_transaction(
-    transaction_id: UUID, book: WritableBook, key: IdempotencyKey
+    transaction_id: UUID,
+    book: WritableBook,
+    key: IdempotencyKey,
+    engine: Annotated[Engine, Depends(get_engine)],
+    blobs: Annotated[BlobStore, Depends(get_blobs)],
 ) -> None:
+    from ...store import attachments as attachment_store
+    from ...store import write_transaction
+
+    # The receipt *rows* cascade with the transaction (PostgreSQL, and SQLite
+    # with foreign_keys on); the *blobs* never do -- they are not in the
+    # database. Read the list while the rows still exist, delete the
+    # transaction, then clear the blobs (and any rows a cascade left behind).
+    with engine.connect() as conn:
+        attached = attachment_store.attachments_for_transaction(
+            conn, book.id, transaction_id
+        )
     book.execute(cmd.DeleteTransaction(transaction_id=transaction_id, command_id=key))
+    if attached:
+        with write_transaction(engine) as conn:
+            for row in attached:
+                attachment_store.delete_attachment(conn, book.id, row.id)
+        for row in attached:
+            blobs.delete(book.id, row.id)
 
 
 @router.post(

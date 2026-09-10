@@ -60,6 +60,7 @@ class InProcessTransport:
         headers: Mapping[str, str] = {},
         *,
         files: Mapping[str, tuple[str, bytes, str]] | None = None,
+        raw: bool = False,
     ):
         if not self.plugged:
             raise OfflineError("unplugged")
@@ -77,11 +78,13 @@ class InProcessTransport:
         if self.drop_ack_once and method != "GET":
             self.drop_ack_once = False
             raise OfflineError("connection reset after the request was sent")
-        raw = response.content
+        content = response.content
+        if raw:
+            return response.status_code, dict(response.headers), content
         return (
             response.status_code,
             dict(response.headers),
-            response.json() if raw else None,
+            response.json() if content else None,
         )
 
 
@@ -963,6 +966,41 @@ class TestReports:
             options=ReportOptions(as_of=date(2026, 2, 28)),
         )
         assert all(r.account_id != old for r in hidden.rows)
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+
+@pytest.mark.parametrize("kind", ["remote", "offline"])
+def test_attachments_round_trip_through_either_client(server, tmp_path, kind):
+    api, book_id, checking, food = server
+    client, transport = make_client(kind, api.http, tmp_path)
+    client.login(EMAIL, PASSWORD)
+    client.accounts(book_id)
+    tx = client.post_transaction(book_id, txn(checking, food)).id
+    if kind == "offline":
+        client.sync()
+
+    att = client.upload_attachment(
+        book_id, tx, filename="receipt.png", data=PNG, content_type="image/png"
+    )
+    assert att.filename == "receipt.png" and att.byte_size == len(PNG)
+
+    listed = client.attachments(book_id, tx)
+    assert [a.id for a in listed] == [att.id]
+
+    assert client.download_attachment(book_id, att.id) == PNG
+
+    client.delete_attachment(book_id, att.id)
+    assert client.attachments(book_id, tx) == []
+
+    # Attachments need the connection; offline they fail rather than queue.
+    if kind == "offline":
+        transport.plugged = False
+        with pytest.raises(OfflineError):
+            client.upload_attachment(
+                book_id, tx, filename="r.png", data=PNG, content_type="image/png"
+            )
 
 
 @pytest.mark.parametrize("kind", ["remote", "offline"])

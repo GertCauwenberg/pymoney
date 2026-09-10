@@ -33,6 +33,7 @@ from ..core.book import Book
 from ..quotes import QuoteService
 from ..store import identity, write_transaction
 from ..store.identity import normalize_subject
+from .blobs import BlobStore
 from .mail import Mailer
 from .registry import BookRegistry
 from .security import hash_token, idempotency_key_to_uuid
@@ -47,6 +48,7 @@ __all__ = [
     "WritableBook",
     "acting_as",
     "check_role",
+    "get_blobs",
     "get_engine",
     "get_mailer",
     "get_quotes",
@@ -70,6 +72,10 @@ def get_engine(request: Request) -> Engine:
 
 def get_registry(request: Request) -> BookRegistry:
     return request.app.state.registry
+
+
+def get_blobs(request: Request) -> BlobStore:
+    return request.app.state.blobs
 
 
 def get_settings_dep(request: Request) -> Settings:

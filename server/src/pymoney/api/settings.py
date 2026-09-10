@@ -88,6 +88,28 @@ class Settings(BaseSettings):
     max_upload_mb: int = Field(default=50, ge=1, le=2048)
     """Largest file `POST /books/import/kmymoney` accepts."""
 
+    attachments_dir: str = "attachments"
+    """Where receipt/invoice blobs are written. One file per attachment, under
+    a per-book subdirectory; the database keeps only the link. Relative paths
+    are resolved from the process's working directory. In Docker this must be a
+    mounted volume -- the image's filesystem is read-only and ephemeral."""
+    max_attachment_mb: int = Field(default=25, ge=1, le=512)
+    """Largest single receipt/invoice upload."""
+    attachment_content_types: list[str] = Field(
+        default_factory=lambda: [
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+            "image/heic",
+            "image/heif",
+            "image/tiff",
+            "application/pdf",
+        ]
+    )
+    """Content types accepted as attachments: common photo/scan formats and PDF.
+    The server stores the bytes as received and does no image processing."""
+
     quote_interval_minutes: int = Field(default=360, ge=0)
     """How often the scheduler fetches quotes for every book. 0 turns it off;
     `POST /books/{id}/quotes/fetch` and `python -m pymoney.quotes` still work."""
@@ -124,6 +146,14 @@ class Settings(BaseSettings):
             problems.append(
                 "PYMONEY_MAIL_BACKEND is console: activation and reset links go to the "
                 "server log, not to the user"
+            )
+        from pathlib import Path
+
+        resolved = Path(self.attachments_dir).resolve()
+        if resolved == Path("/tmp").resolve() or str(resolved).startswith("/tmp/"):
+            problems.append(
+                "PYMONEY_ATTACHMENTS_DIR is under /tmp: uploaded receipts will not "
+                "survive a restart; point it at a mounted volume"
             )
         return problems
 

@@ -50,6 +50,7 @@ export type Change = Schemas["ChangeOut"];
 export type LegIn = Schemas["LegIn"];
 export type Split = Schemas["SplitOut"];
 export type Payee = Schemas["PayeeOut"];
+export type Attachment = Schemas["AttachmentOut"];
 export type Price = Schemas["PriceOut"];
 export type PriceIn = Schemas["PriceIn"];
 export type PricePage = Schemas["PricePage"];

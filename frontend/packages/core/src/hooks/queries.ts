@@ -514,6 +514,34 @@ export function useCreateTag(bookId: string) {
   });
 }
 
+export function useAttachments(bookId: string, transactionId: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["books", bookId, "transactions", transactionId, "attachments"] as const,
+    queryFn: () => api.attachments(bookId, transactionId),
+  });
+}
+
+export function useUploadAttachment(bookId: string, transactionId: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: Blob) => api.uploadAttachment(bookId, transactionId, file),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: ["books", bookId, "transactions", transactionId, "attachments"] }),
+  });
+}
+
+export function useDeleteAttachment(bookId: string, transactionId: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (attachmentId: string) => api.deleteAttachment(bookId, attachmentId),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: ["books", bookId, "transactions", transactionId, "attachments"] }),
+  });
+}
+
 export function useCreateTransaction(bookId: string) {
   const api = useApi();
   const invalidate = useInvalidateBook(bookId);

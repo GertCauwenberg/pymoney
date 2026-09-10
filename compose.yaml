@@ -107,8 +107,16 @@ services:
       PYMONEY_SMTP_PORT: ${PYMONEY_SMTP_PORT:-587}
       PYMONEY_SMTP_USERNAME: ${PYMONEY_SMTP_USERNAME:-}
       PYMONEY_SMTP_PASSWORD: ${PYMONEY_SMTP_PASSWORD:-}
+      # Uploaded receipts and invoices. The bytes live here, not in the
+      # database, so this must be the mounted volume below (the image's own
+      # filesystem is read-only and ephemeral). Back it up alongside the
+      # database dump; see README "Backups".
+      PYMONEY_ATTACHMENTS_DIR: /var/lib/pymoney/attachments
+      PYMONEY_MAX_ATTACHMENT_MB: ${PYMONEY_MAX_ATTACHMENT_MB:-25}
     ports:
       - "127.0.0.1:${PYMONEY_API_PORT:-8000}:8000"
+    volumes:
+      - attachments:/var/lib/pymoney/attachments
     healthcheck:
       test:
         - CMD
@@ -122,6 +130,8 @@ services:
       timeout: 3s
       retries: 5
       start_period: 15s
+    # The image filesystem stays read-only; only the attachments volume and a
+    # tmpfs scratch are writable.
     read_only: true
     tmpfs:
       - /tmp
@@ -146,3 +156,7 @@ services:
 
 volumes:
   pgdata:
+  # Receipt/invoice blobs. A named volume, so `docker compose down` (without
+  # -v) and a container rebuild both keep it. It is *not* in the database
+  # dump -- back the two up together.
+  attachments:

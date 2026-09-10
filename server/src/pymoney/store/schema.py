@@ -359,6 +359,31 @@ command_results = Table(
     ),
 )
 
+# Receipts, invoices and scans pinned to a transaction. The bytes live on the
+# filesystem (one file per row, named by id); this table is only the link, plus
+# enough metadata to list and serve them. Not a ledger table and not synced:
+# attachments exist server-side only, a client downloads them on demand.
+attachments = Table(
+    "attachments",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("book_id", Uuid, ForeignKey("books.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "transaction_id",
+        Uuid,
+        ForeignKey("transactions.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("filename", NAME, nullable=False),
+    Column("content_type", String(128), nullable=False),
+    Column("byte_size", BigInteger, nullable=False),
+    Column("sha256", String(64), nullable=False),
+    Column("uploaded_by", NAME, nullable=False),
+    Column("uploaded_at", UTC, nullable=False),
+    Index("ix_attachments_transaction_id", "transaction_id"),
+    Index("ix_attachments_book_id", "book_id"),
+)
+
 # The column mapping that turns a bank's CSV into this account's transactions.
 # Not a ledger table and not synced: it is UI convenience -- which column is
 # the date, how the amount is written -- kept so next week's statement needs
@@ -389,4 +414,5 @@ ALL_TABLES = (
     changes,
     command_results,
     import_mappings,
+    attachments,
 )

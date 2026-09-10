@@ -31,11 +31,13 @@ def delete_book(conn: Connection, book_id: UUID) -> bool:
     if not book_exists(conn, book_id):
         return False
     for table in (
+        schema.attachments,
         schema.splits,
         schema.transactions,
         schema.prices,
         schema.schedules,
         schema.payees,
+        schema.tags,
         schema.accounts,
         schema.commodities,
         schema.changes,

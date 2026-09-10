@@ -227,6 +227,12 @@ class MainWindow(QMainWindow):
         bar.addWidget(self.search_button)
         self.search_window: QMainWindow | None = None
         self._select_after_load: UUID | None = None
+        self.attachments_button = QPushButton(_("Attachments…"))
+        self.attachments_button.setToolTip(
+            _("Receipts and invoices for the selected transaction (kept on the server)")
+        )
+        self.attachments_button.clicked.connect(self.open_attachments)
+        bar.addWidget(self.attachments_button)
         self.delete_button = QPushButton(_("Delete"))
         self.delete_button.clicked.connect(self.delete_transaction)
         bar.addWidget(self.delete_button)
@@ -695,6 +701,9 @@ class MainWindow(QMainWindow):
         )
         self.edit_button.setEnabled(writable and selected)
         self.delete_button.setEnabled(writable and selected)
+        # A viewer may look at and download attachments; only an editor adds
+        # or removes (the dialog enforces it, the server checks).
+        self.attachments_button.setEnabled(self.book is not None and selected)
         row = self._selected_row()
         frozen = row is not None and row.reconcile_state.value == "FROZEN"
         self.mark_button.setEnabled(writable and selected and not frozen)
@@ -816,6 +825,22 @@ class MainWindow(QMainWindow):
         self.executor.run(
             work, lambda _result: self._reload_book(), self._failed(_("Could not save"))
         )
+
+    def open_attachments(self) -> QDialog | None:
+        row = self._selected_row()
+        if row is None or self.book is None:
+            return None
+        from .attachments_dialog import AttachmentsDialog
+
+        dialog = AttachmentsDialog(
+            self.client,
+            self.book.id,
+            row.transaction_id,
+            can_write=self._can_write(),
+            parent=self,
+        )
+        self.run_dialog(dialog)
+        return dialog
 
     def delete_transaction(self) -> None:
         row = self._selected_row()

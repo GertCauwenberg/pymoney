@@ -23,7 +23,14 @@ from typing import Any, Protocol
 
 from .client import ApiError, OfflineError
 
-__all__ = ["FilePart", "Response", "Transport", "UrllibTransport", "raise_for_problem"]
+__all__ = [
+    "FilePart",
+    "Response",
+    "Transport",
+    "UrllibTransport",
+    "download",
+    "raise_for_problem",
+]
 
 Response = tuple[int, Mapping[str, str], Any]
 FilePart = tuple[str, bytes, str]
@@ -44,6 +51,7 @@ class Transport(Protocol):
         headers: Mapping[str, str] = {},
         *,
         files: Mapping[str, FilePart] | None = None,
+        raw: bool = False,
     ) -> Response: ...
 
 
@@ -69,6 +77,28 @@ def raise_for_problem(status: int, body: Any) -> None:
                 else str(detail)
             )
     raise ApiError(status, type_, message)
+
+
+def download(transport: Transport, path: str) -> bytes:
+    """GET ``path`` and return the raw body, raising on a non-2xx answer.
+
+    For binary responses -- attachment blobs -- where ``raise_for_problem``'s
+    JSON assumptions do not hold; an error body is small enough to decode here.
+    """
+    status, _headers, content = transport("GET", path, raw=True)
+    if not (200 <= status < 300):
+        import json as _json
+
+        parsed = None
+        if isinstance(content, bytes | bytearray):
+            try:
+                parsed = _json.loads(content)
+            except ValueError:
+                parsed = None
+        raise_for_problem(status, parsed)
+    if isinstance(content, bytes):
+        return content
+    return bytes(content or b"")
 
 
 def encode_multipart(
@@ -108,8 +138,9 @@ class UrllibTransport:
         headers: Mapping[str, str] = {},
         *,
         files: Mapping[str, FilePart] | None = None,
+        raw: bool = False,
     ) -> Response:
-        sent = {"Accept": "application/json", **headers}
+        sent = {"Accept": "*/*" if raw else "application/json", **headers}
         if files is not None:
             data, content_type = encode_multipart(dict(body or {}), files)
             sent["Content-Type"] = content_type
@@ -125,16 +156,18 @@ class UrllibTransport:
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                raw = response.read()
+                content = response.read()
+                if raw:
+                    return response.status, dict(response.headers), content
                 return (
                     response.status,
                     dict(response.headers),
-                    json.loads(raw) if raw else None,
+                    json.loads(content) if content else None,
                 )
         except urllib.error.HTTPError as exc:
-            raw = exc.read()
+            content = exc.read()
             try:
-                parsed = json.loads(raw) if raw else None
+                parsed = json.loads(content) if content else None
             except json.JSONDecodeError:
                 parsed = None
             return exc.code, dict(exc.headers), parsed

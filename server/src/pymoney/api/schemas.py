@@ -797,6 +797,33 @@ class SplitOut(Out):
         )
 
 
+class AttachmentOut(Out):
+    """A receipt/invoice/scan pinned to a transaction. The bytes are fetched
+    separately from ``GET /books/{id}/attachments/{attachment_id}``."""
+
+    id: UUID
+    transaction_id: UUID
+    filename: str
+    content_type: str
+    byte_size: int
+    sha256: str
+    uploaded_by: str
+    uploaded_at: datetime
+
+    @classmethod
+    def of(cls, row: Any) -> AttachmentOut:
+        return cls(
+            id=row.id,
+            transaction_id=row.transaction_id,
+            filename=row.filename,
+            content_type=row.content_type,
+            byte_size=row.byte_size,
+            sha256=row.sha256,
+            uploaded_by=row.uploaded_by,
+            uploaded_at=row.uploaded_at,
+        )
+
+
 class TransactionOut(Out):
     id: UUID
     date: PostDate

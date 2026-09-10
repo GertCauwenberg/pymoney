@@ -26,6 +26,7 @@ from .. import __version__
 from ..core.clock import Clock
 from ..quotes import ProviderRegistry, QuoteScheduler, QuoteService
 from ..store import create_engine, create_schema
+from .blobs import BlobStore
 from .errors import install_error_handlers
 from .mail import Mailer, mailer_from_settings
 from .maintenance import MaintenanceScheduler
@@ -33,6 +34,7 @@ from .ratelimit import AuthThrottle
 from .registry import BookRegistry
 from .routers import (
     accounts,
+    attachments,
     auth,
     books,
     commodities,
@@ -105,6 +107,10 @@ TAGS = [
             "Free-form labels on a transaction's legs. Used for slicing a "
             "report by anything that is not a payee or a category."
         ),
+    },
+    {
+        "name": "attachments",
+        "description": "Receipts and invoices pinned to a transaction (server-side blobs).",
     },
     {
         "name": "transactions",
@@ -292,6 +298,7 @@ def create_app(
     app.state.settings = settings
     app.state.engine = engine
     app.state.registry = registry
+    app.state.blobs = BlobStore(settings.attachments_dir)
     app.state.quotes = quotes_service
     app.state.quote_scheduler = None
     app.state.mailer = mailer
@@ -322,6 +329,7 @@ def create_app(
     app.include_router(payees.router)
     app.include_router(tags.router)
     app.include_router(transactions.router)
+    app.include_router(attachments.router)
     app.include_router(prices.router)
     app.include_router(reports.router)
     app.include_router(schedules.router)
