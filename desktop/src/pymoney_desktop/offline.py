@@ -84,6 +84,7 @@ from pymoney.api.schemas import (
     SetSplitStateIn,
     SkipOccurrenceIn,
     StatementImportOut,
+    StockSplitIn,
     SyncPageOut,
     TagIn,
     TagOut,
@@ -658,6 +659,18 @@ class OfflineClient(LedgerClient):
                 book,
                 cmd.DeleteTransaction(transaction_id=UUID(op.path.rsplit("/", 1)[1])),
             )
+        if op.name == "record_stock_split":
+            split = StockSplitIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.RecordStockSplit(
+                    account_id=UUID(op.path.split("/")[-2]),
+                    date=split.date,
+                    ratio=to_fraction(split.ratio),
+                    memo=split.memo,
+                    transaction_id=split.id,
+                ),
+            )
         if op.name == "set_split_state":
             parts = op.path.split("/")
             mark = SetSplitStateIn.model_validate(body)
@@ -836,6 +849,22 @@ class OfflineClient(LedgerClient):
                 f"delete transaction {transaction_id}",
             ),
         )
+
+    def record_stock_split(
+        self, book_id: UUID, account_id: UUID, body: StockSplitIn
+    ) -> TransactionOut:
+        body = body.model_copy(update={"id": body.id or new_id()})
+        entity = self._write(
+            book_id,
+            _Op(
+                "record_stock_split",
+                "POST",
+                f"/books/{book_id}/accounts/{account_id}/stock-split",
+                body.model_dump(mode="json"),
+                f"{body.ratio} stock split on {account_id}",
+            ),
+        )
+        return TransactionOut.of(entity)
 
     def set_split_state(
         self,

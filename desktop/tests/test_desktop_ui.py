@@ -179,6 +179,75 @@ class TestMainWindow:
             == []
         )
 
+    def test_recording_a_stock_split_from_the_register(self, window):
+        from pymoney_desktop.ui.stock_split_dialog import StockSplitDialog
+
+        win, api, book_id, _visa, _food, _transport = window
+        api.login(EMAIL)
+        acme = api.post(
+            f"/books/{book_id}/commodities",
+            json={"code": "ACME", "kind": "STOCK", "scale": 4},
+        ).json()
+        shares = api.account("ACME", "STOCK", commodity_id=acme["id"])
+        cash = api.account("Brokerage Cash", "CASH")
+        api.post_transaction(
+            "2026-01-05",
+            [
+                {"account_id": shares["id"], "quantity": "10", "price": "50.00"},
+                {"account_id": cash["id"], "value": "-500.00"},
+            ],
+        )
+        api.logout()
+        win.sync()  # the replica learns about the new security and account
+        win._reload_book()
+
+        # The split button is offered on a holding, not on a plain EUR account.
+        select_account(win, "Visa")
+        assert not win.split_button.isEnabled()
+        select_account(win, "ACME")
+        assert win.split_button.isEnabled()
+
+        from PySide6.QtCore import QDate
+
+        def fill(dialog: StockSplitDialog) -> int:
+            assert isinstance(dialog, StockSplitDialog)
+            dialog.date.setDate(QDate(2026, 3, 1))
+            dialog.ratio.setText("3/2")
+            dialog.memo.setText("3-for-2")
+            dialog._accept()
+            return dialog.result()
+
+        win.run_dialog = fill  # type: ignore[method-assign]
+        win.record_stock_split()
+        win.sync()
+
+        api.login(EMAIL)
+        register = api.get(f"/books/{book_id}/accounts/{shares['id']}/register").json()[
+            "items"
+        ]
+        split_row = next(
+            r
+            for r in register
+            if api.get(f"/books/{book_id}/transactions/{r['transaction_id']}").json()[
+                "is_stock_split"
+            ]
+        )
+        assert split_row["quantity"]["minor"] == 50000  # +5 shares: 10 -> 15
+
+        # The split shows on the register; the transaction window refuses to
+        # edit it and explains why.
+        win._reload_book()
+        win.register.selectRow(
+            next(
+                i
+                for i, r in enumerate(win.rows)
+                if str(r.transaction_id) == split_row["transaction_id"]
+            )
+        )
+        win._enable_actions()
+        win.edit_transaction()
+        assert any("not edited" in text for _title, text in win.boxes)
+
     def test_post_edit_and_delete_through_the_dialog(self, window):
         win, api, book_id, visa, food, _transport = window
         select_account(win, "Visa")
@@ -557,6 +626,7 @@ def test_dialog_fixes_the_currency_while_editing(qtbot):
         imported_id=None,
         reconcile_state="NOT_RECONCILED",
         locked=False,
+        is_stock_split=False,
         revision=1,
         splits=[
             {
@@ -643,6 +713,7 @@ def test_dialog_shows_the_tags_a_stored_leg_already_wears(qtbot):
         memo="",
         payee_id=None,
         number="",
+        is_stock_split=False,
         rounding="HALF_EVEN",
         entered_at=None,
         imported_id=None,

@@ -65,6 +65,7 @@ HANDLERS: dict[type[cmd.Command], Callable[..., Any]] = {
     # transactions
     cmd.PostTransaction: transactions.post_transaction,
     cmd.UpdateTransaction: transactions.update_transaction,
+    cmd.RecordStockSplit: transactions.record_stock_split,
     cmd.DeleteTransaction: transactions.delete_transaction,
     cmd.SetSplitReconcileState: transactions.set_split_reconcile_state,
     cmd.ReconcileAccount: transactions.reconcile_account,

@@ -15,6 +15,7 @@ from uuid import UUID
 
 from .. import commands as cmd
 from ..account import Account
+from ..amount import Amount
 from ..changelog import EntityKind
 from ..commodity import Commodity
 from ..errors import ConflictError, NoPriceError, NotFoundError, ValidationError
@@ -240,6 +241,102 @@ def update_transaction(book: Book, command: cmd.UpdateTransaction) -> Transactio
     if updated == current:
         return current
     return book.put(EntityKind.TRANSACTION, updated)
+
+
+def _split_adjusted_prices(
+    book: Book, commodity: Commodity, ratio: Fraction, on: date
+) -> list[Price]:
+    """A :attr:`~pymoney.core.price.PriceSource.SPLIT` price for every quote
+    currency that already has a rate for ``commodity`` on or before ``on``.
+
+    After a N-for-1 split a share is worth 1/N of what it was, so valuation
+    would otherwise read the holding as N times richer the day the extra
+    shares arrive.  A quote fetched *after* the split is already post-split
+    and needs no help; one that only exists *before* it does.
+    """
+    quote_ids: dict[UUID, Commodity] = {}
+    for price in book.prices.all():
+        if price.base.id == commodity.id:
+            quote_ids.setdefault(price.quote.id, price.quote)
+        elif price.quote.id == commodity.id:
+            quote_ids.setdefault(price.base.id, price.base)
+    policy = book.default_policy(as_of=on)
+    out: list[Price] = []
+    now = book.clock.now()
+    for quote in quote_ids.values():
+        direct = book.prices.direct(commodity, quote, policy)
+        if direct is None:
+            continue
+        already = any(
+            p.effective_date == on and p.source == PriceSource.SPLIT
+            for p in book.prices.history(commodity, quote, include_inverse=False)
+        )
+        if already:
+            continue
+        out.append(
+            Price.of(
+                commodity,
+                quote,
+                direct.rate / ratio,
+                effective_date=on,
+                as_of=now,
+                source=PriceSource.SPLIT,
+                id=new_id(),
+                book_id=book.id,
+            )
+        )
+    return out
+
+
+def record_stock_split(book: Book, command: cmd.RecordStockSplit) -> Transaction:
+    account = account_for_posting(book, command.account_id)
+    commodity = account.commodity
+    ratio = Fraction(command.ratio)
+    if ratio <= 0:
+        raise ValidationError(f"a split ratio must be positive, got {ratio}")
+    if ratio == 1:
+        raise ValidationError("a 1-for-1 split would change nothing")
+
+    held = book.balance(account.id, as_of=command.date)
+    if held.minor == 0:
+        raise ValidationError(
+            f"{book.path(account)!r} holds no {commodity.code} on {command.date}: "
+            f"nothing to split"
+        )
+    # Book the *new* quantity exactly, then the change is the delta against the
+    # current minor-unit count -- so 10 shares at 3:2 become 15, not 14.999.
+    new_minor = round(held.minor * ratio)
+    delta_minor = new_minor - held.minor
+    if delta_minor == 0:
+        raise ValidationError(
+            f"a {ratio} split of {held} rounds to no change in "
+            f"{commodity.code}; record a transfer instead"
+        )
+
+    transaction = Transaction(
+        id=command.transaction_id or new_id(),
+        book_id=book.id,
+        date=command.date,
+        currency=book.base_currency,
+        splits=(
+            Split(
+                account_id=account.id,
+                quantity=Amount(commodity, delta_minor),
+                value=Amount(book.base_currency, 0),
+                action="SPLIT",
+                memo=command.memo,
+            ),
+        ),
+        memo=command.memo or f"{ratio} stock split",
+        entered_at=book.clock.now(),
+    )
+    transaction.validate()
+    if book.store.exists(EntityKind.TRANSACTION, transaction.id):
+        raise ConflictError(f"transaction {transaction.id} already exists")
+    stored = book.put(EntityKind.TRANSACTION, transaction, created=True)
+    for price in _split_adjusted_prices(book, commodity, ratio, command.date):
+        book.put(EntityKind.PRICE, price, created=True)
+    return stored
 
 
 def delete_transaction(book: Book, command: cmd.DeleteTransaction) -> Transaction:

@@ -51,6 +51,7 @@ import type {
   PayeePatch,
   ReconcileIn,
   SetSplitStateIn,
+  StockSplitIn,
   PayeesQuery,
   Pending,
   PeriodTable,
@@ -724,6 +725,15 @@ export class ApiClient {
 
   deleteTransaction(bookId: string, transactionId: string): Promise<void> {
     return this.delete(`/books/${bookId}/transactions/${transactionId}`);
+  }
+
+  /**
+   * Record a share split: the holding's quantity scales by `ratio`
+   * (new-for-old). One leg, no value; a matching price is recorded where one
+   * is already on file.
+   */
+  recordStockSplit(bookId: string, accountId: string, body: StockSplitIn): Promise<Transaction> {
+    return this.post<Transaction>(`/books/${bookId}/accounts/${accountId}/stock-split`, body);
   }
 
   /**

@@ -159,6 +159,7 @@ describe("TransactionPage", () => {
     payee_id: "p1",
     reconcile_state: "CLEARED",
     locked: false,
+    is_stock_split: false,
     revision: 7,
     rounding: "HALF_EVEN",
     entered_at: null,

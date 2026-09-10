@@ -56,6 +56,7 @@ __all__ = [
     "PostScheduledOccurrence",
     "PostTransaction",
     "ReconcileAccount",
+    "RecordStockSplit",
     "RenameAccount",
     "SetAccountClosed",
     "SetSplitReconcileState",
@@ -493,6 +494,25 @@ class UpdateTransaction(Command):
     currency_id: Maybe[UUID] = UNSET
     rounding: Maybe[RoundingMode] = UNSET
     imbalance_account_id: UUID | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RecordStockSplit(Command):
+    """Record a share split: the holding's quantity scales by ``ratio``.
+
+    ``ratio`` is new-for-old: ``2`` for a two-for-one split, ``Fraction(1, 3)``
+    for a one-for-three reverse split.  It posts a single-leg transaction
+    carrying only the change in quantity (no value -- a split costs nothing),
+    and, where a price is already on file, a matching
+    :attr:`~pymoney.core.price.PriceSource.SPLIT` price so reports do not
+    double the holding's worth overnight.
+    """
+
+    account_id: UUID
+    date: date
+    ratio: Fraction | str | int
+    memo: str = ""
+    transaction_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

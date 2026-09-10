@@ -992,6 +992,20 @@ class Book:
             )
         ).entity
 
+    def record_stock_split(
+        self,
+        account: Account | UUID,
+        on: date,
+        ratio: Any,
+        **kwargs: Any,
+    ) -> Transaction:
+        """Scale a holding's quantity by ``ratio`` (new-for-old)."""
+        return self.execute(
+            cmd.RecordStockSplit(
+                account_id=_require_id(account), date=on, ratio=ratio, **kwargs
+            )
+        ).entity
+
     def add_price(
         self,
         base: Commodity | UUID,

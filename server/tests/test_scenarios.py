@@ -281,8 +281,9 @@ class TestInvestment:
         assert position.conversion.hops == 2
         assert "AAPL -> USD -> EUR" in position.conversion.describe()
 
-    def test_a_stock_split_is_just_a_price_and_a_quantity(self, chart: Chart, brokerage):
-        """Decision #2 pays off: a 4:1 split needs no special entity."""
+    def test_a_stock_split_is_one_single_leg_transaction(self, chart: Chart, brokerage):
+        """A 4-for-1 split: the shares multiply, the cost basis does not, and
+        the price on file is adjusted so valuation does not quadruple."""
         book = chart.book
         book.post(
             date(2026, 1, 5),
@@ -292,18 +293,24 @@ class TestInvestment:
             ],
             currency=chart.usd,
         )
-        # 36 extra shares arrive, carrying no value.
-        book.post(
-            date(2026, 3, 1),
-            [
-                LegSpec.of(chart.aapl_account.id, "0", quantity="36"),
-                LegSpec.of(chart.brokerage.id, "0"),
-            ],
-            currency=chart.usd,
-            memo="4:1 split",
+        book.add_price(chart.aapl, chart.usd, "200.00", effective_date=date(2026, 2, 1))
+
+        split = book.record_stock_split(
+            chart.aapl_account.id, date(2026, 3, 1), 4, memo="4-for-1"
         )
-        assert book.balance(chart.aapl_account.id).minor == 480000
-        assert book.value_balance(chart.aapl_account.id).minor == 120000
+        assert split.is_stock_split
+        (leg,) = split.splits
+        assert leg.action == "SPLIT"
+        assert leg.quantity.minor == 360000 and leg.value.minor == 0
+
+        assert book.balance(chart.aapl_account.id).minor == 480000  # 12 -> 48 shares
+        assert book.value_balance(chart.aapl_account.id).minor == 120000  # basis held
+        (latest,) = [
+            p
+            for p in book.prices.history(chart.aapl, chart.usd)
+            if p.effective_date == date(2026, 3, 1)
+        ]
+        assert latest.rate == Fraction(50) and latest.source == "split"
 
 
 class TestReconciliation:

@@ -21,7 +21,7 @@ const split = (id: string, account_id: string, minor: number) => ({
 });
 const tx = {
   id: "t1", date: "2026-01-05", currency_id: "eur", currency: "EUR", memo: "Supermarket", payee_id: "p1", number: "", rounding: "HALF_EVEN",
-  entered_at: null, imported_id: null, reconcile_state: "CLEARED", locked: false, revision: 3,
+  entered_at: null, imported_id: null, reconcile_state: "CLEARED", locked: false, is_stock_split: false, revision: 3,
   splits: [split("s1", "chk", -8420), split("s2", "food", 8420)],
 };
 

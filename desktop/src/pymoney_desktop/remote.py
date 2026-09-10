@@ -49,6 +49,7 @@ from pymoney.api.schemas import (
     SessionOut,
     SkipOccurrenceIn,
     StatementImportOut,
+    StockSplitIn,
     TagIn,
     TagOut,
     TransactionIn,
@@ -416,6 +417,18 @@ class RemoteClient(LedgerClient):
             "DELETE", f"/books/{book_id}/transactions/{transaction_id}", book_id=book_id
         )
         self._written(book_id)
+
+    def record_stock_split(
+        self, book_id: UUID, account_id: UUID, body: StockSplitIn
+    ) -> TransactionOut:
+        payload = self._call(
+            "POST",
+            f"/books/{book_id}/accounts/{account_id}/stock-split",
+            body.model_dump(mode="json"),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return TransactionOut.model_validate(payload)
 
     def set_split_state(
         self,

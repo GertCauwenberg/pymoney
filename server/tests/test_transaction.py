@@ -153,11 +153,32 @@ class TestTransactionValidation:
         with pytest.raises(TypeError, match="splits"):
             Transaction(date=D, currency=eur)
 
-    def test_requires_at_least_two_splits(self, eur, acc_a):
-        with pytest.raises(ValidationError, match="at least 2 splits"):
-            txn(eur, [split(acc_a, eur, 0)]).validate()
-        with pytest.raises(ValidationError, match="at least 2 splits"):
+    def test_requires_at_least_one_split(self, eur):
+        with pytest.raises(ValidationError, match="at least one split"):
             txn(eur, []).validate()
+
+    def test_a_single_split_is_only_valid_as_a_stock_split(self, eur, aapl, acc_a):
+        # One leg, no value, no quantity change: it does nothing.
+        with pytest.raises(ValidationError, match="stock split"):
+            txn(eur, [split(acc_a, eur, 0)]).validate()
+        # One leg that is not free cannot balance on its own.
+        with pytest.raises(ValidationError, match="stock split"):
+            txn(
+                eur, [split(acc_a, aapl, 30000, currency=eur, value_minor=100)]
+            ).validate()
+        # One leg, a quantity change, no value: a share split. This is allowed.
+        txn(
+            eur,
+            [split(acc_a, aapl, 30000, currency=eur, value_minor=0, action="SPLIT")],
+        ).validate()
+
+    def test_is_stock_split(self, eur, aapl, acc_a, acc_b):
+        assert txn(
+            eur, [split(acc_a, aapl, 30000, currency=eur, value_minor=0)]
+        ).is_stock_split
+        assert not txn(
+            eur, [split(acc_a, eur, -100), split(acc_b, eur, 100)]
+        ).is_stock_split
 
     def test_values_must_sum_to_zero(self, eur, acc_a, acc_b):
         t = txn(eur, [split(acc_a, eur, -5000), split(acc_b, eur, 4999)])

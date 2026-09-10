@@ -1004,6 +1004,63 @@ def test_attachments_round_trip_through_either_client(server, tmp_path, kind):
 
 
 @pytest.mark.parametrize("kind", ["remote", "offline"])
+def test_a_stock_split_through_either_client(server, tmp_path, kind):
+    from pymoney.api.schemas import StockSplitIn
+
+    api, book_id, checking, _food = server
+    api.login(EMAIL)
+    acme = api.post(
+        f"/books/{book_id}/commodities",
+        json={"code": "ACME", "kind": "STOCK", "scale": 4},
+    ).json()
+    shares = api.account("ACME", "STOCK", commodity_id=acme["id"])["id"]
+    api.post_transaction(
+        "2026-01-10",
+        [
+            {"account_id": shares, "quantity": "10", "price": "100.00"},
+            {"account_id": str(checking), "value": "-1000.00"},
+        ],
+    )
+    api.logout()
+
+    client, _ = make_client(kind, api.http, tmp_path)
+    client.login(EMAIL, PASSWORD)
+    client.accounts(book_id)
+    split = client.record_stock_split(
+        book_id,
+        UUID(shares),
+        StockSplitIn(date=date(2026, 2, 1), ratio="2", memo="2-for-1"),
+    )
+    assert split.is_stock_split and len(split.splits) == 1
+    assert split.splits[0].quantity.minor == 100000  # +10 shares: 10 -> 20
+    assert split.splits[0].action == "SPLIT"
+    if kind == "offline":
+        client.sync()
+    assert client.balance(book_id, UUID(shares)).balance.minor == 200000
+    # The server has the transaction, with the same id the client chose --
+    # even when it was recorded offline and only replayed on reconnect.
+    api.login(EMAIL)
+    register = api.get(f"/books/{book_id}/accounts/{shares}/register").json()["items"]
+    assert str(split.id) in {r["transaction_id"] for r in register}
+
+
+def test_a_bad_stock_split_is_the_servers_call(server, tmp_path):
+    from pymoney.api.schemas import StockSplitIn
+
+    from pymoney_desktop import RemoteClient
+
+    api, book_id, _checking, food = server
+    client, _ = make_client("remote", api.http, tmp_path)
+    assert isinstance(client, RemoteClient)
+    client.login(EMAIL, PASSWORD)
+    with pytest.raises(ApiError) as caught:
+        client.record_stock_split(
+            book_id, food, StockSplitIn(date=date(2026, 2, 1), ratio="2")
+        )
+    assert caught.value.status == 422
+
+
+@pytest.mark.parametrize("kind", ["remote", "offline"])
 def test_search_finds_the_same_through_either_client(server, tmp_path, kind):
     from pymoney_desktop import SearchCriteria
 

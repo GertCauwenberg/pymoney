@@ -31,6 +31,7 @@ import type {
   RegisterIn,
   RegisterQuery,
   SetSplitStateIn,
+  StockSplitIn,
   TagIn,
   TagPatch,
   TagsQuery,
@@ -567,6 +568,15 @@ export function useDeleteTransaction(bookId: string) {
   const invalidate = useInvalidateBook(bookId);
   return useMutation({
     mutationFn: (transactionId: string) => api.deleteTransaction(bookId, transactionId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRecordStockSplit(bookId: string, accountId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: (body: StockSplitIn) => api.recordStockSplit(bookId, accountId, body),
     onSuccess: invalidate,
   });
 }

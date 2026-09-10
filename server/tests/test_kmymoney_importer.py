@@ -1414,6 +1414,52 @@ class TestFieldTestRegressions:
         assert euro_split.price is None
         assert float(euro_split.implied_price) > 300  # ~373 HUF per EUR
 
+    def test_a_stock_split_is_imported_as_a_single_leg_transaction(
+        self, store_backend, clock, tmp_path
+    ):
+        """KMyMoney writes a share split as one SPLIT with no value and a
+        non-zero ``shares``. It used to be dropped as "only one split"; now
+        it lands as the quantity change it is."""
+        path = write(
+            tmp_path / "split.xml",
+            body=(
+                '<SECURITIES count="1">'
+                '<SECURITY id="E1" name="Acme" symbol="ACME" saf="10000" type="0"/>'
+                "</SECURITIES>"
+                '<ACCOUNTS count="2">'
+                '<ACCOUNT id="A1" name="Cash" type="3" currency="EUR"'
+                ' parentaccount="AStd::Asset"/>'
+                '<ACCOUNT id="A2" name="Acme" type="15" currency="E1"'
+                ' parentaccount="AStd::Asset"/>'
+                "</ACCOUNTS>"
+                '<TRANSACTIONS count="2">'
+                # Buy 10 shares.
+                '<TRANSACTION id="T1" postdate="2022-01-01" commodity="EUR"><SPLITS>'
+                '<SPLIT account="A2" shares="100000/10000" value="1000/1"'
+                ' price="100/1" action="Buy"/>'
+                '<SPLIT account="A1" shares="-1000/1" value="-1000/1" price="1/1"/>'
+                "</SPLITS></TRANSACTION>"
+                # 2-for-1 split: ten more shares arrive, carrying no value.
+                '<TRANSACTION id="T2" postdate="2022-11-12" commodity="EUR"><SPLITS>'
+                '<SPLIT account="A2" shares="100000/10000" value="0/1" price="1/1"'
+                ' action="Split"/>'
+                "</SPLITS></TRANSACTION>"
+                "</TRANSACTIONS>"
+            ),
+        )
+        book = store_backend.open(clock=clock)
+        report = import_kmymoney(path, book)
+        assert report.imported["transactions"] == 2
+        assert not any("only one split" in p.message for p in report.warnings)
+
+        acme = account(book, "Assets:Acme")
+        assert book.balance(acme.id).minor == 200000  # 10 -> 20 shares
+        split_tx = next(t for t in book.transactions() if t.date == date(2022, 11, 12))
+        assert split_tx.is_stock_split
+        (leg,) = split_tx.splits
+        assert leg.quantity.minor == 100000 and leg.value.minor == 0
+        assert leg.action == "SPLIT"
+
     def test_prices_that_do_agree_are_still_kept(self, store_backend, clock, tmp_path):
         """Regression guard: the fix must not throw away a legitimate price.
 

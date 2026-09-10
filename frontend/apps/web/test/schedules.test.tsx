@@ -111,7 +111,7 @@ describe("DuePanel", () => {
     const { fetch } = server({
       "POST /books/b1/schedules/s1/post": () => {
         posted.push("s1");
-        return { status: 201, body: { id: "t1", date: "2026-01-01", currency_id: "eur", currency: "EUR", memo: "Monthly rent", payee_id: null, number: "", rounding: "HALF_EVEN", splits: [], entered_at: null, imported_id: "sched:s1:2026-01-01", reconcile_state: "NOT_RECONCILED", locked: false, revision: 5 } };
+        return { status: 201, body: { id: "t1", date: "2026-01-01", currency_id: "eur", currency: "EUR", memo: "Monthly rent", payee_id: null, number: "", rounding: "HALF_EVEN", splits: [], entered_at: null, imported_id: "sched:s1:2026-01-01", reconcile_state: "NOT_RECONCILED", locked: false, is_stock_split: false, revision: 5 } };
       },
       "POST /books/b1/schedules/s1/skip": () => {
         skipped.push("s1");

@@ -1,7 +1,15 @@
 import { useT } from "@pymoney/core/hooks";
 import { formatAmount, naturalSign, parseDecimal } from "@pymoney/core";
 import type { Account, Amount, ReconcileState, RegisterRow } from "@pymoney/core";
-import { useAccount, useAccounts, useCommodities, useLedger, usePayees, useReconcileAccount } from "@pymoney/core/hooks";
+import {
+  useAccount,
+  useAccounts,
+  useCommodities,
+  useLedger,
+  usePayees,
+  useReconcileAccount,
+  useRecordStockSplit,
+} from "@pymoney/core/hooks";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -32,6 +40,7 @@ export function AccountRegisterPage() {
   const { accountId = "" } = useParams();
   const [params, update] = useReportParams(DEFAULTS);
   const [adding, setAdding] = useState(false);
+  const [splitting, setSplitting] = useState(false);
   const [reconciling, setReconciling] = useState(false);
   const [statementDate, setStatementDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [targetState, setTargetState] = useState<ReconcileState>("RECONCILED");
@@ -45,6 +54,9 @@ export function AccountRegisterPage() {
   const currency = commodities.data?.find((c) => c.id === baseCurrencyId);
   const canWrite = role !== null && CAN_WRITE.has(role);
   const canPost = canWrite && account.data !== undefined && !account.data.closed && !account.data.placeholder;
+  // A stock split changes a *holding* -- shares, or a foreign currency --
+  // never an account kept in the book's own currency.
+  const isHolding = account.data !== undefined && account.data.commodity_id !== baseCurrencyId;
   const query = useMemo(
     () => ({
       ...(params.start ? { start: params.start } : {}),
@@ -158,6 +170,11 @@ export function AccountRegisterPage() {
               {t("Import CSV")}
             </Link>
           )}
+          {canPost && isHolding && !splitting && (
+            <button type="button" className="btn" onClick={() => setSplitting(true)}>
+              {t("Stock split…")}
+            </button>
+          )}
           {canWrite && !reconciling && account.data && !account.data.placeholder && (
             <button type="button" className="btn" onClick={startReconciling}>
               {t("Reconcile")}
@@ -182,6 +199,15 @@ export function AccountRegisterPage() {
           defaultAccountId={accountId}
           onSaved={() => setAdding(false)}
           onCancel={() => setAdding(false)}
+        />
+      )}
+
+      {splitting && account.data && (
+        <StockSplitForm
+          bookId={bookId}
+          accountId={accountId}
+          commodity={account.data.commodity}
+          onDone={() => setSplitting(false)}
         />
       )}
 
@@ -484,4 +510,99 @@ function registerCsv(
     ].join(","),
   );
   return [header, ...lines].join("\r\n") + "\r\n";
+}
+
+/** Parse "2", "1/3" or "2.5" into a positive ratio that is not one, or null. */
+function parseRatio(text: string): { num: number; den: number } | null {
+  const trimmed = text.trim();
+  const ratio = /^(\d+)\s*\/\s*(\d+)$/.exec(trimmed);
+  let num: number;
+  let den: number;
+  if (ratio) {
+    num = Number(ratio[1]);
+    den = Number(ratio[2]);
+  } else if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    const decimals = trimmed.includes(".") ? trimmed.split(".")[1]!.length : 0;
+    den = 10 ** decimals;
+    num = Math.round(Number(trimmed) * den);
+  } else {
+    return null;
+  }
+  if (!Number.isFinite(num) || !Number.isFinite(den) || num <= 0 || den <= 0 || num === den) return null;
+  return { num, den };
+}
+
+/**
+ * Record a share split: a date, a ratio (new-for-old, "2" or "1/3"), an
+ * optional note. The server books the change in share count and, where it
+ * has one on file, a split-adjusted price -- there is no arithmetic here.
+ */
+function StockSplitForm({
+  bookId,
+  accountId,
+  commodity,
+  onDone,
+}: {
+  bookId: string;
+  accountId: string;
+  commodity: string;
+  onDone: () => void;
+}) {
+  const t = useT();
+  const record = useRecordStockSplit(bookId, accountId);
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [ratio, setRatio] = useState("");
+  const [memo, setMemo] = useState("");
+  const [touched, setTouched] = useState(false);
+  const parsed = parseRatio(ratio);
+
+  const submit = async () => {
+    setTouched(true);
+    if (!parsed || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    try {
+      await record.mutateAsync({ date, ratio: `${parsed.num}/${parsed.den}`, memo: memo.trim() });
+      onDone();
+    } catch {
+      // Shown below.
+    }
+  };
+
+  return (
+    <form className="card" aria-label={t("Stock split")} onSubmit={(e) => (e.preventDefault(), void submit())}>
+      <h2>{t("Stock split")}</h2>
+      <p className="muted">{t("{commodity} share count scales by the ratio; the cost basis does not.", { commodity })}</p>
+      {record.error && <ErrorBanner error={record.error} title={t("Could not record the split")} />}
+      <div className="field-row">
+        <Field label={t("Date")}>
+          <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label={t("Ratio")} hint={t('new-for-old, e.g. "2" or "1/3"')}>
+          <input
+            type="text"
+            inputMode="decimal"
+            aria-label={t("Ratio")}
+            value={ratio}
+            onChange={(e) => setRatio(e.target.value)}
+            className="input--short"
+          />
+        </Field>
+        <Field label={t("Memo")}>
+          <input type="text" value={memo} onChange={(e) => setMemo(e.target.value)} />
+        </Field>
+      </div>
+      {touched && !parsed && (
+        <div className="banner banner--warning" role="alert">
+          {t("Give a ratio greater than zero and not equal to one, as a whole number or a fraction.")}
+        </div>
+      )}
+      <div className="actions">
+        <button type="submit" className="btn btn--primary" disabled={record.isPending}>
+          {record.isPending ? "…" : t("Record")}
+        </button>
+        <button type="button" className="btn" onClick={onDone} disabled={record.isPending}>
+          {t("Cancel")}
+        </button>
+      </div>
+    </form>
+  );
 }

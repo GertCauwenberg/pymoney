@@ -77,6 +77,7 @@ const transaction = (extra: object = {}) => ({
   imported_id: null,
   reconcile_state: "NOT_RECONCILED",
   locked: false,
+  is_stock_split: false,
   revision: 4,
   splits: [split("s1", "chk", -8420, { reconcile_state: "CLEARED", reconcile_date: "2026-02-02" }), split("s2", "food", 8420)],
   ...extra,
@@ -286,6 +287,45 @@ describe("posting from the register", () => {
     expect(currency).toHaveValue("EUR");
   });
 
+  it("records a stock split on a holding, and not on a book-currency account", async () => {
+    const user = userEvent.setup();
+    const { fetch, calls } = server({
+      ...reads,
+      "POST /books/b1/accounts/wallet/stock-split": ({ body }) => ({
+        status: 201,
+        body: transaction({ id: "s9", is_stock_split: true, splits: [split("x", "wallet", 0)], ...(body as object) }),
+      }),
+    });
+    mount(fetch, "/books/b1/accounts/chk");
+    // A EUR account is not a holding: no split control.
+    expect(await screen.findByRole("heading", { name: "Checking" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stock split…" })).toBeNull();
+
+    mount(fetch, "/books/b1/accounts/wallet");
+    await user.click(await screen.findByRole("button", { name: "Stock split…" }));
+    const form = screen.getByRole("form", { name: "Stock split" });
+    await user.clear(within(form).getByLabelText("Date"));
+    await user.type(within(form).getByLabelText("Date"), "2026-03-01");
+    await user.type(within(form).getByLabelText("Ratio"), "3/2");
+    await user.click(within(form).getByRole("button", { name: "Record" }));
+
+    await waitFor(() => expect(screen.queryByRole("form", { name: "Stock split" })).toBeNull());
+    const posted = calls.find((c) => c.method === "POST" && c.path.endsWith("/stock-split"))!;
+    expect(posted.body).toMatchObject({ date: "2026-03-01", ratio: "3/2" });
+  });
+
+  it("refuses a nonsense ratio before it reaches the server", async () => {
+    const user = userEvent.setup();
+    const { fetch, calls } = server(reads);
+    mount(fetch, "/books/b1/accounts/wallet");
+    await user.click(await screen.findByRole("button", { name: "Stock split…" }));
+   const form = screen.getByRole("form", { name: "Stock split" });
+    await user.type(within(form).getByLabelText("Ratio"), "1");
+    await user.click(within(form).getByRole("button", { name: "Record" }));
+    expect(within(form).getByText(/greater than zero and not equal to one/)).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
   it("tags a leg with an existing tag and a brand-new one, creating the latter first", async () => {
     const user = userEvent.setup();
     const { fetch, calls } = server({
@@ -450,6 +490,22 @@ describe("editing a transaction", () => {
     await user.click(within(section).getByRole("button", { name: "Yes, remove" }));
     await waitFor(() => expect(within(section).queryByRole("link", { name: "receipt.png" })).toBeNull());
     expect(calls.some((c) => c.method === "DELETE" && c.path === "/books/b1/attachments/at1")).toBe(true);
+  });
+
+  it("will not open the edit form for a stock split, and says why", async () => {
+    const splitTx = transaction({
+      is_stock_split: true,
+      splits: [split("x", "wallet", 0)],
+      memo: "3-for-2 split",
+    });
+    const { fetch } = server({ ...reads, "GET /books/b1/transactions/t1": () => ({ body: splitTx }) });
+    mount(fetch, "/books/b1/transactions/t1");
+    const edit = await screen.findByRole("button", { name: "Edit" });
+    expect(edit).toBeDisabled();
+    expect(edit).toHaveAttribute("title", expect.stringMatching(/recorded, not edited/));
+    // ...but it can still be deleted -- that is how you undo one.
+    expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
+    expect(screen.getByText(/stock split/)).toBeInTheDocument();
   });
 
   it("shows attachments read-only to a viewer", async () => {

@@ -212,6 +212,7 @@ describe("draftFromTransaction", () => {
     imported_id: null,
     reconcile_state: "CLEARED",
     locked: false,
+    is_stock_split: false,
     revision: 3,
     splits: [
       {

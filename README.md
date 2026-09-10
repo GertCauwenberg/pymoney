@@ -722,6 +722,21 @@ own commodity (10 shares, −1500 EUR); `value` is in the transaction currency a
 is the column that must balance. For single-currency entries they are identical
 and `Transaction.validate` enforces that.
 
+**A stock split is the one transaction with a single leg.** "Values sum to
+zero" is the real invariant; "at least two legs" is its usual *consequence*. A
+four-for-one split costs and earns nothing — it just multiplies the share count
+— so it is one leg, a change in `quantity`, a `value` of zero, `action` set to
+`SPLIT`. `Transaction.validate` admits exactly that shape (a lone leg that is
+neither free nor a quantity change is still rejected). `RecordStockSplit` takes
+a *ratio* (new-for-old: `2`, or `Fraction(1, 3)` for a reverse split), books the
+delta against the holding as of the split date, and — where a price is already
+on file — records a `PriceSource.SPLIT` one adjusted by the same ratio, so a
+report does not read the position as N times richer the morning the extra
+shares land. KMyMoney writes a split as precisely this single-`<SPLIT>`
+transaction; the importer used to drop it as "only one split" and now keeps it.
+It is recorded and deleted, not edited: get the ratio wrong and you delete it
+and record it again.
+
 **Posting picks the currency; editing keeps it.** A new transaction's currency
 is chosen on the form (it defaults to the book's, which is what the register you
 started from uses); once the transaction exists the control is read-only,

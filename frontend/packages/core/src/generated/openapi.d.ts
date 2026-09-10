@@ -469,6 +469,28 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/books/{book_id}/accounts/{account_id}/stock-split": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Record a share split on an account's holding
+         * @description One leg: the change in quantity, no value. If the holding already has
+         *     a price on file, a split-adjusted one is recorded on the same date so a
+         *     report does not read the position as N times richer overnight.
+         */
+        readonly post: operations["record_stock_split_books__book_id__accounts__account_id__stock_split_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/books/{book_id}/attachments/{attachment_id}": {
         readonly parameters: {
             readonly query?: never;
@@ -3082,6 +3104,39 @@ export interface components {
             readonly uncategorised: number;
         };
         /**
+         * StockSplitIn
+         * @description A share split on an account's holding.
+         *
+         *     ``ratio`` is new-for-old: ``"2"`` doubles the shares (two-for-one),
+         *     ``"1/3"`` is a one-for-three reverse split. It posts a single-leg
+         *     transaction with the change in quantity and no value, and -- where one is
+         *     on file -- a split-adjusted price.
+         */
+        readonly StockSplitIn: {
+            /**
+             * Date
+             * Format: date
+             */
+            readonly date: string;
+            /**
+             * Id
+             * @description Client-chosen id for the posted transaction, so an offline client and the server converge on one row. 409 if taken.
+             */
+            readonly id?: string | null;
+            /**
+             * Memo
+             * @default
+             */
+            readonly memo: string;
+            /**
+             * Ratio
+             * @description An exact positive rate. A decimal string or a 'num/den' ratio.
+             * @example 0.9174
+             * @example 10/9
+             */
+            readonly ratio: number | string;
+        };
+        /**
          * SyncBatchOut
          * @description Everything one command changed: the unit a replica applies atomically.
          *
@@ -3314,6 +3369,11 @@ export interface components {
             readonly id: string;
             /** Imported Id */
             readonly imported_id: string | null;
+            /**
+             * Is Stock Split
+             * @description A single-leg transaction: a change in quantity with no value. Recorded and deleted, not edited.
+             */
+            readonly is_stock_split: boolean;
             /** Locked */
             readonly locked: boolean;
             /** Memo */
@@ -5424,6 +5484,72 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AccountOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly record_stock_split_books__book_id__accounts__account_id__stock_split_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly account_id: string;
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["StockSplitIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TransactionOut"];
                 };
             };
             /** @description Not authenticated. */

@@ -840,6 +840,12 @@ class TransactionOut(Out):
         description="The strongest state among the splits. Locks edits at RECONCILED."
     )
     locked: bool
+    is_stock_split: bool = Field(
+        description=(
+            "A single-leg transaction: a change in quantity with no value. "
+            "Recorded and deleted, not edited."
+        )
+    )
     revision: int
 
     @classmethod
@@ -858,6 +864,7 @@ class TransactionOut(Out):
             imported_id=transaction.imported_id,
             reconcile_state=ReconcileStateName.of(transaction.lock_state),
             locked=transaction.is_locked,
+            is_stock_split=transaction.is_stock_split,
             revision=transaction.revision,
         )
 
@@ -885,6 +892,27 @@ class ReconcileIn(In):
 class SetSplitStateIn(In):
     state: ReconcileStateName
     on: date | None = None
+
+
+class StockSplitIn(In):
+    """A share split on an account's holding.
+
+    ``ratio`` is new-for-old: ``"2"`` doubles the shares (two-for-one),
+    ``"1/3"`` is a one-for-three reverse split. It posts a single-leg
+    transaction with the change in quantity and no value, and -- where one is
+    on file -- a split-adjusted price.
+    """
+
+    date: PostDate
+    ratio: RateLike
+    memo: str = ""
+    id: UUID | None = Field(
+        default=None,
+        description=(
+            "Client-chosen id for the posted transaction, so an offline "
+            "client and the server converge on one row. 409 if taken."
+        ),
+    )
 
 
 # ==========================================================================

@@ -132,7 +132,16 @@ class Split:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Transaction(Entity):
-    """A balanced set of splits sharing one post date and currency."""
+    """A balanced set of splits sharing one post date and currency.
+
+    "Balanced" means the ``value`` column sums to exactly zero.  That is
+    satisfied by two or more legs that cancel out -- ordinary double entry --
+    and, in one case, by a *single* leg whose value is zero: a change in
+    holdings with no counterparty.  That is a **stock split** (``action`` is
+    ``"SPLIT"``): four-for-one on a security does not cost or earn anything,
+    it just multiplies the share count.  KMyMoney writes exactly that shape,
+    one ``<SPLIT>`` with ``value="0/1"`` and a non-zero ``shares``.
+    """
 
     date: date
     """Post date: a plain date, no timezone (decision #10)."""
@@ -156,10 +165,16 @@ class Transaction(Entity):
         Called by the Book before a transaction is accepted; also useful
         standalone when constructing transactions in tests or importers.
         """
-        if len(self.splits) < 2:
-            raise ValidationError(
-                f"a transaction needs at least 2 splits, got {len(self.splits)}"
-            )
+        if not self.splits:
+            raise ValidationError("a transaction needs at least one split")
+        if len(self.splits) == 1:
+            only = self.splits[0]
+            if only.value.minor != 0 or only.quantity.minor == 0:
+                raise ValidationError(
+                    "a single-split transaction is only valid as a stock split: "
+                    "its value must be zero and its quantity non-zero, got "
+                    f"value {only.value}, quantity {only.quantity}"
+                )
 
         seen_ids: set[UUID] = set()
         for split in self.splits:
@@ -193,6 +208,15 @@ class Transaction(Entity):
     @property
     def is_balanced(self) -> bool:
         return sum(s.value.minor for s in self.splits) == 0
+
+    @property
+    def is_stock_split(self) -> bool:
+        """One leg, no value, a change in quantity: a share split."""
+        return (
+            len(self.splits) == 1
+            and self.splits[0].value.minor == 0
+            and self.splits[0].quantity.minor != 0
+        )
 
     # -- reconciliation locking -------------------------------------------
     @property

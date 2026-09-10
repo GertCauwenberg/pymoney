@@ -41,6 +41,7 @@ from ..schemas import (
     ReconcileStateName,
     RegisterPage,
     SetSplitStateIn,
+    StockSplitIn,
     TransactionIn,
     TransactionOut,
     TransactionPage,
@@ -336,6 +337,36 @@ def delete_transaction(
                 attachment_store.delete_attachment(conn, book.id, row.id)
         for row in attached:
             blobs.delete(book.id, row.id)
+
+
+@router.post(
+    "/accounts/{account_id}/stock-split",
+    response_model=TransactionOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Record a share split on an account's holding",
+)
+def record_stock_split(
+    account_id: UUID,
+    body: StockSplitIn,
+    book: WritableBook,
+    response: Response,
+    key: IdempotencyKey,
+) -> TransactionOut:
+    """One leg: the change in quantity, no value. If the holding already has
+    a price on file, a split-adjusted one is recorded on the same date so a
+    report does not read the position as N times richer overnight."""
+    result = book.execute(
+        cmd.RecordStockSplit(
+            account_id=account_id,
+            date=body.date,
+            ratio=to_fraction(body.ratio),
+            memo=body.memo,
+            transaction_id=body.id,
+            command_id=key,
+        )
+    )
+    set_revision(response, book, result)
+    return TransactionOut.of(result.entity)
 
 
 @router.post(

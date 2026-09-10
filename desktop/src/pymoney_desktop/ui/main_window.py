@@ -206,6 +206,12 @@ class MainWindow(QMainWindow):
         )
         self.reconcile_button.clicked.connect(self.reconcile_account)
         bar.addWidget(self.reconcile_button)
+        self.split_button = QPushButton(_("Stock split…"))
+        self.split_button.setToolTip(
+            _("Multiply this holding's share count by a ratio; the price follows")
+        )
+        self.split_button.clicked.connect(self.record_stock_split)
+        bar.addWidget(self.split_button)
         self.schedules_button = QPushButton(_("Scheduled…"))
         self.schedules_button.clicked.connect(self.open_schedules)
         bar.addWidget(self.schedules_button)
@@ -716,6 +722,16 @@ class MainWindow(QMainWindow):
         )
         self.reconcile_button.setEnabled(on_postable_account)
         self.import_button.setEnabled(on_postable_account)
+        # A split is a change in a *holding*: an account kept in a security or
+        # a foreign currency, not the book's own.
+        account = self.current_account
+        self.split_button.setEnabled(
+            on_postable_account
+            and account is not None
+            and not account.closed
+            and self.book is not None
+            and account.commodity_id != self.book.base_currency_id
+        )
 
     def _selected_row(self) -> RegisterRowOut | None:
         index = self.register.currentRow()
@@ -772,6 +788,23 @@ class MainWindow(QMainWindow):
             work, lambda _result: self._reload_book(), self._failed(_("Could not post"))
         )
 
+    def record_stock_split(self) -> None:
+        account = self.current_account
+        if account is None or self.book is None or not self._can_write():
+            return
+        from .stock_split_dialog import StockSplitDialog
+
+        dialog = StockSplitDialog(account, parent=self)
+        if self.run_dialog(dialog) != QDialog.DialogCode.Accepted:
+            return
+        book_id = self.book.id
+        body = dialog.body()
+        self.executor.run(
+            lambda: self.client.record_stock_split(book_id, account.id, body),
+            lambda _result: self._reload_book(),
+            self._failed(_("Could not record the split")),
+        )
+
     def edit_transaction(self) -> None:
         row = self._selected_row()
         if row is None or self.book is None or not self._can_write():
@@ -795,6 +828,16 @@ class MainWindow(QMainWindow):
                 _("Locked"),
                 _(
                     "A reconciled transaction cannot be changed; unreconcile its splits first."
+                ),
+            )
+            return
+        if existing.is_stock_split:
+            QMessageBox.information(
+                self,
+                _("Stock split"),
+                _(
+                    "A stock split is recorded, not edited. Delete it and record "
+                    "it again if the ratio was wrong."
                 ),
             )
             return

@@ -57,6 +57,7 @@ from pymoney.api.schemas import (
     SchedulePatch,
     SkipOccurrenceIn,
     StatementImportOut,
+    StockSplitIn,
     TagIn,
     TagOut,
     TransactionIn,
@@ -310,6 +311,12 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def delete_transaction(self, book_id: UUID, transaction_id: UUID) -> None: ...
+
+    @abstractmethod
+    def record_stock_split(
+        self, book_id: UUID, account_id: UUID, body: StockSplitIn
+    ) -> TransactionOut:
+        """A share split: the holding's quantity scales by ``body.ratio``."""
 
     @abstractmethod
     def set_split_state(

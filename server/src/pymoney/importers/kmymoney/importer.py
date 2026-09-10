@@ -770,7 +770,18 @@ class KmyImporter:
             self.report.count("splits")
 
         legs = self._balance(legs, kmy, currency)
-        if len(legs) < 2:
+        stock_split = (
+            len(legs) == 1
+            and not legs[0].value
+            and legs[0].quantity not in (None, 0)
+            and self.accounts[kmy.splits[0].account_id].commodity.id != currency.id
+        )
+        if stock_split:
+            # A share split: one leg, a change in quantity, no value. KMyMoney
+            # writes it with action "Split"; normalise that so the rest of
+            # PyMoney recognises it.
+            legs = [replace(legs[0], action="SPLIT")]
+        elif len(legs) < 2:
             self.report.warn(
                 "transaction",
                 "has only one split and nothing to balance it against; skipped",

@@ -8,6 +8,7 @@ from fractions import Fraction
 import pytest
 
 from pymoney.core import (
+    AccountType,
     ConflictError,
     ImmutableError,
     LegSpec,
@@ -371,6 +372,165 @@ class TestForeignCommodityPosting:
             )
         )
         assert len(book.prices) == 1  # still just the original post's rate
+
+
+class TestStockSplit:
+    """A share split is the one transaction with a single leg: a change in
+    quantity, no value, no counterparty."""
+
+    @pytest.fixture
+    def holding(self, chart: Chart) -> Chart:
+        book = chart.book
+        book.post(
+            date(2026, 1, 1),
+            [
+                LegSpec.of(chart.brokerage.id, "10000.00"),
+                LegSpec.of(chart.opening_usd.id, "-10000.00"),
+            ],
+            currency=chart.usd,
+        )
+        book.post(
+            date(2026, 1, 10),
+            [
+                LegSpec.of(chart.aapl_account.id, quantity="10", price="150.00"),
+                LegSpec.of(chart.brokerage.id),
+            ],
+            currency=chart.usd,
+        )
+        return chart
+
+    def test_a_forward_split_multiplies_the_shares(self, holding: Chart):
+        book = holding.book
+        split = book.record_stock_split(
+            holding.aapl_account.id, date(2026, 2, 1), 3, memo="3-for-1"
+        )
+        assert split.is_stock_split
+        (leg,) = split.splits
+        assert leg.account_id == holding.aapl_account.id
+        assert leg.quantity.minor == 200000  # +20 shares: 10 -> 30
+        assert leg.value.minor == 0
+        assert leg.action == "SPLIT"
+        assert book.balance(holding.aapl_account.id).minor == 300000
+        # The cost basis does not move; a split changes no money.
+        assert book.value_balance(holding.aapl_account.id).minor == 150000
+
+    def test_a_reverse_split_shrinks_the_shares(self, holding: Chart):
+        book = holding.book
+        split = book.record_stock_split(
+            holding.aapl_account.id, date(2026, 2, 1), F(1, 5)
+        )
+        assert split.splits[0].quantity.minor == -80000  # 10 -> 2 shares
+        assert book.balance(holding.aapl_account.id).minor == 20000
+
+    def test_it_adjusts_the_price_so_valuation_holds(self, holding: Chart):
+        book = holding.book
+        book.add_price(
+            holding.aapl, holding.usd, "180.00", effective_date=date(2026, 1, 20)
+        )
+        book.record_stock_split(holding.aapl_account.id, date(2026, 2, 1), 4)
+        history = book.prices.history(holding.aapl, holding.usd)
+        adjusted = history[-1]
+        assert adjusted.effective_date == date(2026, 2, 1)
+        assert adjusted.rate == F(45)  # 180 / 4
+        assert adjusted.source == "split"
+
+    def test_it_leaves_the_price_alone_when_there_is_none(self, holding: Chart):
+        book = holding.book
+        before = len(book.prices)
+        book.record_stock_split(holding.aapl_account.id, date(2026, 2, 1), 2)
+        assert len(book.prices) == before
+
+    def test_a_quote_after_the_split_is_not_adjusted(self, holding: Chart):
+        """A price dated after the split is already post-split; only an
+        earlier one needs the synthetic adjustment."""
+        book = holding.book
+        book.add_price(
+            holding.aapl, holding.usd, "40.00", effective_date=date(2026, 3, 1)
+        )
+        book.record_stock_split(holding.aapl_account.id, date(2026, 2, 1), 2)
+        assert [p.source for p in book.prices.history(holding.aapl, holding.usd)] == [
+            "user"
+        ]
+
+    def test_a_one_for_one_split_is_refused(self, holding: Chart):
+        with pytest.raises(ValidationError, match="change nothing"):
+            holding.book.record_stock_split(holding.aapl_account.id, date(2026, 2, 1), 1)
+
+    def test_a_non_positive_ratio_is_refused(self, holding: Chart):
+        with pytest.raises(ValidationError, match="must be positive"):
+            holding.book.record_stock_split(holding.aapl_account.id, date(2026, 2, 1), 0)
+
+    def test_splitting_an_empty_holding_is_refused(self, chart: Chart):
+        with pytest.raises(ValidationError, match="nothing to split"):
+            chart.book.record_stock_split(chart.aapl_account.id, date(2026, 2, 1), 2)
+
+    def test_a_split_that_rounds_to_no_change_is_refused(self, chart: Chart):
+        book = chart.book
+        # JPY has no minor unit. One yen, scaled by 5/4, rounds back to one.
+        jpy_cash = book.add_account(
+            "Yen Jar", AccountType.CASH, parent=chart.assets, commodity=chart.jpy
+        )
+        book.post(
+            date(2026, 1, 2),
+            [
+                LegSpec.of(jpy_cash.id, quantity="1", price="1"),
+                LegSpec.of(chart.opening.id),
+            ],
+        )
+        with pytest.raises(ValidationError, match="no change"):
+            book.record_stock_split(jpy_cash.id, date(2026, 2, 1), F(5, 4))
+
+    def test_a_split_can_be_deleted(self, holding: Chart):
+        book = holding.book
+        split = book.record_stock_split(holding.aapl_account.id, date(2026, 2, 1), 2)
+        assert book.balance(holding.aapl_account.id).minor == 200000
+        book.execute(c.DeleteTransaction(transaction_id=split.id))
+        assert book.balance(holding.aapl_account.id).minor == 100000
+        with pytest.raises(NotFoundError):
+            book.transaction(split.id)
+
+    def test_the_split_shows_up_in_the_register(self, holding: Chart):
+        book = holding.book
+        book.record_stock_split(holding.aapl_account.id, date(2026, 2, 1), 2)
+        register = book.register(holding.aapl_account.id)
+        assert [r.quantity.minor for r in register] == [100000, 100000]
+        assert register[-1].split.action == "SPLIT"
+
+    def test_a_placeholder_account_cannot_be_split(self, chart: Chart):
+        with pytest.raises(ValidationError, match="placeholder"):
+            chart.book.record_stock_split(chart.assets.id, date(2026, 2, 1), 2)
+
+    def test_an_explicit_transaction_id_is_honoured(self, holding: Chart):
+        book = holding.book
+        chosen = new_id()
+        split = book.record_stock_split(
+            holding.aapl_account.id, date(2026, 2, 1), 2, transaction_id=chosen
+        )
+        assert split.id == chosen
+        # Replaying the same id (an offline client re-sending) is a conflict,
+        # not a second split.
+        with pytest.raises(ConflictError, match="already exists"):
+            book.record_stock_split(
+                holding.aapl_account.id, date(2026, 3, 1), 2, transaction_id=chosen
+            )
+
+    def test_re_recording_a_split_does_not_compound_the_price(self, holding: Chart):
+        book = holding.book
+        book.add_price(
+            holding.aapl, holding.usd, "100.00", effective_date=date(2026, 1, 15)
+        )
+        book.record_stock_split(holding.aapl_account.id, date(2026, 2, 1), 2)
+        first = book.prices.history(holding.aapl, holding.usd)[-1]
+        assert first.rate == F(50)  # 100 / 2
+        # A second split on the same day (a correction that forgot to delete
+        # the first) must not halve the already-halved rate.
+        book.record_stock_split(holding.aapl_account.id, date(2026, 2, 1), 2)
+        on_that_day = [
+            p
+            for p in book.prices.history(holding.aapl, holding.usd)
+            if p.effective_date == date(2026, 2, 1)
+        ]
+        assert {p.rate for p in on_that_day} == {F(50)}
 
 
 class TestQueries:

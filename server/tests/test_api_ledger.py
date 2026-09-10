@@ -826,6 +826,81 @@ class TestTransactions:
         # Viewers may search too.
         assert client.get(base, params={"q": "x"}).status_code == 200
 
+    def _stock_holding(self, ledger: Ledger):
+        base = f"/books/{ledger.book_id}"
+        acme = ledger.client.post(
+            f"{base}/commodities", json={"code": "ACME", "kind": "STOCK", "scale": 4}
+        ).json()
+        shares = ledger.client.account("ACME", "STOCK", commodity_id=acme["id"])
+        ledger.client.post_transaction(
+            "2026-01-10",
+            [
+                {"account_id": shares["id"], "quantity": "10", "price": "150.00"},
+                {"account_id": ledger.checking, "value": "-1500.00"},
+            ],
+        )
+        return acme, shares
+
+    def test_record_a_stock_split(self, ledger: Ledger):
+        base = f"/books/{ledger.book_id}"
+        acme, shares = self._stock_holding(ledger)
+        ledger.client.post(
+            f"{base}/prices",
+            json={
+                "base_id": acme["id"],
+                "quote_id": ledger.eur,
+                "rate": "180.00",
+                "effective_date": "2026-01-20",
+            },
+        )
+        split = ledger.client.post(
+            f"{base}/accounts/{shares['id']}/stock-split",
+            json={"date": "2026-02-01", "ratio": "3", "memo": "3-for-1"},
+        )
+        assert split.status_code == 201, split.text
+        body = split.json()
+        assert len(body["splits"]) == 1
+        (leg,) = body["splits"]
+        assert leg["account_id"] == shares["id"]
+        assert leg["quantity"]["minor"] == 200000  # +20 shares: 10 -> 30
+        assert leg["value"]["minor"] == 0
+        assert leg["action"] == "SPLIT"
+
+        assert ledger.client.balance(shares["id"])["minor"] == 300000
+        prices = ledger.client.get(f"{base}/prices").json()["items"]
+        adjusted = next(p for p in prices if p["effective_date"] == "2026-02-01")
+        assert adjusted["source"] == "split"
+        assert adjusted["rate"]["num"] == 60 and adjusted["rate"]["den"] == 1  # 180/3
+
+    def test_a_reverse_split_over_the_wire(self, ledger: Ledger):
+        base = f"/books/{ledger.book_id}"
+        _acme, shares = self._stock_holding(ledger)
+        split = ledger.client.post(
+            f"{base}/accounts/{shares['id']}/stock-split",
+            json={"date": "2026-02-01", "ratio": "1/2"},
+        )
+        assert split.status_code == 201
+        assert ledger.client.balance(shares["id"])["minor"] == 50000  # 10 -> 5
+
+    def test_a_silly_split_ratio_is_a_clear_422(self, ledger: Ledger):
+        base = f"/books/{ledger.book_id}"
+        _acme, shares = self._stock_holding(ledger)
+        refused = ledger.client.post(
+            f"{base}/accounts/{shares['id']}/stock-split",
+            json={"date": "2026-02-01", "ratio": "1"},
+        )
+        assert refused.status_code == 422
+        assert "change nothing" in refused.json()["error"]["message"]
+
+    def test_splitting_an_empty_holding_is_a_422(self, ledger: Ledger):
+        base = f"/books/{ledger.book_id}"
+        refused = ledger.client.post(
+            f"{base}/accounts/{ledger.savings}/stock-split",
+            json={"date": "2026-02-01", "ratio": "2"},
+        )
+        assert refused.status_code == 422
+        assert "nothing to split" in refused.json()["error"]["message"]
+
     def test_delete(self, ledger: Ledger):
         posted = ledger.client.post_transaction(
             "2026-02-01",

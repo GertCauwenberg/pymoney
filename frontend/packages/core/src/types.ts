@@ -65,6 +65,7 @@ export type TagPatch = Schemas["TagPatch"];
 export type ReconcileState = Schemas["ReconcileStateName"];
 export type ReconcileIn = Schemas["ReconcileIn"];
 export type SetSplitStateIn = Schemas["SetSplitStateIn"];
+export type StockSplitIn = Schemas["StockSplitIn"];
 export type User = Schemas["UserOut"];
 export type Session = Schemas["SessionOut"];
 export type LoginIn = Schemas["LoginIn"];

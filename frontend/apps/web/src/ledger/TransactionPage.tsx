@@ -68,7 +68,16 @@ export function TransactionPage() {
   const sum = t.splits.reduce((acc, s) => acc + s.value.minor, 0);
   const currency = t.splits[0]?.value;
   const canWrite = role !== null && CAN_WRITE.has(role);
-  const lockedHint = t.locked ? "A reconciled transaction cannot be changed; unreconcile its splits first." : undefined;
+  const lockedHint = t.locked ? tr("A reconciled transaction cannot be changed; unreconcile its splits first.") : undefined;
+  // A stock split is one leg with no value: the edit form, which needs two
+  // balancing legs, has nothing to do with it. It can still be deleted --
+  // that is how you undo one.
+  const noEdit = t.locked || t.is_stock_split;
+  const noEditHint =
+    lockedHint ??
+    (t.is_stock_split
+      ? tr("A stock split is recorded, not edited. Delete it and record it again if the ratio was wrong.")
+      : undefined);
   const txCurrency = commodities.data?.find((c) => c.id === t.currency_id);
   const firstAccount = t.splits[0]?.account_id;
 
@@ -90,6 +99,7 @@ export function TransactionPage() {
             {t.number && ` · no. ${t.number}`}
             {payee && t.memo && ` · ${t.memo}`}
             {` · ${t.currency}`}
+            {t.is_stock_split && ` · ${tr("stock split")}`}
             {t.locked && " · locked"}
           </p>
         </div>
@@ -99,7 +109,7 @@ export function TransactionPage() {
           </button>
           {canWrite && !editing && (
             <>
-              <button type="button" className="btn btn--primary" disabled={t.locked} title={lockedHint} onClick={() => setEditing(true)}>
+              <button type="button" className="btn btn--primary" disabled={noEdit} title={noEditHint} onClick={() => setEditing(true)}>
                 {tr("Edit")}
               </button>
               {confirming ? (
