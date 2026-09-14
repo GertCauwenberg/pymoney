@@ -1441,7 +1441,7 @@ class TestFieldTestRegressions:
                 "</SPLITS></TRANSACTION>"
                 # 2-for-1 split: ten more shares arrive, carrying no value.
                 '<TRANSACTION id="T2" postdate="2022-11-12" commodity="EUR"><SPLITS>'
-                '<SPLIT account="A2" shares="100000/10000" value="0/1" price="1/1"'
+                '<SPLIT account="A2" shares="2/1" value="0/1" price="1/1"'
                 ' action="Split"/>'
                 "</SPLITS></TRANSACTION>"
                 "</TRANSACTIONS>"

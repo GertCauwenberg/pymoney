@@ -1,5 +1,4 @@
 """Turning a parsed KMyMoney file into a PyMoney book.
-
 The hard part is not the XML, it is one modelling difference.
 
 **KMyMoney stores split amounts as unbounded rationals. PyMoney stores them as
@@ -80,6 +79,8 @@ class ImportOptions:
     """When to date the corrections. Defaults to the last post date in the file."""
     imbalance_account: str = "Imbalance"
     """Where a transaction that does not sum to zero is balanced."""
+    opening_account: str = "Opening"
+    """Where an opening transaction is stored."""
     rounding_account: str = "Rounding"
     """Where rounding corrections are posted."""
     id_prefix: str = "kmm:"
@@ -770,25 +771,46 @@ class KmyImporter:
             self.report.count("splits")
 
         legs = self._balance(legs, kmy, currency)
-        stock_split = (
-            len(legs) == 1
-            and not legs[0].value
-            and legs[0].quantity not in (None, 0)
-            and self.accounts[kmy.splits[0].account_id].commodity.id != currency.id
-        )
-        if stock_split:
-            # A share split: one leg, a change in quantity, no value. KMyMoney
-            # writes it with action "Split"; normalise that so the rest of
-            # PyMoney recognises it.
-            legs = [replace(legs[0], action="SPLIT")]
-        elif len(legs) < 2:
-            self.report.warn(
-                "transaction",
-                "has only one split and nothing to balance it against; skipped",
-                source_id=kmy.id,
-            )
-            return
-
+        if len(legs) == 1:
+            if (
+                legs[0].action == "Split"
+                and legs[0].quantity not in (None, 0)
+                and account is not None
+            ):
+                # A share split: one leg, a change in quantity, no value.
+                # 'shares="10/1"' means we have a 10 to one split
+                # so if we have x shares we now get 9x shares extra
+                shares = self._shares_on_date(
+                    account.id, account.commodity.id, kmy.post_date
+                )
+                new_quantity = (legs[0].quantity - 1) * shares
+                legs = [replace(legs[0], action="SPLIT", quantity=new_quantity)]
+            elif (
+                legs[0].action == "Add"
+                and legs[0].quantity not in (None, 0)
+                and account is not None
+            ):
+                # Book against opening balance in correct currency
+                price = self._price_on_date(
+                    account.commodity.id, currency.id, kmy.post_date
+                ) or Fraction(1)
+                value = price * legs[0].quantity
+                account = self._support_account(self.options.opening_account, currency)
+                legs = [replace(legs[0], value=value)]
+                legs.append(
+                    LegSpec(
+                        account_id=account.id,
+                        value=-value,
+                        memo="KMyMoney importer Add Shares",
+                    )
+                )
+            else:
+                self.report.warn(
+                    "transaction",
+                    "has only one split and nothing to balance it against; skipped",
+                    source_id=kmy.id,
+                )
+                return
         transaction = self.book.post(
             kmy.post_date,
             legs,
@@ -807,11 +829,56 @@ class KmyImporter:
         # Record what KMyMoney's arithmetic said, and what ours booked.
         for split, posted in zip(kmy.splits, transaction.splits, strict=False):
             tally = self._tally[split.account_id]
-            tally.exact += split.shares
+            if posted.action == "SPLIT":
+                # One exception - we assume we have correctly calculated stock splits
+                tally.exact += posted.quantity.as_fraction
+            else:
+                tally.exact += split.shares
             tally.booked += posted.quantity.minor
             tally.splits += 1
         if self._last_post_date is None or kmy.post_date > self._last_post_date:
             self._last_post_date = kmy.post_date
+
+    def _shares_on_date(
+        self, account_id: UUID, commodity_id: UUID, when: date
+    ) -> Fraction:
+        """Return the account's commodity balance immediately before ``when``."""
+        balance = Fraction(0)
+        for kmy in self.source.iter_transactions():
+            if kmy.post_date is None or kmy.post_date >= when:
+                continue
+            for split in kmy.splits:
+                account = self.accounts.get(split.account_id)
+                if account is None or account.commodity.id != commodity_id:
+                    continue
+                if account_id != account.id:
+                    continue
+                if split.action == "Split" and split.shares not in (None, 0):
+                    balance *= split.shares
+                else:
+                    balance += split.shares
+        return balance
+
+    def _price_on_date(
+        self, commodity_id: UUID, currency_id: UUID, when: date
+    ) -> Fraction | None:
+        """Return the most recent recorded price for a commodity on ``when``."""
+        source_ids = {
+            commodity.id: source_id for source_id, commodity in self.commodities.items()
+        }
+        commodity_source_id = source_ids.get(commodity_id)
+        currency_source_id = source_ids.get(currency_id)
+        if commodity_source_id is None or currency_source_id is None:
+            return None
+        candidates = (
+            price
+            for price in self.source.prices
+            if price.from_id == commodity_source_id
+            and price.to_id == currency_source_id
+            and price.date <= when
+        )
+        latest = max(candidates, key=lambda price: price.date, default=None)
+        return latest.rate if latest is not None else None
 
     def _usable_price(self, split, currency, account) -> Fraction | None:
         """KMyMoney's ``price`` attribute is advisory, not a commitment.
