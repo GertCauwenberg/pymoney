@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..client import LedgerClient
 from ..drafts import (
     LegDraft,
     TransactionDraft,
@@ -78,6 +79,8 @@ class TransactionDialog(QDialog):
         commodities: list[CommodityOut] | None = None,
         tags: list[TagOut] | None = None,
         existing: TransactionOut | None = None,
+        client: LedgerClient | None = None,
+        book_id: UUID | None = None,
         default_account_id: UUID | None = None,
         parent: QWidget | None = None,
     ) -> None:
@@ -89,6 +92,8 @@ class TransactionDialog(QDialog):
             (a for a in accounts if not a.placeholder and not a.closed),
             key=lambda a: a.path,
         )
+        self._client = client
+        self._book_id = book_id
         self._payees = sorted(payees, key=lambda p: p.name.lower())
         self._tags = sorted(tags or [], key=lambda t: t.name.lower())
         self._tag_name_by_id = {t.id: t.name for t in self._tags}
@@ -162,6 +167,21 @@ class TransactionDialog(QDialog):
         self.currency_box.setToolTip(_("Fixed once the transaction is posted."))
         self.currency_box.currentIndexChanged.connect(lambda _: self._currency_changed())
         form.addRow(_("Currency"), self.currency_box)
+
+        # Attachments. An existing transaction has an id, so its receipts open
+        # in a dialog of their own; a new one has none yet
+        self._attachments_row = QWidget()
+        attach_line = QHBoxLayout(self._attachments_row)
+        attach_line.setContentsMargins(0, 0, 0, 0)
+        if existing is not None:
+            self.attachments_button = QPushButton(_("Attachments…"))
+            self.attachments_button.clicked.connect(self._open_attachments)
+            self.attachments_button.setEnabled(
+                self._client is not None and self._book_id is not None
+            )
+            attach_line.addWidget(self.attachments_button)
+            attach_line.addStretch()
+            form.addRow(_("Attachments"), self._attachments_row)
 
         self.legs = QTableWidget(0, 5)
         self.legs.setHorizontalHeaderLabels(
@@ -291,6 +311,24 @@ class TransactionDialog(QDialog):
     def _tags_text(self, row: int) -> str:
         widget = self.legs.cellWidget(row, TAGS)
         return widget.text() if isinstance(widget, QLineEdit) else ""
+
+    def _open_attachments(self) -> QDialog | None:
+        """The receipts for the transaction being edited. Only editors ever
+        reach this dialog (the register's Edit button is theirs), so adding
+        and removing is allowed; the server checks the grant regardless."""
+        if self._client is None or self._book_id is None or self.existing is None:
+            return None
+        from .attachments_dialog import AttachmentsDialog
+
+        self._attachments_dialog = AttachmentsDialog(
+            self._client,
+            self._book_id,
+            self.existing.id,
+            can_write=True,
+            parent=self,
+        )
+        self._attachments_dialog.exec()
+        return self._attachments_dialog
 
     def currency(self) -> CommodityOut:
         """The transaction currency: the user's choice for a new entry, the
