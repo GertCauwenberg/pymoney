@@ -10,6 +10,7 @@ import { BooksPage } from "../src/pages/BooksPage";
 import { LoginPage } from "../src/pages/LoginPage";
 import { ActivatePage, ForgotPasswordPage, ResetPasswordPage } from "../src/pages/PasswordPages";
 import { SharingPage } from "../src/pages/SharingPage";
+import { DeletingPage } from "../src/pages/DeletePage";
 
 const me = { id: "u1", email: "alice@example.com", display_name: "Alice" };
 const session = { user: me, csrf_token: "c", token: "t", expires_at: "2027-01-01T00:00:00Z" };
@@ -51,6 +52,7 @@ function mount(fetch: typeof globalThis.fetch, path: string, role = "owner") {
           <Route path="/books" element={<BooksPage />} />
           <Route path="/books/:bookId" element={<Outlet context={context} />}>
             <Route path="sharing" element={<SharingPage />} />
+            <Route path="delete" element={<DeletingPage />} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -192,7 +194,7 @@ describe("deleting a book", () => {
   it("needs the exact name typed back, then goes to the books page", async () => {
     const user = userEvent.setup();
     const { fetch, calls } = server({ ...reads, "DELETE /books/b1": () => ({}) });
-    mount(fetch, "/books/b1/sharing");
+    mount(fetch, "/books/b1/delete");
     await user.click(await screen.findByRole("button", { name: "Delete this book…" }));
     const confirm = screen.getByRole("button", { name: "Delete it, irreversibly" });
     expect(confirm).toBeDisabled();
@@ -212,7 +214,7 @@ describe("deleting a book", () => {
       ...reads,
       "DELETE /books/b1": () => ({ status: 403, body: { detail: "this needs owner on the book; you have editor" } }),
     });
-    mount(fetch, "/books/b1/sharing");
+    mount(fetch, "/books/b1/delete");
     await user.click(await screen.findByRole("button", { name: "Delete this book…" }));
     await user.click(screen.getByRole("button", { name: "Keep it" }));
     expect(screen.getByRole("button", { name: "Delete this book…" })).toBeInTheDocument();

@@ -14,6 +14,7 @@ import { PayeesPage } from "./pages/PayeesPage";
 import { SchedulesPage } from "./pages/SchedulesPage";
 import { SettingsShell } from "./pages/SettingsShell";
 import { SharingPage } from "./pages/SharingPage";
+import { DeletingPage } from "./pages/DeletePage";
 import { BalanceSheetReport } from "./reports/BalanceSheetReport";
 import { CategoryPieReport } from "./reports/CategoryPieReport";
 import { ChartsShell } from "./reports/ChartsShell";
@@ -64,11 +65,11 @@ export function App() {
             <Route path="schedules" element={<SchedulesPage />} />
             <Route path="commodities" element={<CommoditiesPage />} />
             <Route path="prices" element={<PricesPage />} />
-            <Route path="sharing" element={<SharingPage />} />
             <Route path="history" element={<HistoryPage />} />
           </Route>
+          <Route path="sharing" element={<SharingPage />} />
+          <Route path="delete" element={<DeletingPage />} />
           {/* The old addresses keep working: bookmarks and links from before the Settings tab. */}
-          <Route path="sharing" element={<Navigate to="../settings/sharing" replace />} />
           <Route path="accounts" element={<RedirectKeepingSearch to="../settings/accounts" />} />
           <Route path="commodities" element={<Navigate to="../settings/commodities" replace />} />
           <Route path="prices" element={<Navigate to="../settings/prices" replace />} />

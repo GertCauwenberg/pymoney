@@ -16,7 +16,6 @@ export function SettingsShell() {
         <NavLink to="schedules">{t("Scheduled")}</NavLink>
         <NavLink to="commodities">{t("Commodities")}</NavLink>
         <NavLink to="prices">{t("Prices")}</NavLink>
-        {context.role === "owner" && <NavLink to="sharing">{t("Sharing")}</NavLink>}
         <NavLink to="history">{t("History")}</NavLink>
       </nav>
       <Outlet context={context} />

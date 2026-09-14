@@ -3,6 +3,7 @@ import type { Book } from "@pymoney/core";
 import { useBooks, useDeleteAccount, useLogout, useSession } from "@pymoney/core/hooks";
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
+import { Outlet, useOutletContext } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { LanguageSwitch } from "../components/LanguageSwitch";
@@ -89,12 +90,22 @@ export function BooksPage() {
           <ul className="cards">
             {books.data.map((b) => (
               <li key={b.id} className="card card--link">
+               <table width="100%">
+               <tbody>
+               <tr>
+               <td rowSpan={2}>
                 <Link to={`/books/${b.id}`}>
                   <strong>{b.name}</strong>
                   <span className="muted">
                     {b.role ?? "viewer"} · revision {b.revision}
                   </span>
                 </Link>
+               </td>
+               <td>
+                <Link to={`/books/${b.id}/sharing`}>{t("Sharing")}</Link>
+               </td></tr><tr><td>
+                <Link to={`/books/${b.id}/delete`}>{t("Delete")}</Link>
+               </td></tr></tbody></table>
               </li>
             ))}
           </ul>
