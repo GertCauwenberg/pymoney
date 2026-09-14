@@ -1,7 +1,7 @@
 # The web frontend: an npm workspace (packages/core, apps/web) plus the
 # Playwright end-to-end suite, which starts the server from ../server's venv.
 
-NPM ?= npm
+NPM ?= NODE_OPTIONS=--localstorage-file=./tmp_file npm
 
 .DEFAULT_GOAL := help
 .PHONY: help install dev build test check e2e e2e-install image clean

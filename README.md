@@ -189,6 +189,13 @@ PDF, and a magic-byte sniff catches a mislabelled file. The server stores the
 bytes as received and does no image processing. Every route needs a grant on the
 book; `viewer` to list or download, `editor` to add or remove.
 
+A receipt can be chosen *while entering* a transaction, which is when you are
+most likely to have it: the row has a foreign key to the transaction, so the
+client holds the files and uploads them the instant the transaction is posted
+and has an id. A desktop that is offline queues the transaction as usual and
+attaches the receipts once it reconnects, from the transaction window — the
+blobs only ever exist server-side, so there is nowhere to queue them.
+
 The API container runs **read-only** (`read_only: true`, only `/tmp` and the
 attachments volume writable), so the directory has to be a mounted volume or the
 blobs vanish on the next `docker compose up`. `compose.yaml` mounts the named

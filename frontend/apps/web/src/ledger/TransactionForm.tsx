@@ -13,8 +13,8 @@ import {
   validateDraft,
 } from "@pymoney/core";
 import type { Account, Commodity, DraftProblem, LegDraft, Payee, Tag, Transaction, TransactionDraft } from "@pymoney/core";
-import { useApi, useCreatePayee, useCreateTag, useCreateTransaction, useTags, useUpdateTransaction } from "@pymoney/core/hooks";
-import { useId, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useAddAttachment, useApi, useCreatePayee, useCreateTag, useCreateTransaction, useTags, useUpdateTransaction } from "@pymoney/core/hooks";
+import { useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Money } from "../components/Money";
@@ -79,6 +79,15 @@ export function TransactionForm({
   const createPayee = useCreatePayee(bookId);
   const createTag = useCreateTag(bookId);
   const tags = useTags(bookId).data ?? [];
+  const addAttachment = useAddAttachment(bookId);
+
+  // Receipts picked while posting. There is no transaction id to attach them
+  // to yet, so they are held here and uploaded the instant POST hands one
+  // back. (When editing, the transaction already exists -- attachments have a
+  // panel of their own on its page, and this stays empty.)
+  const [receipts, setReceipts] = useState<File[]>([]);
+  const [receiptError, setReceiptError] = useState<unknown>(null);
+  const receiptInput = useRef<HTMLInputElement>(null);
 
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const commoditiesById = useMemo(() => new Map(commodities.map((c) => [c.id, c])), [commodities]);
@@ -131,7 +140,7 @@ export function TransactionForm({
   const creatingPayee = payeeChoice === NEW_PAYEE;
   const payeeProblem = creatingPayee && newPayeeName.trim() === "" ? t("Give the new payee a name.") : null;
   const showQuantity = draft.legs.some((leg) => needsQuantity(leg, accountsById, txCurrency.id));
-  const busy = create.isPending || update.isPending || createPayee.isPending || createTag.isPending;
+  const busy = create.isPending || update.isPending || createPayee.isPending || createTag.isPending || addAttachment.isPending;
   const error = create.error ?? update.error ?? createPayee.error ?? createTag.error;
 
   const setLeg = (index: number, patch: Partial<TransactionDraft["legs"][number]>) =>
@@ -201,12 +210,36 @@ export function TransactionForm({
       const resolved = await materialiseTags(draft);
       if (resolved !== draft) setDraft(resolved);
       const body = draftToTransactionIn({ ...resolved, payee_id: payeeId }, accountsById, txCurrency);
+      // The POST is idempotent (one key per form instance), so re-submitting
+      // after a failed upload returns this same transaction rather than a
+      // second one.
       const saved = existing
         ? await update.mutateAsync({
             transactionId: existing.id,
             body: { date: body.date, legs: body.legs, memo: body.memo, payee_id: body.payee_id ?? null, number: body.number },
           })
         : await create.mutateAsync({ body, idempotencyKey });
+      setReceiptError(null);
+      if (!existing && receipts.length > 0) {
+        // The transaction exists now, so its id is real. Upload the staged
+        // receipts, keeping any that fail so a retry only re-sends those.
+        const failed: File[] = [];
+        let lastError: unknown = null;
+        for (const file of receipts) {
+          try { 
+            await addAttachment.mutateAsync({ transactionId: saved.id, file });
+          } catch (uploadError) {
+            failed.push(file);
+            lastError = uploadError;
+          }
+        }  
+        setReceipts(failed);
+        if (receiptInput.current) receiptInput.current.value = "";
+        if (failed.length > 0) {
+          setReceiptError(lastError);
+          return; // stay open: the transaction is saved, the receipt is not
+        }
+      }
       onSaved(saved);
     } catch {
       // Shown through the mutation's error below.
@@ -407,6 +440,25 @@ export function TransactionForm({
             {p.message}
           </div>
         ))}
+
+      {!existing && (
+        <Field
+          label={t("Receipts")}
+          hint={receipts.length > 0 ? receipts.map((f) => f.name).join(", ") : t("Photos or a PDF; attached once the transaction is posted.")}
+        >
+          <input
+            ref={receiptInput}
+            type="file"
+            multiple
+            accept="image/*,application/pdf"
+            onChange={(e) => {
+              setReceipts(Array.from(e.target.files ?? []));
+              setReceiptError(null);
+            }}
+          />
+        </Field>
+      )}
+      {receiptError != null && <ErrorBanner error={receiptError} title={t("The transaction was posted, but a receipt did not upload")} />}
 
       <div className="actions">
         <button type="submit" className="btn btn--primary" disabled={busy}>

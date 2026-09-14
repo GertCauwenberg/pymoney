@@ -326,6 +326,71 @@ describe("posting from the register", () => {
     expect(calls.some((c) => c.method === "POST")).toBe(false);
   });
 
+  it("attaches a receipt chosen while posting, once the transaction exists", async () => {
+    const user = userEvent.setup();
+    const { fetch, calls } = server({
+      ...reads,
+      "POST /books/b1/transactions": ({ body }) => ({ status: 201, body: transaction({ id: "t9", ...(body as object) }) }),
+      "POST /books/b1/transactions/t9/attachments": () => ({ status: 201, body: attachment({ id: "at9", transaction_id: "t9" }) }),
+    });
+    mount(fetch, "/books/b1/accounts/chk");
+    await user.click(await screen.findByRole("button", { name: "New transaction" }));
+    const form = screen.getByRole("form", { name: "New transaction" });
+    await user.type(within(form).getByLabelText("Amount of leg 1"), "-30");
+    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "receipt.png", { type: "image/png" });
+    await user.upload(within(form).getByLabelText("Receipts"), file);
+    expect(within(form).getByText(/receipt\.png/)).toBeInTheDocument();
+
+    await user.click(within(form).getByRole("button", { name: "Post" }));
+    await waitFor(() => expect(screen.queryByRole("form", { name: "New transaction" })).toBeNull());
+
+    const posted = calls.filter((c) => c.method === "POST").map((c) => c.path);
+    // The transaction is posted first; only then, with a real id, the receipt.
+    expect(posted).toEqual(["/books/b1/transactions", "/books/b1/transactions/t9/attachments"]);
+  });
+
+  it("keeps the form open, with the transaction saved, when a receipt fails to upload", async () => {
+    const user = userEvent.setup();
+    let attachTries = 0;
+    const byKey = new Map<string, object>();
+    const { fetch, calls } = server({
+      ...reads,
+      // Idempotent, like the real endpoint: the same key returns the same row.
+      "POST /books/b1/transactions": ({ body, headers }) => {
+        const key = headers["idempotency-key"] ?? "";
+        if (!byKey.has(key)) byKey.set(key, transaction({ id: "t9", ...(body as object) }));
+        return { status: 201, body: byKey.get(key) };
+     },
+      "POST /books/b1/transactions/t9/attachments": () => {
+        attachTries += 1;
+        return attachTries === 1
+          ? { status: 413, body: { error: { type: "HttpError", message: "the file is larger than 25 MB", status: 413 } } }
+          : { status: 201, body: attachment({ id: "at9", transaction_id: "t9" }) };
+      },
+    });
+    mount(fetch, "/books/b1/accounts/chk");
+    await user.click(await screen.findByRole("button", { name: "New transaction" }));
+    const form = screen.getByRole("form", { name: "New transaction" });
+    await user.type(within(form).getByLabelText("Amount of leg 1"), "-30");
+    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
+    await user.upload(within(form).getByLabelText("Receipts"), new File([new Uint8Array([0x89])], "receipt.png", { type: "image/png" }));
+    await user.click(within(form).getByRole("button", { name: "Post" }));
+
+    // The transaction is saved; the form stays so the receipt can be retried.
+    expect(await within(form).findByText(/did not upload/)).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "New transaction" })).toBeInTheDocument();
+
+    await user.click(within(form).getByRole("button", { name: "Post" }));
+    await waitFor(() => expect(screen.queryByRole("form", { name: "New transaction" })).toBeNull());
+    // Re-posting reuses the idempotency key, so the server keeps one row;
+    // the receipt was uploaded on the retry only (the server has one copy).
+    const posts = calls.filter((c) => c.method === "POST" && c.path === "/books/b1/transactions");
+    expect(new Set(posts.map((c) => c.headers["idempotency-key"])).size).toBe(1);
+    expect(byKey.size).toBe(1);
+    expect(calls.filter((c) => c.method === "POST" && c.path.endsWith("/attachments"))).toHaveLength(2);
+  });
+
   it("tags a leg with an existing tag and a brand-new one, creating the latter first", async () => {
     const user = userEvent.setup();
     const { fetch, calls } = server({

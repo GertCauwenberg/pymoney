@@ -523,12 +523,18 @@ export function useAttachments(bookId: string, transactionId: string) {
   });
 }
 
-export function useUploadAttachment(bookId: string, transactionId: string) {
+/**
+ * Attach a file to a transaction. The transaction id is a mutation argument,
+ * not baked into the hook, so the posting form can stage files and upload them
+ * the moment `POST /transactions` hands back the new id.
+ */
+export function useAddAttachment(bookId: string) {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (file: Blob) => api.uploadAttachment(bookId, transactionId, file),
-    onSuccess: () =>
+    mutationFn: ({ transactionId, file }: { transactionId: string; file: Blob }) =>
+      api.uploadAttachment(bookId, transactionId, file),
+    onSuccess: (_attachment, { transactionId }) =>
       void qc.invalidateQueries({ queryKey: ["books", bookId, "transactions", transactionId, "attachments"] }),
   });
 }

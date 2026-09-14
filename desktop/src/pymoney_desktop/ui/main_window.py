@@ -764,6 +764,7 @@ class MainWindow(QMainWindow):
         book_id, accounts = self.book.id, {a.id: a for a in self.accounts}
         draft = dialog.draft()
         currency = dialog.currency()
+        receipts = dialog.staged_attachments()
 
         def work():
             payee_id = draft.payee_id
@@ -773,13 +774,41 @@ class MainWindow(QMainWindow):
                 ).id
             draft.payee_id = payee_id
             self._materialise_tags(book_id, draft)
-            return self.client.post_transaction(
+            posted = self.client.post_transaction(
                 book_id, draft.to_wire(accounts, currency)
             )
+            deferred_receipts = False
+            if receipts:
+                # Attachments exist only on the server, so the transaction has
+                # to be there first. Online that is immediate; offline the
+                # post is queued, and the receipts wait for the reconnect.
+                if not self.client.sync().online:
+                    deferred_receipts = True
+                else:
+                    for name, data, content_type in receipts:
+                        self.client.upload_attachment(
+                            book_id,
+                            posted.id,
+                            filename=name,
+                            data=data,
+                            content_type=content_type,
+                        )
+            return deferred_receipts
 
-        self.executor.run(
-            work, lambda _result: self._reload_book(), self._failed(_("Could not post"))
-        )
+        def done(deferred_receipts: bool) -> None:
+            self._reload_book()
+            if deferred_receipts:
+                QMessageBox.information(
+                    self,
+                    _("Saved offline"),
+                    _(
+                        "The transaction was saved and will be sent on the next "
+                        "sync. Add its receipts from the transaction window once "
+                        "you are back online."
+                    ),
+                )
+
+        self.executor.run(work, done, self._failed(_("Could not post")))
 
     def record_stock_split(self) -> None:
         account = self.current_account

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import mimetypes
+from pathlib import Path
 from uuid import UUID
 
 from pymoney.api.schemas import AccountOut, CommodityOut, PayeeOut, TagOut, TransactionOut
@@ -12,6 +14,7 @@ from PySide6.QtWidgets import (
     QDateEdit,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -38,6 +41,18 @@ from ..i18n import _
 __all__ = ["TransactionDialog"]
 
 NEW_PAYEE = "__new__"
+
+_ATTACHMENT_TYPES = (
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+    "image/tiff",
+    "application/pdf",
+)
+_ATTACHMENT_FILTER = "Images and PDF (*.png *.jpg *.jpeg *.gif *.webp *.tif *.tiff *.pdf)"
 
 # Columns of the legs table. Tags go last so the indices the amount, memo and
 # account sit at do not move.
@@ -94,6 +109,11 @@ class TransactionDialog(QDialog):
         )
         self._client = client
         self._book_id = book_id
+        # (filename, bytes, content-type) picked while posting; uploaded by the
+        # caller once the transaction has an id. Empty when editing -- an
+        # existing transaction opens its attachments straight away instead.
+        self._staged: list[tuple[str, bytes, str]] = []
+
         self._payees = sorted(payees, key=lambda p: p.name.lower())
         self._tags = sorted(tags or [], key=lambda t: t.name.lower())
         self._tag_name_by_id = {t.id: t.name for t in self._tags}
@@ -180,8 +200,16 @@ class TransactionDialog(QDialog):
                 self._client is not None and self._book_id is not None
             )
             attach_line.addWidget(self.attachments_button)
-            attach_line.addStretch()
-            form.addRow(_("Attachments"), self._attachments_row)
+        else:
+            self.attachments_button = QPushButton(_("Add receipts…"))
+            self.attachments_button.clicked.connect(self._pick_receipts)
+            attach_line.addWidget(self.attachments_button)
+
+        self.attachments_label = QLabel(_("None"))
+        self.attachments_label.setStyleSheet("color: gray")
+        attach_line.addWidget(self.attachments_label)
+        attach_line.addStretch()
+        form.addRow(_("Attachments"), self._attachments_row)
 
         self.legs = QTableWidget(0, 5)
         self.legs.setHorizontalHeaderLabels(
@@ -311,6 +339,32 @@ class TransactionDialog(QDialog):
     def _tags_text(self, row: int) -> str:
         widget = self.legs.cellWidget(row, TAGS)
         return widget.text() if isinstance(widget, QLineEdit) else ""
+
+    # -- attachments -------------------------------------------------------
+    def staged_attachments(self) -> list[tuple[str, bytes, str]]:
+        """Receipts the user picked while posting, as ``(name, bytes, type)``;
+        the caller uploads them once the transaction has an id."""
+        return list(self._staged)
+
+    def _refresh_attachment_label(self) -> None:
+        names = ", ".join(name for name, _data, _type in self._staged)
+        self.attachments_label.setText(names or _("None"))
+
+    def _pick_receipts(self) -> None:
+        paths, _filter = QFileDialog.getOpenFileNames(
+            self, _("Choose a receipt or invoice"), "", _(_ATTACHMENT_FILTER)
+        )
+        for path in paths:
+            content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+            if content_type not in _ATTACHMENT_TYPES:
+                QMessageBox.warning(
+                    self,
+                    _("Not allowed"),
+                    _("Attach an image (JPEG, PNG, GIF, WebP, TIFF) or a PDF."),
+                )
+                continue
+            self._staged.append((Path(path).name, Path(path).read_bytes(), content_type))
+        self._refresh_attachment_label()
 
     def _open_attachments(self) -> QDialog | None:
         """The receipts for the transaction being edited. Only editors ever

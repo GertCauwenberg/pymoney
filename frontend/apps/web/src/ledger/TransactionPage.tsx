@@ -12,7 +12,7 @@ import {
   useSetSplitState,
   useTags,
   useTransaction,
-  useUploadAttachment,
+  useAddAttachment,
 } from "@pymoney/core/hooks";
 import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -365,7 +365,7 @@ function Attachments({ bookId, transactionId, canWrite }: { bookId: string; tran
   const tr = useT();
   const api = useApi();
   const list = useAttachments(bookId, transactionId);
-  const upload = useUploadAttachment(bookId, transactionId);
+  const upload = useAddAttachment(bookId);
   const remove = useDeleteAttachment(bookId, transactionId);
   const fileInput = useRef<HTMLInputElement>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -373,7 +373,7 @@ function Attachments({ bookId, transactionId, canWrite }: { bookId: string; tran
   const onPick = async (file: File | undefined) => {
     if (!file) return;
     try {
-      await upload.mutateAsync(file);
+      await upload.mutateAsync({ transactionId, file });
     } catch {
       // Shown below.
     }
