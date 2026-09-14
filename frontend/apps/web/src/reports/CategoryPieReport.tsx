@@ -89,7 +89,7 @@ export function CategoryPieReport({ kind }: { kind: "INCOME" | "EXPENSE" }) {
 
       {report.data && target && (
         <>
-          <PieChart slices={slices} scale={target.minor_unit_factor} commodity={report.data.target} locale={locale} linkFor={(s) => (s.accountId ? `../accounts/${s.accountId}?start=${period.start}&end=${period.end}` : null)} />
+          <PieChart slices={slices} scale={target.minor_unit_factor} commodity={report.data.target} locale={locale} linkFor={(s) => (s.accountId ? `/books/${bookId}/accounts/${s.accountId}?start=${period.start}&end=${period.end}` : null)} />
           <ValuationPanel conversions={report.data.conversions} unpriced={report.data.unpriced} target={report.data.target} />
         </>
       )}
