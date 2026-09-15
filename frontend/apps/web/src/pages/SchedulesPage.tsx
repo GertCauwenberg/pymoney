@@ -10,7 +10,7 @@
 import { useT } from "@pymoney/core/hooks";
 import type { Account, Frequency, Schedule, ScheduleIn } from "@pymoney/core";
 import { useAccounts, useChangeSchedule, useSchedules } from "@pymoney/core/hooks";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type SubmitEvent } from "react";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Loading } from "../components/Loading";
@@ -149,7 +149,7 @@ function ScheduleForm({
     : endMode === "until" && !until ? t("Choose an end date.")
     : null;
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: SubmitEvent) => {
     e.preventDefault();
     if (problem) return;
     const body: ScheduleIn = {

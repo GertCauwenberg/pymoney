@@ -2,7 +2,7 @@ import { useT } from "@pymoney/core/hooks";
 import { decimalsOf } from "@pymoney/core";
 import type { Account, Commodity, CommodityKind } from "@pymoney/core";
 import { useAccounts, useChangeCommodity, useCommodities, useQuoteProviders } from "@pymoney/core/hooks";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type SubmitEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -232,7 +232,7 @@ function CommodityEditor({ bookId, existing, onDone }: { bookId: string; existin
     if (!existing) setScale(next === "CURRENCY" ? 2 : 4);
   };
 
-  const submit = async (e: FormEvent) => {
+  const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     setError(null);
     const precisionValue = precision.trim() === "" ? null : Number(precision);

@@ -1,9 +1,8 @@
 import { useT } from "@pymoney/core/hooks";
 import type { Book } from "@pymoney/core";
 import { useBooks, useDeleteAccount, useLogout, useSession } from "@pymoney/core/hooks";
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { Outlet, useOutletContext } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { LanguageSwitch } from "../components/LanguageSwitch";
@@ -131,7 +130,7 @@ function DeleteAccount({ books }: { books: readonly Book[] }) {
   const [password, setPassword] = useState("");
   const owned = books.filter((b) => b.role === "owner");
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: SubmitEvent) => {
     e.preventDefault();
     del.mutate(password);
   };

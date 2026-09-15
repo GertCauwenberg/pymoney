@@ -1,7 +1,7 @@
 import { useT } from "@pymoney/core/hooks";
 import type { Account, AccountClass, AccountType, Commodity } from "@pymoney/core";
 import { useAccounts, useChangeAccount, useCommodities } from "@pymoney/core/hooks";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type SubmitEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -357,7 +357,7 @@ function AccountEditor({
     }
   };
 
-  const submit = async (e: FormEvent) => {
+  const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     setError(null);
     try {

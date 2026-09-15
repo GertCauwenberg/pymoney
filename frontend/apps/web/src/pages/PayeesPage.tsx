@@ -1,7 +1,7 @@
 import { useT } from "@pymoney/core/hooks";
 import type { Account, Payee } from "@pymoney/core";
 import { useAccounts, useChangePayee, usePayees } from "@pymoney/core/hooks";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type SubmitEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -209,7 +209,7 @@ function PayeeEditor({
   const mergeTargets = payees.filter((p) => p.id !== existing?.id).sort((a, b) => a.name.localeCompare(b.name));
   const byId = new Map(payees.map((p) => [p.id, p]));
 
-  const submit = async (e: FormEvent) => {
+  const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     setError(null);
     try {

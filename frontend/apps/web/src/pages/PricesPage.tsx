@@ -9,7 +9,7 @@ import {
   usePrices,
   useQuoteProviders,
 } from "@pymoney/core/hooks";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type SubmitEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -268,7 +268,7 @@ function PriceForm({
   const quote = commodities.find((c) => c.id === quoteId);
   const valid = RATE.test(rate.trim()) && baseId && quoteId && baseId !== quoteId && isIsoDate(date);
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: SubmitEvent) => {
     e.preventDefault();
     if (!valid) return;
     change.mutate(

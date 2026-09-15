@@ -1,7 +1,7 @@
 import { useT } from "@pymoney/core/hooks";
 import type { Grant, Role } from "@pymoney/core";
 import { useBook, useDeleteBook, useDeleteGrant, useGrants, usePutGrant, useSession } from "@pymoney/core/hooks";
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -36,7 +36,7 @@ export function SharingPage() {
 
   if (role !== "owner") return <Navigate to="../../reports/balance-sheet" replace />;
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: SubmitEvent) => {
     e.preventDefault();
     put.mutate({ subject: subject.trim().toLowerCase(), role: newRole }, { onSuccess: () => setSubject("") });
   };

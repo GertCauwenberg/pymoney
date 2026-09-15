@@ -1,6 +1,6 @@
 import { useT } from "@pymoney/core/hooks";
 import { useCreateBook } from "@pymoney/core/hooks";
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -37,7 +37,7 @@ export function NewBookForm({ onDone, first = false }: { onDone?: () => void; fi
   const custom = choice === OTHER;
   const picked = CURRENCIES.find((c) => c.code === choice);
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: SubmitEvent) => {
     e.preventDefault();
     const body = custom
       ? {

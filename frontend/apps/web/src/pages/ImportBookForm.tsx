@@ -1,7 +1,7 @@
 import { useT } from "@pymoney/core/hooks";
 import type { ImportResult } from "@pymoney/core";
 import { useImportKmymoney } from "@pymoney/core/hooks";
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -21,7 +21,7 @@ export function ImportBookForm({ onDone }: { onDone?: () => void }) {
   const [rounding, setRounding] = useState(true);
   const [prices, setPrices] = useState(true);
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: SubmitEvent) => {
     e.preventDefault();
     if (!file) return;
     importBook.mutate({ file, name: name.trim() || file.name.replace(/\.(kmy|xml)(\.gz)?$/i, ""), roundingAdjustments: rounding, skipPrices: !prices });

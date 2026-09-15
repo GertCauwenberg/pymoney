@@ -14,7 +14,7 @@ import {
 } from "@pymoney/core";
 import type { Account, Commodity, DraftProblem, LegDraft, Payee, Tag, Transaction, TransactionDraft } from "@pymoney/core";
 import { useAddAttachment, useApi, useCreatePayee, useCreateTag, useCreateTransaction, useTags, useUpdateTransaction } from "@pymoney/core/hooks";
-import { useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useId, useMemo, useRef, useState, type SubmitEvent, type KeyboardEvent } from "react";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Money } from "../components/Money";
@@ -188,7 +188,7 @@ export function TransactionForm({
     };
   };
 
-  const submit = async (e: FormEvent) => {
+  const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     setTouched(true);
     if (problems.length > 0 || payeeProblem) return;

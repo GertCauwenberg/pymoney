@@ -2,7 +2,7 @@ import { useT } from "@pymoney/core/hooks";
 import { isPending } from "@pymoney/core";
 import type { Pending } from "@pymoney/core";
 import { useI18n, useLogin, useRegister, useResendActivation, useSession } from "@pymoney/core/hooks";
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -30,7 +30,7 @@ export function LoginPage() {
   const busy = login.isPending || register.isPending;
   const error = mode === "login" ? login.error : register.error;
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: SubmitEvent) => {
     e.preventDefault();
     if (mode === "login") login.mutate({ email, password });
     else

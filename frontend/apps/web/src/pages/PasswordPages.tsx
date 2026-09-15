@@ -1,6 +1,6 @@
 import { useT } from "@pymoney/core/hooks";
 import { useActivate, useForgotPassword, useResetPassword } from "@pymoney/core/hooks";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
