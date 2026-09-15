@@ -85,12 +85,10 @@ test("an owner deletes the book by typing its name, then leaves", async ({ page 
   await expect(account).toContainText("You own a book (Short-lived)");
   await expect(account.getByRole("button", { name: "Delete my account…" })).toBeDisabled();
 
-  // Delete the book from its Sharing page: the name must be typed exactly.
-  await page.getByRole("link", { name: "Short-lived" }).click();
-  await settings(page, "Sharing");
+  // Delete the book: the name must be typed exactly.
+  await page.getByRole("link", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete this book…" }).click();
   const confirm = page.getByRole("button", { name: "Delete it, irreversibly" });
-  await page.getByLabel(/Type the book's name/).fill("short-lived");
   await expect(confirm).toBeDisabled();
   await page.getByLabel(/Type the book's name/).fill("Short-lived");
   await confirm.click();

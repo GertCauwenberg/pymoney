@@ -29,7 +29,7 @@ test("a new user imports a KMyMoney file instead of creating a book by hand", as
   // Inside the imported book, as its owner: the balance KMyMoney showed.
   await expect(page.locator(".topbar__book")).toHaveText("Our old books");
   await settings(page, "Accounts");
-  await expect(page.getByRole("link", { name: "Sharing" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Prices" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Current Account", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Current Account", exact: true }).click();
   await expect(page.locator("tfoot .money")).toHaveText("8,007.73 EUR");
