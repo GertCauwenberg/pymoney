@@ -96,7 +96,7 @@ export function BooksPage() {
                         <Link to={`/books/${b.id}`}>
                           <strong>{b.name}</strong>
                           <span className="muted">
-                            {b.role ?? "viewer"} · revision {b.revision}
+                            {t(b.role ?? "viewer")} · {t("revision")} {b.revision}
                           </span>
                         </Link>
                       </td>
@@ -140,8 +140,7 @@ function DeleteAccount({ books }: { books: readonly Book[] }) {
       <h2 id="delete-account-heading">{t("Delete my account")}</h2>
       {owned.length > 0 ? (
         <p className="muted">
-          You own {owned.length === 1 ? "a book" : `${owned.length} books`} ({owned.map((b) => b.name).join(", ")}). Delete{" "}
-          {owned.length === 1 ? "it" : "them"} or make someone else the owner under <em>{t("Sharing")}</em> {t("first; an account that owns a book cannot be deleted.")}
+          {owned.length === 1 ? t("You own a book") : t("You own {n} books", { n: owned.length })} ({owned.map((b) => b.name).join(", ")}).  {owned.length === 1 ? t("Delete it") : t("Delete them")} {t("or make someone else the owner under")} <em>{t("Sharing")}</em> {t("first; an account that owns a book cannot be deleted.")}
         </p>
       ) : (
         <p className="muted">
