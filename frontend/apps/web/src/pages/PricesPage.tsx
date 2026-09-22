@@ -14,11 +14,11 @@ import { Link } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Loading } from "../components/Loading";
-import { Field } from "../components/fields";
+import { Field, DateField } from "../components/fields";
 import { useBookContext, useReportParams } from "../reports/useReportParams";
 
 const CAN_WRITE = new Set(["editor", "owner"]);
-const DEFAULTS = { commodity: "" };
+const DEFAULTS = { commodity: "", start: "", end: "" };
 
 /**
  * Price history: what the server fetched, what the user typed, and the tools
@@ -40,8 +40,18 @@ export function PricesPage() {
 
   // The filter is "involving this commodity", either side of the pair; the
   // server filters one side at a time, so ask for both and merge.
-  const query = useMemo(() => (params.commodity ? { base_id: params.commodity } : {}), [params.commodity]);
-  const asQuote = useMemo(() => (params.commodity ? { quote_id: params.commodity } : {}), [params.commodity]);
+  const query = useMemo(() => ({
+    ...(params.commodity ? { base_id: params.commodity } : {}),
+    ...(params.start ? { on_or_after: params.start } : {}),
+    ...(params.end ? { on_or_before: params.end } : {})
+    }), 
+    [params.commodity, params.start, params.end]);
+  const asQuote = useMemo(() => ({
+    ...(params.commodity ? { quote_id: params.commodity } : {}),
+    ...(params.start ? { on_or_after: params.start } : {}),
+    ...(params.end ? { on_or_before: params.end } : {}) 
+    }), 
+    [params.commodity, params.start, params.end]);
   const prices = usePrices(bookId, query);
   const pricesAsQuote = usePrices(bookId, asQuote);
 
@@ -125,6 +135,8 @@ export function PricesPage() {
             ))}
           </select>
         </Field>
+        <DateField label={t("From")} value={params.start} max={params.end || undefined} onChange={(start) => update({ start })} allowEmpty />
+        <DateField label={t("To")} value={params.end} min={params.start || undefined} onChange={(end) => update({ end })} allowEmpty />
       </form>
 
       {prices.isError && <ErrorBanner error={prices.error} onRetry={() => void prices.refetch()} />}
