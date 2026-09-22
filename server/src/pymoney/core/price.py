@@ -321,10 +321,12 @@ class PriceDB:
         return len(self._by_id)
 
     def all(self) -> tuple[Price, ...]:
+        """Every stored price, newest effective date first."""
         return tuple(
             sorted(
                 self._by_id.values(),
                 key=lambda p: (p.effective_date, p.as_of, p.id.int),
+                reverse=True,
             )
         )
 

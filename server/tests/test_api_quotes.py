@@ -100,8 +100,8 @@ class TestFetch:
             (p["effective_date"], p["rate"]["num"], p["rate"]["den"], p["source"])
             for p in prices
         ] == [
-            ("2025-12-30", 5421, 5000, "fake"),
             ("2025-12-31", 109, 100, "fake"),
+            ("2025-12-30", 5421, 5000, "fake"),
         ]
         # as_of is the fetch instant, from the server's clock.
         assert prices[0]["as_of"].startswith("2026-01-01T12:00:00")

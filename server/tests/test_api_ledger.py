@@ -1266,6 +1266,37 @@ class TestPrices:
         page = ledger.client.get(f"/books/{ledger.book_id}/prices").json()
         assert len(page["items"]) == 2
 
+    def test_lists_newest_effective_date_first(self, ledger: Ledger):
+        usd = ledger.client.post(
+            f"/books/{ledger.book_id}/commodities", json={"code": "USD"}
+        ).json()
+        url = f"/books/{ledger.book_id}/prices"
+        for day, rate in (
+            ("2026-01-01", "0.90"),
+            ("2026-03-01", "0.92"),
+            ("2026-02-01", "0.91"),
+        ):
+            ledger.client.post(
+                url,
+                json={
+                    "base_id": usd["id"],
+                    "quote_id": ledger.eur,
+                    "rate": rate,
+                    "effective_date": day,
+                },
+            )
+        first = ledger.client.get(url, params={"limit": 2}).json()
+        assert [p["effective_date"] for p in first["items"]] == [
+            "2026-03-01",
+            "2026-02-01",
+        ]
+        assert first["has_more"] is True
+        rest = ledger.client.get(
+            url, params={"limit": 2, "cursor": first["next_cursor"]}
+        ).json()
+        assert [p["effective_date"] for p in rest["items"]] == ["2026-01-01"]
+        assert rest["has_more"] is False
+
     def test_filter_by_knowledge_time(self, ledger: Ledger):
         usd = ledger.client.post(
             f"/books/{ledger.book_id}/commodities", json={"code": "USD"}

@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from ...core import commands as cmd
 from ...core.price import ValuationPolicy
@@ -62,13 +62,29 @@ def list_prices(
     ]
     position = decode_cursor(cursor)
     if position is not None:
-        mark = (date.fromisoformat(position["d"]), UUID(position["i"]).int)
-        found = [p for p in found if (p.effective_date, p.id.int) > mark]
+        try:
+            mark = (
+                date.fromisoformat(position["d"]),
+                datetime.fromisoformat(position["a"]),
+                UUID(position["i"]).int,
+            )
+        except (KeyError, ValueError, TypeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="malformed cursor"
+            ) from exc
+        # Newest-first: later pages are strictly older than the last row we sent.
+        found = [p for p in found if (p.effective_date, p.as_of, p.id.int) < mark]
     window = found[: size + 1]
     has_more = len(window) > size
     window = window[:size]
     next_cursor = (
-        encode_cursor({"d": str(window[-1].effective_date), "i": str(window[-1].id)})
+        encode_cursor(
+            {
+                "d": str(window[-1].effective_date),
+                "a": window[-1].as_of.isoformat(),
+                "i": str(window[-1].id),
+            }
+        )
         if has_more and window
         else None
     )

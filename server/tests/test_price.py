@@ -156,14 +156,15 @@ class TestPriceDB:
     def test_constructor_takes_prices(self, eur, usd):
         assert len(PriceDB([price(eur, usd, 2)])) == 1
 
-    def test_all_is_sorted_by_effective_date(self, eur, usd):
+    def test_all_is_sorted_newest_first(self, eur, usd):
         db = PriceDB(
             [
                 price(eur, usd, 2, on=date(2026, 2, 1)),
                 price(eur, usd, 3, on=date(2026, 1, 1)),
+                price(eur, usd, 4, on=date(2026, 2, 1), at=T1),
             ]
         )
-        assert [p.rate for p in db.all()] == [3, 2]
+        assert [p.rate for p in db.all()] == [4, 2, 3]
 
     def test_history_orients_to_the_requested_direction(self, eur, usd):
         db = PriceDB([price(eur, usd, 2)])
