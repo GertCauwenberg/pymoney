@@ -291,7 +291,7 @@ export function TransactionForm({
             <select value={currencyId} onChange={(e) => setCurrencyId(e.target.value)} className="input--short">
               {currencies.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.id === currency.id ? t("{code} (book currency)", { code: c.code }) : c.code}
+                  {c.code}
                 </option>
               ))}
             </select>

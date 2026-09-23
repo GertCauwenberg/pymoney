@@ -12,6 +12,7 @@ import type { BookContext } from "../src/pages/BookShell";
 
 const eur = (minor: number) => ({ commodity_id: "eur", commodity: "EUR", minor, scale: 100, text: String(minor / 100) });
 const usd = (minor: number) => ({ commodity_id: "usd", commodity: "USD", minor, scale: 100, text: String(minor / 100) });
+const apl = (minor: number) => ({ commodity_id: "apl", commodity: "APPL", kind: "STOCK", minor, scale: 100, text: String(minor / 100) });
 
 const account = (id: string, path: string, extra: object = {}) => ({
   id,
@@ -37,6 +38,7 @@ const accounts = [
   account("assets", "Assets", { placeholder: true, type: "ASSET" }),
   account("chk", "Assets:Checking", { parent_id: "assets" }),
   account("wallet", "Assets:Dollar Wallet", { parent_id: "assets", commodity_id: "usd", commodity: "USD", type: "CASH" }),
+  account("stocks", "Assets:Stocks", { parent_id: "assets", commodity_id: "apl", commodity: "APPL", type: "CASH" }),
   account("old", "Assets:Old", { parent_id: "assets", closed: true }),
   account("exp", "Expenses", { placeholder: true, type: "EXPENSE", account_class: "EXPENSE" }),
   account("food", "Expenses:Food", { parent_id: "exp", type: "EXPENSE", account_class: "EXPENSE" }),
@@ -44,6 +46,7 @@ const accounts = [
 const commodities = [
   { id: "eur", code: "EUR", name: "Euro", kind: "CURRENCY", symbol: "€", minor_unit_factor: 100, display_precision: 2, isin: null, quote_source: null, revision: 1 },
   { id: "usd", code: "USD", name: "US Dollar", kind: "CURRENCY", symbol: "$", minor_unit_factor: 100, display_precision: 2, isin: null, quote_source: null, revision: 1 },
+  { id: "apl", code: "APPL", name: "Apple", kind: "STOCKS", symbol: "", minor_unit_factor: 100, display_precision: 2, isin: null, quote_source: null, revision: 1 },
 ];
 const payees = [{ id: "p1", name: "Acme Payroll", notes: "", address: "", match_keys: [], default_account_id: null, revision: 1 }];
 const tags = [{ id: "g-holiday", name: "Holiday", notes: "", colour: "#ff8800", closed: false, revision: 1 }];
@@ -139,6 +142,7 @@ const reads: Record<string, Handler> = {
   "GET /books/b1/accounts": () => ({ body: accounts }),
   "GET /books/b1/accounts/chk": () => ({ body: accounts[1] }),
   "GET /books/b1/accounts/wallet": () => ({ body: accounts[2] }),
+  "GET /books/b1/accounts/stocks": () => ({ body: accounts[3] }),
   "GET /books/b1/payees": () => ({ body: payees }),
   "GET /books/b1/tags": () => ({ body: tags }),
   "GET /books/b1/commodities": () => ({ body: commodities }),
@@ -147,6 +151,9 @@ const reads: Record<string, Handler> = {
   }),
   "GET /books/b1/accounts/wallet/register": () => ({
     body: { items: [], has_more: false, next_cursor: null, totals: { opening: usd(0), closing: usd(0) } },
+  }),
+  "GET /books/b1/accounts/stocks/register": () => ({
+    body: { items: [], has_more: false, next_cursor: null, totals: { opening: apl(0), closing: apl(0) } },
   }),
   "GET /books/b1/transactions/t1": () => ({ body: transaction() }),
   "GET /books/b1/transactions/t1/attachments": () => ({ body: [] }),
@@ -267,13 +274,13 @@ describe("posting from the register", () => {
     await user.click(await screen.findByRole("button", { name: "New transaction" }));
     const form = screen.getByRole("form", { name: "New transaction" });
     const currency = within(form).getByLabelText("Currency");
-    expect(currency).toHaveValue("eur");
-    await user.selectOptions(currency, "usd");
+    expect(currency).toHaveValue("usd");
+    await user.selectOptions(currency, "eur");
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-10");
     await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
     await user.click(within(form).getByRole("button", { name: "Post" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
-    expect((calls.find((c) => c.method === "POST")!.body as { currency_id: string }).currency_id).toBe("usd");
+    expect((calls.find((c) => c.method === "POST")!.body as { currency_id: string }).currency_id).toBe("eur");
   });
 
   it("does not let the currency be changed while editing", async () => {
@@ -291,9 +298,9 @@ describe("posting from the register", () => {
     const user = userEvent.setup();
     const { fetch, calls } = server({
       ...reads,
-      "POST /books/b1/accounts/wallet/stock-split": ({ body }) => ({
+      "POST /books/b1/accounts/stocks/stock-split": ({ body }) => ({
         status: 201,
-        body: transaction({ id: "s9", is_stock_split: true, splits: [split("x", "wallet", 0)], ...(body as object) }),
+        body: transaction({ id: "s9", is_stock_split: true, splits: [split("x", "stocks", 0)], ...(body as object) }),
       }),
     });
     mount(fetch, "/books/b1/accounts/chk");
@@ -301,7 +308,7 @@ describe("posting from the register", () => {
     expect(await screen.findByRole("heading", { name: "Checking" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Stock split…" })).toBeNull();
 
-    mount(fetch, "/books/b1/accounts/wallet");
+    mount(fetch, "/books/b1/accounts/stocks");
     await user.click(await screen.findByRole("button", { name: "Stock split…" }));
     const form = screen.getByRole("form", { name: "Stock split" });
     await user.clear(within(form).getByLabelText("Date"));
@@ -317,7 +324,7 @@ describe("posting from the register", () => {
   it("refuses a nonsense ratio before it reaches the server", async () => {
     const user = userEvent.setup();
     const { fetch, calls } = server(reads);
-    mount(fetch, "/books/b1/accounts/wallet");
+    mount(fetch, "/books/b1/accounts/stocks");
     await user.click(await screen.findByRole("button", { name: "Stock split…" }));
    const form = screen.getByRole("form", { name: "Stock split" });
     await user.type(within(form).getByLabelText("Ratio"), "1");
@@ -631,7 +638,8 @@ describe("the chart of accounts", () => {
     await user.selectOptions(within(form).getByLabelText("Type"), "SAVINGS");
     // Only asset accounts are offered as parents for a savings account.
     const parents = within(within(form).getByLabelText("Parent")).getAllByRole("option").map((o) => o.textContent);
-    expect(parents).toEqual(["— top level —", "Assets", "Assets:Checking", "Assets:Dollar Wallet"]);
+    expect(parents).toEqual(["— top level —", "Assets", "Assets:Checking", "Assets:Dollar Wallet", "Assets:Stocks",
+]);
     await user.selectOptions(within(form).getByLabelText("Parent"), "assets");
     await user.type(within(form).getByLabelText("Description"), "For the summer");
     await user.click(within(form).getByRole("button", { name: "Create account" }));

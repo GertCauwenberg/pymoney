@@ -52,11 +52,14 @@ export function AccountRegisterPage() {
   const payees = usePayees(bookId);
   const commodities = useCommodities(bookId);
   const currency = commodities.data?.find((c) => c.id === baseCurrencyId);
+  const acctCommodity = commodities.data?.find((c) => c.id === account.data?.commodity_id);
   const canWrite = role !== null && CAN_WRITE.has(role);
   const canPost = canWrite && account.data !== undefined && !account.data.closed && !account.data.placeholder;
-  // A stock split changes a *holding* -- shares, or a foreign currency --
-  // never an account kept in the book's own currency.
   const isHolding = account.data !== undefined && account.data.commodity_id !== baseCurrencyId;
+  // A stock split changes a *holding* -- shares, fund, ... --
+  // never an account in currency.
+  const isCurrency = acctCommodity?.kind === "CURRENCY";
+
   const query = useMemo(
     () => ({
       ...(params.start ? { start: params.start } : {}),
@@ -174,7 +177,7 @@ export function AccountRegisterPage() {
               {t("Import CSV")}
             </Link>
           )}
-          {canPost && isHolding && !splitting && (
+          {canPost && !isCurrency && !splitting && (
             <button type="button" className="btn" onClick={() => setSplitting(true)}>
               {t("Stock split…")}
             </button>
@@ -193,13 +196,13 @@ export function AccountRegisterPage() {
         </div>
       </header>
 
-      {adding && accounts.data && payees.data && commodities.data && currency && (
+      {adding && accounts.data && payees.data && commodities.data && acctCommodity && currency && (
         <TransactionForm
           bookId={bookId}
           accounts={accounts.data}
           payees={payees.data}
           commodities={commodities.data}
-          currency={currency}
+          currency={isCurrency ? acctCommodity: currency}
           defaultAccountId={accountId}
           onSaved={() => setAdding(false)}
           onCancel={() => setAdding(false)}
