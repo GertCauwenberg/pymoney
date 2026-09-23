@@ -130,7 +130,7 @@ export function PricesPage() {
             <option value="">{t("All")}</option>
             {(commodities.data ?? []).map((c) => (
               <option key={c.id} value={c.id}>
-                {c.code}
+                {c.name}
               </option>
             ))}
           </select>

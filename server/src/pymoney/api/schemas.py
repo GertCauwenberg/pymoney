@@ -1024,9 +1024,9 @@ class PriceOut(Out):
         return cls(
             id=price.id,
             base_id=price.base.id,
-            base=price.base.code,
+            base=price.base.name,
             quote_id=price.quote.id,
-            quote=price.quote.code,
+            quote=price.quote.name,
             rate=RateOut.of(price.rate),
             effective_date=price.effective_date,
             as_of=price.as_of,
