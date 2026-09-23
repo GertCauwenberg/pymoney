@@ -150,7 +150,11 @@ export function AccountRegisterPage() {
           <p className="muted">
             {account.data && (
               <>
-                {account.data.type.toLowerCase().replace("_", " ")} · {account.data.commodity}
+                {account.data.type.toLowerCase().replace("_", " ")}
+                { isHolding && (
+                    <Link to={`../settings/prices?commodity=${account.data.commodity_id}`}>
+                     {" · "} {account.data.commodity}
+                    </Link> ) }
                 {account.data.closed && " · closed"}
                 {account.data.placeholder && " · placeholder"}
                 {account.data.institution && ` · ${account.data.institution}`}
