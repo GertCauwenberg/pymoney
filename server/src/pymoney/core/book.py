@@ -31,7 +31,13 @@ from .changelog import Change, ChangeOp, EntityKind
 from .clock import Clock, SystemClock
 from .commodity import Commodity, CommodityKind
 from .entity import Entity
-from .errors import CommandError, ConflictError, NotFoundError, ValidationError
+from .errors import (
+    CommandError,
+    CommodityMismatchError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from .handlers import handler_for
 from .ids import new_id
 from .payee import Payee
@@ -663,7 +669,14 @@ class Book:
             out.add(ref.value)
         if len(out) == 0:
             return Amount.zero(self.base_currency)
-        return out.sole()
+        try:
+            return out.sole()
+        except CommodityMismatchError:
+            from .reports import Valuer
+
+            valuer = Valuer(self, self.default_policy())
+            value = valuer.value(out)
+            return value.book()
 
     # ====================================================================
     # command dispatch
