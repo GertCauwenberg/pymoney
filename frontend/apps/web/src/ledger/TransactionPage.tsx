@@ -49,6 +49,7 @@ export function TransactionPage() {
   const history = useHistory(bookId, { entity_id: transactionId });
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
   const accountsById = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.id, a])), [accounts.data]);
@@ -78,6 +79,7 @@ export function TransactionPage() {
     (t.is_stock_split
       ? tr("A stock split is recorded, not edited. Delete it and record it again if the ratio was wrong.")
       : undefined);
+  const noCopyHint = t.is_stock_split ? tr("A stock split can not be copied") : undefined;
   const txCurrency = commodities.data?.find((c) => c.id === t.currency_id);
   const firstAccount = t.splits[0]?.account_id;
 
@@ -95,22 +97,25 @@ export function TransactionPage() {
           </p>
           <h1>{payee ?? (t.memo || tr("Transaction"))}</h1>
           <p className="muted">
-            {t.date}
+            {!cloning && t.date}
             {t.number && ` · no. ${t.number}`}
             {payee && t.memo && ` · ${t.memo}`}
             {` · ${t.currency}`}
             {t.is_stock_split && ` · ${tr("stock split")}`}
-            {t.locked && " · locked"}
+            {t.locked && !cloning && " · locked"}
           </p>
         </div>
         <div className="actions">
           <button type="button" className="btn" onClick={() => void navigate(-1)}>
             ← Back
           </button>
-          {canWrite && !editing && (
+          {canWrite && !editing && !cloning && (
             <>
               <button type="button" className="btn btn--primary" disabled={noEdit} title={noEditHint} onClick={() => setEditing(true)}>
                 {tr("Edit")}
+              </button>
+              <button type="button" className="btn btn--primary" disabled={t.is_stock_split} title={noCopyHint} onClick={() => setCloning(true)}>
+                {tr("Copy")}
               </button>
               {confirming ? (
                 <span className="actions actions--inline">
@@ -151,6 +156,21 @@ export function TransactionPage() {
         />
       )}
 
+      {cloning && accounts.data && payees.data && commodities.data && txCurrency && (
+        <TransactionForm
+          bookId={bookId}
+          accounts={accounts.data}
+          payees={payees.data}
+          commodities={commodities.data}
+          currency={txCurrency}
+          cloning={t}
+          onSaved={() => setCloning(false)}
+          onCancel={() => setCloning(false)}
+        />
+      )}
+
+      {!editing && !cloning && (
+      <>
       <dl className="facts">
         <div>
           <dt>{tr("Date")}</dt>
@@ -254,9 +274,14 @@ export function TransactionPage() {
           </tr>
         </tfoot>
       </table>
+      </>
+      )}
 
+      {!cloning && (
       <Attachments bookId={bookId} transactionId={t.id} canWrite={canWrite} />
+      )}
 
+      {!cloning && (
       <details className="valuation history-panel">
         <summary>
           {tr("History")}
@@ -269,6 +294,7 @@ export function TransactionPage() {
         </summary>
         {history.data && <HistoryTable changes={history.data} linkTransactions={false} />}
       </details>
+      )}
     </article>
   );
 }

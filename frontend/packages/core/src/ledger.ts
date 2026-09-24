@@ -248,6 +248,34 @@ export function draftFromTransaction(tx: Transaction, currencyId: string): Trans
   };
 }
 
+/**
+ * A stored transaction as a draft, for cloning.
+ */
+export function newDraftFromTransaction(tx: Transaction, currencyId: string, date: string): TransactionDraft {
+  return {
+    date: date,
+    payee_id: tx.payee_id ?? null,
+    memo: tx.memo,
+    number: tx.number,
+    legs: tx.splits.map((s: Split) => ({
+      key: newLegKey(),
+      account_id: s.account_id,
+      value: minorToDecimal(s.value.minor, s.value.scale),
+      quantity: s.quantity.commodity_id === currencyId ? "" : minorToDecimal(s.quantity.minor, s.quantity.scale),
+      memo: s.memo,
+      tag_ids: [...(s.tag_ids ?? [])],
+      new_tag_names: [],
+      keep: {
+        reconcile_state: "NOT_RECONCILED",
+        reconcile_date: null,
+        action: s.action,
+        number: s.number,
+        payee_id: s.payee_id ?? null,
+      },
+    })),
+  };
+}
+
 /** Accounts a leg may be posted to: open, not a placeholder, sorted by path. */
 export function postableAccounts(accounts: readonly Account[]): Account[] {
   return accounts.filter((a) => !a.placeholder && !a.closed).sort((a, b) => a.path.localeCompare(b.path));

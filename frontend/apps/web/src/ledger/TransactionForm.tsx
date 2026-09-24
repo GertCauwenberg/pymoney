@@ -3,6 +3,7 @@ import {
   balanceAmount,
   draftBalance,
   draftFromTransaction,
+  newDraftFromTransaction,
   draftToTransactionIn,
   emptyLeg,
   needsQuantity,
@@ -42,6 +43,7 @@ export function TransactionForm({
   commodities,
   currency,
   existing,
+  cloning,
   defaultAccountId,
   onSaved,
   onCancel,
@@ -54,6 +56,7 @@ export function TransactionForm({
   currency: Commodity;
   /** Edit this transaction; omit to post a new one. */
   existing?: Transaction | undefined;
+  cloning?: Transaction | undefined;
   /** For a new transaction: the account whose register we came from. */
   defaultAccountId?: string | undefined;
   onSaved: (saved: Transaction) => void;
@@ -62,7 +65,8 @@ export function TransactionForm({
   const t = useT();
   const api = useApi();
   const [draft, setDraft] = useState<TransactionDraft>(() =>
-    existing ? draftFromTransaction(existing, currency.id) : newDraft(defaultAccountId ?? "", today()),
+    existing ? draftFromTransaction(existing, currency.id) : 
+    cloning ? newDraftFromTransaction(cloning, currency.id, today()) : newDraft(defaultAccountId ?? "", today()),
   );
   // The transaction currency is chosen when posting and fixed once a
   // transaction exists: its splits' values are already denominated in it, and
