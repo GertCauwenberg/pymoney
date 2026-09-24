@@ -73,7 +73,10 @@ export function TransactionForm({
   // changing it would silently reinterpret every figure.
   const [currencyId, setCurrencyId] = useState(currency.id);
   const [payeeChoice, setPayeeChoice] = useState<string>(draft.payee_id ?? "");
-  const [newPayeeName, setNewPayeeName] = useState("");
+  const [newPayeeName, setNewPayeeName] = useState(() => {
+    const selected = payees.find((p) => p.id === draft.payee_id);
+    return selected?.name ?? "";
+  });
   const [touched, setTouched] = useState(false);
   // One key per form instance: a retry after a dropped connection posts once.
   const [idempotencyKey] = useState(() => `web-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -99,6 +102,10 @@ export function TransactionForm({
   const tagIdByName = useMemo(() => new Map(tags.map((tg) => [tg.name.toLowerCase(), tg.id])), [tags]);
   const postable = useMemo(() => postableAccounts(accounts), [accounts]);
   const sortedPayees = useMemo(() => [...payees].sort((a, b) => a.name.localeCompare(b.name)), [payees]);
+  const payeeByName = useMemo(
+    () => new Map(payees.map((p) => [p.name.toLowerCase(), p])),
+    [payees],
+  );
   const sortedTags = useMemo(() => [...tags].sort((a, b) => a.name.localeCompare(b.name)), [tags]);
   const currencies = useMemo(
     () => commodities.filter((c) => c.kind === "CURRENCY").sort((a, b) => a.code.localeCompare(b.code)),
@@ -260,28 +267,36 @@ export function TransactionForm({
           <input type="date" required value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
         </Field>
         <Field label={t("Payee")}>
-          <select
-            value={payeeChoice}
+          <input
+            type="text"
+            list="payee-suggestions"
+            value={newPayeeName}
+            placeholder={t("Choose or type a payee…")}
             onChange={(e) => {
-              setPayeeChoice(e.target.value);
-              if (e.target.value !== NEW_PAYEE) setNewPayeeName("");
-              void prefillFromPayee(e.target.value);
+              const name = e.target.value;
+              setNewPayeeName(name);
+              const payee = payeeByName.get(name.trim().toLowerCase());
+              if (payee) {
+                setPayeeChoice(payee.id);
+                void prefillFromPayee(payee.id);
+              } else {
+                setPayeeChoice(name.trim() ? NEW_PAYEE : "");
+              }
             }}
-          >
-            <option value="">—</option>
+            onBlur={() => {
+              const payee = payeeByName.get(newPayeeName.trim().toLowerCase());
+              if (payee) {
+                setPayeeChoice(payee.id);
+                void prefillFromPayee(payee.id);
+              }
+            }}
+          />
+          <datalist id="payee-suggestions">
             {sortedPayees.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
+              <option key={p.id} value={p.name} />
             ))}
-            <option value={NEW_PAYEE}>{t("New payee…")}</option>
-          </select>
+          </datalist>
         </Field>
-        {creatingPayee && (
-          <Field label={t("New payee name")}>
-            <input type="text" required autoFocus value={newPayeeName} onChange={(e) => setNewPayeeName(e.target.value)} />
-          </Field>
-        )}
         <Field label={t("Memo")}>
           <input type="text" value={draft.memo} onChange={(e) => setDraft({ ...draft, memo: e.target.value })} />
         </Field>
@@ -327,24 +342,13 @@ export function TransactionForm({
             return (
               <tr key={leg.key} className={legProblems.length ? "transaction-form__leg--invalid" : undefined}>
                 <td>
-                  <select
-                    aria-label={t("Account of leg {n}", { n: i + 1 })}
-                    value={leg.account_id}
-                    onChange={(e) => setLeg(i, { account_id: e.target.value })}
-                  >
-                    <option value="">{t("Choose an account…")}</option>
-                    {account && (account.placeholder || account.closed) && (
-                      <option value={account.id} disabled>
-                        {account.path}
-                      </option>
-                    )}
-                    {postable.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.path}
-                        {a.commodity_id !== txCurrency.id ? ` (${a.commodity})` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <AccountAutocomplete
+                    leg={i}
+                    account={account}
+                    postable={postable}
+                    txCurrency={txCurrency}
+                    onChange={(accountId) => setLeg(i, { account_id: accountId })}
+                  />
                   {legProblems.map((p) => (
                     <div key={p.message} className="field__error" role="alert">
                       {p.message}
@@ -473,6 +477,70 @@ export function TransactionForm({
         </button>
       </div>
     </form>
+  );
+}
+
+function AccountAutocomplete({
+  leg,
+  account,
+  postable,
+  txCurrency,
+  onChange,
+}: {
+  leg: number;
+  account: Account | undefined;
+  postable: readonly Account[];
+  txCurrency: Commodity;
+  onChange: (accountId: string) => void;
+}) {
+  const t = useT();
+  const listId = useId();
+  const [text, setText] = useState(() => account?.path ?? "");
+
+  const accounts = useMemo(() => {
+    const byId = new Map(postable.map((a) => [a.id, a]));
+    if (account && (account.placeholder || account.closed)) byId.set(account.id, account);
+    return [...byId.values()];
+  }, [account, postable]);
+
+  const selectAccount = (value: string) => {
+    const selected = accounts.find((a) => a.path === value);
+    if (selected && !(selected.placeholder || selected.closed)) {
+      onChange(selected.id);
+      setText(selected.path);
+    } else if (value === "") {
+      onChange("");
+      setText("");
+    } else {
+      // Keep the current valid selection if the typed text does not identify
+      // an existing postable account.
+      setText(account?.path ?? "");
+    }
+  };
+
+  return (
+    <>
+      <input
+        type="text"
+        list={listId}
+        aria-label={t("Account of leg {n}", { n: leg + 1 })}
+        placeholder={t("Choose an account…")}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => selectAccount(text)}
+      />
+      <datalist id={listId}>
+        {accounts.map((a) => (
+          <option
+            key={a.id}
+            value={a.path}
+            disabled={a.placeholder || a.closed}
+          >
+            {a.commodity_id !== txCurrency.id ? ` (${a.commodity})` : ""}
+          </option>
+        ))}
+      </datalist>
+    </>
   );
 }
 
