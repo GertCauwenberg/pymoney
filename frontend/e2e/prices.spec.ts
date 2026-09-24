@@ -38,7 +38,7 @@ test("add a manual currency and a hand-entered price", async ({ page }) => {
   await price.getByRole("button", { name: "Add price" }).click();
   await expect(price).toBeHidden();
   const row = page.getByRole("row").filter({ hasText: "2026-03-02" });
-  await expect(row).toContainText("1 USD in EUR");
+  await expect(row).toContainText("1 US Dollar in Euro");
   await expect(row).toContainText("user");
   // The exact ratio survived: the rate cell carries num/den and shows the decimal.
   await expect(row.locator("td[title='10/11']")).toHaveText("0.90909");
