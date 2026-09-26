@@ -22,7 +22,7 @@ test("reconcile a statement, then freeze it and find it untouchable", async ({ p
     await form.getByLabel("Date").fill(date);
     await form.getByLabel("Memo", { exact: true }).fill(memo);
     await form.getByLabel("Amount of leg 1").fill(amount);
-    await form.getByLabel("Account of leg 2").selectOption({ label: "Groceries" });
+    await form.getByLabel("Account of leg 2").fill("Groceries");
     await form.getByRole("button", { name: "Post" }).click();
     await expect(form).toBeHidden();
   }

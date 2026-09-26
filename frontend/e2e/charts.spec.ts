@@ -23,7 +23,7 @@ test("expenses pie, period table and net worth line show what was posted", async
     const form = page.getByRole("form", { name: "New transaction" });
     await form.getByLabel("Date").fill(date);
     await form.getByLabel("Amount of leg 1").fill(amount);
-    await form.getByLabel("Account of leg 2").selectOption({ label: category });
+    await form.getByLabel("Account of leg 2").fill(category);
     await form.getByRole("button", { name: "Post" }).click();
     await expect(form).toBeHidden();
   }

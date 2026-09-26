@@ -15,7 +15,7 @@ import {
 } from "@pymoney/core";
 import type { Account, Commodity, DraftProblem, LegDraft, Payee, Tag, Transaction, TransactionDraft } from "@pymoney/core";
 import { useAddAttachment, useApi, useCreatePayee, useCreateTag, useCreateTransaction, useTags, useUpdateTransaction } from "@pymoney/core/hooks";
-import { useId, useMemo, useRef, useState, type SubmitEvent, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type SubmitEvent, type KeyboardEvent } from "react";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Money } from "../components/Money";
@@ -269,6 +269,7 @@ export function TransactionForm({
         <Field label={t("Payee")}>
           <input
             type="text"
+            aria-label={t("Payee")}
             list="payee-suggestions"
             value={newPayeeName}
             placeholder={t("Choose or type a payee…")}
@@ -283,6 +284,16 @@ export function TransactionForm({
                 setPayeeChoice(name.trim() ? NEW_PAYEE : "");
               }
             }}
+            onKeyDown={ (e: KeyboardEvent<HTMLInputElement>) => {
+              if (e.key === "Enter") {
+                const payee = payeeByName.get(newPayeeName.trim().toLowerCase());
+                e.preventDefault();
+                if (payee) {
+                  setPayeeChoice(payee.id);
+                  void prefillFromPayee(payee.id);
+                }
+              }
+            } }
             onBlur={() => {
               const payee = payeeByName.get(newPayeeName.trim().toLowerCase());
               if (payee) {
@@ -496,6 +507,14 @@ function AccountAutocomplete({
   const t = useT();
   const listId = useId();
   const [text, setText] = useState(() => account?.path ?? "");
+  const previousAccountId = useRef(account?.id);
+
+  useEffect(() => {
+    if (account?.id !== previousAccountId.current) {
+      setText(account?.path ?? "");
+      previousAccountId.current = account?.id;
+    }
+  }, [account?.id, account?.path]);
 
   const accounts = useMemo(() => {
     const byId = new Map(postable.map((a) => [a.id, a]));
@@ -507,6 +526,7 @@ function AccountAutocomplete({
     const selected = accounts.find((a) => a.path === value);
     if (selected && !(selected.placeholder || selected.closed)) {
       onChange(selected.id);
+      previousAccountId.current = selected.id;
       setText(selected.path);
     } else if (value === "") {
       onChange("");
@@ -515,6 +535,13 @@ function AccountAutocomplete({
       // Keep the current valid selection if the typed text does not identify
       // an existing postable account.
       setText(account?.path ?? "");
+    }
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      selectAccount(text);
     }
   };
 
@@ -527,6 +554,7 @@ function AccountAutocomplete({
         placeholder={t("Choose an account…")}
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onKeyDown={onKeyDown}
         onBlur={() => selectAccount(text)}
       />
       <datalist id={listId}>

@@ -28,7 +28,7 @@ test("a fresh tab with the cookie but no sessionStorage can read and write", asy
   await form.getByLabel("Date").fill("2026-03-01");
   await form.getByLabel("Memo", { exact: true }).fill("From the second tab");
   await form.getByLabel("Amount of leg 1").fill("-5.00");
-  await form.getByLabel("Account of leg 2").selectOption({ label: "Food" });
+  await form.getByLabel("Account of leg 2").fill("Food");
   await form.getByRole("button", { name: "Post" }).click();
   await expect(form).toBeHidden();
   await expect(fresh.locator(".register__row")).toContainText("From the second tab");

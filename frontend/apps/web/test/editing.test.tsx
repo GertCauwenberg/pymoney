@@ -184,14 +184,15 @@ describe("posting from the register", () => {
     const form = screen.getByRole("form", { name: "New transaction" });
 
     // The register's account is already the first leg.
-    expect(within(form).getByLabelText("Account of leg 1")).toHaveValue("chk");
+    expect(within(form).getByLabelText("Account of leg 1")).toHaveValue("Assets:Checking");
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-84.20");
-    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
+    const accountOfLeg2 = within(form).getByLabelText("Account of leg 2");
+    await user.type(accountOfLeg2, "Expenses:Food{Enter}");
     expect(within(form).getByText("blank leg gets")).toBeInTheDocument();
     expect(within(form).getByText("84.20")).toBeInTheDocument();
 
-    await user.selectOptions(within(form).getByLabelText("Payee"), "__new__");
-    await user.type(within(form).getByLabelText("New payee name"), "Lidl");
+    const payeeField = within(form).getByLabelText("Payee");
+    await user.type(payeeField, "Lidl{Enter}");
     await user.type(within(form).getByLabelText("Memo"), "Weekly shop");
     await user.click(within(form).getByRole("button", { name: "Post" }));
 
@@ -228,7 +229,8 @@ describe("posting from the register", () => {
     await user.click(await screen.findByRole("button", { name: "New transaction" }));
     const form = screen.getByRole("form", { name: "New transaction" });
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-100");
-    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "wallet");
+    const accountOfLeg2 = within(form).getByLabelText("Account of leg 2");
+    await user.type(accountOfLeg2, "Assets:Dollar Wallet{Enter}");
     await user.type(within(form).getByLabelText("Amount of leg 2"), "100");
 
     // A quantity may be given, but is not required: left blank, the server
@@ -252,7 +254,8 @@ describe("posting from the register", () => {
     await user.click(await screen.findByRole("button", { name: "New transaction" }));
     const form = screen.getByRole("form", { name: "New transaction" });
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-100");
-    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "wallet");
+    const accountOfLeg2 = within(form).getByLabelText("Account of leg 2");
+    await user.type(accountOfLeg2, "Assets:Dollar Wallet{Enter}");
     await user.type(within(form).getByLabelText("Amount of leg 2"), "100");
     await user.type(within(form).getByLabelText("Quantity of leg 2 in USD"), "108.50");
     await user.click(within(form).getByRole("button", { name: "Post" }));
@@ -277,7 +280,8 @@ describe("posting from the register", () => {
     expect(currency).toHaveValue("usd");
     await user.selectOptions(currency, "eur");
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-10");
-    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
+    const accountOfLeg2 = within(form).getByLabelText("Account of leg 2");
+    await user.type(accountOfLeg2, "Expenses:Food{Enter}");
     await user.click(within(form).getByRole("button", { name: "Post" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     expect((calls.find((c) => c.method === "POST")!.body as { currency_id: string }).currency_id).toBe("eur");
@@ -344,7 +348,8 @@ describe("posting from the register", () => {
     await user.click(await screen.findByRole("button", { name: "New transaction" }));
     const form = screen.getByRole("form", { name: "New transaction" });
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-30");
-    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
+    const accountOfLeg2 = within(form).getByLabelText("Account of leg 2");
+    await user.type(accountOfLeg2, "Expenses:Food{Enter}");
     const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "receipt.png", { type: "image/png" });
     await user.upload(within(form).getByLabelText("Receipts"), file);
     expect(within(form).getByText(/receipt\.png/)).toBeInTheDocument();
@@ -380,7 +385,8 @@ describe("posting from the register", () => {
     await user.click(await screen.findByRole("button", { name: "New transaction" }));
     const form = screen.getByRole("form", { name: "New transaction" });
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-30");
-    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
+    const accountOfLeg2 = within(form).getByLabelText("Account of leg 2");
+    await user.type(accountOfLeg2, "Expenses:Food{Enter}");
     await user.upload(within(form).getByLabelText("Receipts"), new File([new Uint8Array([0x89])], "receipt.png", { type: "image/png" }));
     await user.click(within(form).getByRole("button", { name: "Post" }));
 
@@ -409,7 +415,8 @@ describe("posting from the register", () => {
     await user.click(await screen.findByRole("button", { name: "New transaction" }));
     const form = screen.getByRole("form", { name: "New transaction" });
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-40");
-    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
+    const accountOfLeg2 = within(form).getByLabelText("Account of leg 2");
+    await user.type(accountOfLeg2, "Expenses:Food{Enter}");
 
     const tagsOfLeg2 = within(form).getByLabelText("Tags of leg 2");
     await user.type(tagsOfLeg2, "Holiday{Enter}");
@@ -467,7 +474,8 @@ describe("posting from the register", () => {
     expect(calls.some((c) => c.method === "POST")).toBe(false);
 
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-10");
-    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "food");
+    const accountOfLeg2 = within(form).getByLabelText("Account of leg 2");
+    await user.type(accountOfLeg2, "Expenses:Food{Enter}");
     await user.type(within(form).getByLabelText("Amount of leg 2"), "9");
     expect(within(form).getByText("off by")).toBeInTheDocument();
     await user.click(within(form).getByRole("button", { name: "Post" }));
@@ -503,7 +511,7 @@ describe("editing a transaction", () => {
     await user.click(await screen.findByRole("button", { name: "Edit" }));
     const form = screen.getByRole("form", { name: "Edit transaction" });
     expect(within(form).getByLabelText("Date")).toHaveValue("2026-02-01");
-    expect(within(form).getByLabelText("Payee")).toHaveValue("p1");
+    expect(within(form).getByLabelText("Payee")).toHaveValue("Acme Payroll");
     expect(within(form).getByLabelText("Amount of leg 1")).toHaveValue("-84.20");
     expect(within(form).getByLabelText("Amount of leg 2")).toHaveValue("84.20");
     expect(within(form).getByText("balanced")).toBeInTheDocument();
@@ -803,8 +811,9 @@ describe("quick entry from the payee", () => {
     mount(fetch, "/books/b1/accounts/chk");
     await user.click(await screen.findByRole("button", { name: "New transaction" }));
     const form = screen.getByRole("form", { name: "New transaction" });
-    await user.selectOptions(within(form).getByLabelText("Payee"), "p1");
-    await waitFor(() => expect(within(form).getByLabelText("Account of leg 2")).toHaveValue("food"));
+    const payeeField = within(form).getByLabelText("Payee");
+    await user.type(payeeField, "Acme Payroll{Enter}");
+    await waitFor(() => expect(within(form).getByLabelText("Account of leg 2")).toHaveValue("Expenses:Food"));
     // The last transaction with Acme Payroll on this account was -84.20.
     await waitFor(() => expect(within(form).getByLabelText("Amount of leg 1")).toHaveValue("-84.20"));
   });
@@ -820,11 +829,13 @@ describe("quick entry from the payee", () => {
     await user.click(await screen.findByRole("button", { name: "New transaction" }));
     const form = screen.getByRole("form", { name: "New transaction" });
     await user.type(within(form).getByLabelText("Amount of leg 1"), "-5");
-    await user.selectOptions(within(form).getByLabelText("Account of leg 2"), "wallet");
-    await user.selectOptions(within(form).getByLabelText("Payee"), "p1");
+    const accountOfLeg2 = within(form).getByLabelText("Account of leg 2");
+    await user.type(accountOfLeg2, "Assets:Dollar Wallet{Enter}");
+    const payeeField = within(form).getByLabelText("Payee");
+    await user.type(payeeField, "Acme Payroll{Enter}");
     await new Promise((r) => setTimeout(r, 50));
     expect(within(form).getByLabelText("Amount of leg 1")).toHaveValue("-5");
-    expect(within(form).getByLabelText("Account of leg 2")).toHaveValue("wallet");
+    expect(within(form).getByLabelText("Account of leg 2")).toHaveValue("Assets:Dollar Wallet");
   });
 });
 

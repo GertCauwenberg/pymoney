@@ -24,7 +24,7 @@ test("search by text, amount and account, then open the hit", async ({ page }) =
     await form.getByLabel("Date").fill(date);
     await form.getByLabel("Memo", { exact: true }).fill(memo);
     await form.getByLabel("Amount of leg 1").fill(amount);
-    await form.getByLabel("Account of leg 2").selectOption({ label: category });
+    await form.getByLabel("Account of leg 2").fill(category);
     await form.getByRole("button", { name: "Post" }).click();
     await expect(form).toBeHidden();
   }

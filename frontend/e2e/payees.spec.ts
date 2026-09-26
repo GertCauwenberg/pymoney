@@ -21,11 +21,10 @@ test("manage payees: edit, merge a duplicate, delete an unused one", async ({ pa
     await page.getByRole("button", { name: "New transaction" }).click();
     const form = page.getByRole("form", { name: "New transaction" });
     await form.getByLabel("Date").fill("2026-03-02");
-    await form.getByLabel("Payee").selectOption({ label: "New payee…" });
-    await form.getByLabel("New payee name").fill(payee);
+    await form.getByLabel("Payee").fill(payee);
     await form.getByLabel("Memo", { exact: true }).fill(memo);
     await form.getByLabel("Amount of leg 1").fill("-10.00");
-    await form.getByLabel("Account of leg 2").selectOption({ label: "Groceries" });
+    await form.getByLabel("Account of leg 2").fill("Groceries");
     await form.getByRole("button", { name: "Post" }).click();
     await expect(form).toBeHidden();
   }

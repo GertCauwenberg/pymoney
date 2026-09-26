@@ -39,7 +39,7 @@ test("the language follows the user across logins, and the numbers follow the la
   await page.getByRole("button", { name: "Nieuwe transactie" }).click();
   const tx = page.getByRole("form", { name: "Nieuwe transactie" });
   await tx.getByLabel("Bedrag van regel 1").fill("-1234.56");
-  await tx.getByLabel("Rekening van regel 2").selectOption({ label: "Eten" });
+  await tx.getByLabel("Rekening van regel 2").fill("Eten");
   await tx.getByRole("button", { name: "Boeken" }).click();
   await expect(tx).toBeHidden();
   await expect(page.locator("table.register tfoot .money")).toHaveText("-1.234,56 EUR");

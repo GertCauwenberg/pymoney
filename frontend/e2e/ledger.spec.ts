@@ -31,11 +31,10 @@ test("enter a credit-card transaction against a restaurant account, edit it, see
   const form = page.getByRole("form", { name: "New transaction" });
   await expect(form.getByLabel("Account of leg 1")).toHaveValue(/.+/);
   await form.getByLabel("Date").fill("2026-03-14");
-  await form.getByLabel("Payee").selectOption({ label: "New payee…" });
-  await form.getByLabel("New payee name").fill("Trattoria da Enzo");
+  await form.getByLabel("Payee").fill("Trattoria da Enzo");
   await form.getByLabel("Memo", { exact: true }).fill("Dinner");
   await form.getByLabel("Amount of leg 1").fill("-62.50");
-  await form.getByLabel("Account of leg 2").selectOption({ label: "Restaurants" });
+  await form.getByLabel("Account of leg 2").fill("Restaurants");
   await expect(form.getByText("blank leg gets")).toBeVisible();
   await expect(form.locator("tfoot")).toContainText("62.50");
   await form.getByRole("button", { name: "Post" }).click();
