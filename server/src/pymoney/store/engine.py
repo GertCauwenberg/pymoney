@@ -147,6 +147,7 @@ def open_book(
     worse failure than refusing to guess, so more than one is an error.
     """
     if book_id is None:
+        existing: list[UUID]
         with engine.connect() as conn:
             existing = list(conn.execute(select(schema.books.c.id)).scalars())
         if len(existing) > 1:

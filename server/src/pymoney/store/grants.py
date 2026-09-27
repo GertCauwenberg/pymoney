@@ -73,7 +73,7 @@ def grant(conn: Connection, book_id: UUID, subject: str, role: str) -> None:
     subject = normalize_subject(subject)
     if not subject:
         raise ValueError("subject must not be empty")
-    existing = conn.execute(
+    existing: str | None = conn.execute(
         select(identity.book_grants.c.role).where(
             identity.book_grants.c.book_id == book_id,
             identity.book_grants.c.subject == subject,
