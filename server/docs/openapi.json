@@ -3542,6 +3542,13 @@
             "title": "Path",
             "type": "string"
           },
+          "qty": {
+            "items": {
+              "$ref": "#/components/schemas/AmountOut"
+            },
+            "title": "Qty",
+            "type": "array"
+          },
           "value": {
             "$ref": "#/components/schemas/AmountOut",
             "description": "Subtree total, signed as stored."
@@ -3553,7 +3560,8 @@
           "depth",
           "value",
           "display_value",
-          "own_value"
+          "own_value",
+          "qty"
         ],
         "title": "ReportRowOut",
         "type": "object"

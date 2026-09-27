@@ -16,6 +16,7 @@ const row = (id: string, path: string, depth: number, value: number, own = value
   value: amt(value),
   display_value: amt(value),
   own_value: amt(own),
+  qty: [amt(own)]
 });
 
 const account = (id: string, account_class: Account["account_class"]): Account =>

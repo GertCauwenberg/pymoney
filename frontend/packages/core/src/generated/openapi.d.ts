@@ -2821,6 +2821,8 @@ export interface components {
             readonly own_value: components["schemas"]["AmountOut"];
             /** Path */
             readonly path: string;
+            /** Qty */
+            readonly qty: readonly components["schemas"]["AmountOut"][];
             /** @description Subtree total, signed as stored. */
             readonly value: components["schemas"]["AmountOut"];
         };

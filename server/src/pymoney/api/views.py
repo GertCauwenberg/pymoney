@@ -208,6 +208,7 @@ def report_rows(rows) -> list[ReportRowOut]:
             value=AmountOut.of(row.value),
             display_value=AmountOut.of(row.display_value),
             own_value=AmountOut.of(row.own_value),
+            qty=[AmountOut.of(amount) for amount in row.own],
         )
         for row in rows
     ]

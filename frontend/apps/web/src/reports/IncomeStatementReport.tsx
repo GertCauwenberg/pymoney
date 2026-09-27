@@ -123,6 +123,7 @@ export function IncomeStatementReport() {
               { label: t("Expenses"), amount: report.data.expenses },
               { label: t("Net"), amount: report.data.net, emphasis: true },
             ]}
+             reportCurrency={report.data.target}
           />
           {report.data.savings_rate && (
             <p className="kpi">

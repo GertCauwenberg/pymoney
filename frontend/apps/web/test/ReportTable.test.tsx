@@ -13,6 +13,7 @@ const row = (id: string, path: string, depth: number, value: number, display = v
   value: eur(value),
   display_value: eur(display),
   own_value: eur(own),
+  qty: [eur(own)],
 });
 const acct = (id: string, account_class: Account["account_class"]) => ({ id, account_class }) as unknown as Account;
 

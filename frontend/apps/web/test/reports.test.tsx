@@ -69,7 +69,7 @@ describe("BalanceSheetReport", () => {
           liabilities_owed: eur(0),
           equity: eur(-1000),
           net_worth: eur(1000),
-          rows: [{ account_id: "a", path: "Assets", depth: 0, value: eur(1000), display_value: eur(1000), own_value: eur(1000) }],
+          rows: [{ account_id: "a", path: "Assets", depth: 0, value: eur(1000), display_value: eur(1000), own_value: eur(1000) , qty:[eur(1000)]}],
           conversions: [],
           unpriced: ["BTC"],
         },

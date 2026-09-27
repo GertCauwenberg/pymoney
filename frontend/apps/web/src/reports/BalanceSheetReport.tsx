@@ -99,6 +99,7 @@ export function BalanceSheetReport() {
               { label: t("Total liabilities"), amount: report.data.liabilities_owed },
               { label: t("Net worth"), amount: report.data.net_worth, emphasis: true },
             ]}
+            reportCurrency={report.data.target}
           />
           <ValuationPanel conversions={report.data.conversions} unpriced={report.data.unpriced} target={report.data.target} />
         </>

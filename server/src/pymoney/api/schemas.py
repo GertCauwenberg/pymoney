@@ -1051,6 +1051,7 @@ class ReportRowOut(Out):
         description="Signed to read naturally: debt and income come out positive."
     )
     own_value: AmountOut
+    qty: list[AmountOut]
 
 
 class BalanceSheetOut(Out):

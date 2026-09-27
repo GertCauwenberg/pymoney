@@ -82,6 +82,30 @@ export function displayOwnValue(row: ReportRow, accountClass: AccountClass): Amo
 }
 
 /**
+ * `quantity` with the same sign convention as `display_value`.
+ *
+ * If there is more than one commodity involved, don't print anything
+ * The only sensible number in this case is the value, and that is another column
+ *
+ * The server signs `display_value` to read naturally but leaves `own_value`
+ * as stored, so a liability's own balance would come out negative next to a
+ * positive subtree total. Derive the flip from the row itself when it can be
+ * seen (a non-zero subtree), otherwise from the account class.
+ */
+export function displayQuantity(row: ReportRow, accountClass: AccountClass, commodity: string): Amount {
+  const zero: Amount = ({ commodity_id: "eur", commodity: commodity, minor: 0, scale: 100, text: "" });
+  if (row.qty && row.qty.length == 1 && row.qty[0]) {
+      const qty : Amount = row.qty[0];
+      if (qty.commodity === commodity) return zero;
+      const flipped =
+        row.value.minor !== 0 ? row.display_value.minor === -row.value.minor : CREDIT_NORMAL.has(accountClass);
+      if (!flipped) return qty;
+      return naturalSign(qty, "LIABILITY");
+  }
+  return zero;
+}
+
+/**
  * An amount with the sign a human expects for the account it sits in: what
  * the server does for `display_value`, applied to register rows and balances.
  * Income, liabilities and equity are stored negative and read positive.

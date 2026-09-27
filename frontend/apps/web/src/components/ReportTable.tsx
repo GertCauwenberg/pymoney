@@ -1,5 +1,5 @@
 import { useT } from "@pymoney/core/hooks";
-import { displayOwnValue, hasChildren, leafName, visibleRows } from "@pymoney/core";
+import { displayOwnValue, displayQuantity, hasChildren, leafName, visibleRows } from "@pymoney/core";
 import type { AccountClass, Amount, ReportRow, Section } from "@pymoney/core";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -17,6 +17,7 @@ export function ReportTable({
   valueHeader = "Balance",
   linkFor,
   emptyMessage,
+  reportCurrency,
 }: {
   sections: Section[];
   /** Rows appended at the bottom, e.g. net worth. */
@@ -25,6 +26,7 @@ export function ReportTable({
   /** Where a row's name leads: typically the account's register for the same window. */
   linkFor?: (row: ReportRow) => string;
   emptyMessage?: string | undefined;
+  reportCurrency?: string | undefined;
 }) {
   const t = useT();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -48,6 +50,9 @@ export function ReportTable({
           <th scope="col">{t("Account")}</th>
           <th scope="col" className="num">
             {t("Own")}
+          </th>
+          <th scope="col" className="num">
+            {t("Quantity")}
           </th>
           <th scope="col" className="num">
             {valueHeader}
@@ -75,6 +80,7 @@ export function ReportTable({
               collapsed={collapsed.has(row.account_id)}
               onToggle={toggle}
               href={linkFor?.(row)}
+              currency={reportCurrency ?? ""}
             />
           ))}
         </tbody>
@@ -83,7 +89,7 @@ export function ReportTable({
         <tfoot>
           {totals.map((row) => (
             <tr key={row.label} className={row.emphasis ? "report__total report__total--emphasis" : "report__total"}>
-              <th scope="row" colSpan={2}>
+              <th scope="row" colSpan={3}>
                 {row.label}
               </th>
               <td className="num">
@@ -103,12 +109,14 @@ function Row({
   collapsed,
   onToggle,
   href,
+  currency,
 }: {
   row: ReportRow;
   accountClass: AccountClass;
   collapsed: boolean;
   onToggle: (id: string) => void;
   href?: string | undefined;
+  currency: string;
 }) {
   const t = useT();
   const parent = hasChildren(row);
@@ -140,6 +148,9 @@ function Row({
       </td>
       <td className="num muted">
         {parent ? <Money amount={displayOwnValue(row, accountClass)} blankZero /> : null}
+      </td>
+      <td className="num muted">
+        <Money amount={displayQuantity(row, accountClass, currency)} blankZero withCommodity />
       </td>
       <td className="num">
         <Money amount={row.display_value} strong={row.depth === 0} />
