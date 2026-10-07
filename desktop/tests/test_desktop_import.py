@@ -16,6 +16,7 @@ pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from pymoney.api.testing import PASSWORD, Client
+from PySide6.QtCore import QDate
 from PySide6.QtWidgets import QComboBox, QFileDialog
 
 from pymoney_desktop import OfflineClient
@@ -152,6 +153,7 @@ class TestImportDialog:
         win.import_statement()
         assert getattr(win, "reported", None) is None
         assert win.boxes == []
+        win.start.setDate(QDate(2026, 2, 1))
 
         # Checking shows the two new rows; the transfer was not re-posted.
         assert win.register.rowCount() == 2
@@ -273,6 +275,7 @@ class TestImportDialog:
         win.run_dialog = drive  # type: ignore[method-assign]
         win.import_statement()
         assert getattr(win, "reported", None) is None
+        win.start.setDate(QDate(2026, 2, 1))
         # 50000 HUF off the wallet; 125.00 EUR (50000 / 400) onto Groceries.
         assert win.register.item(0, 5).text() == "-50,000"
         assert win.client.balance(book_id, groceries.id).balance.text == "125.00"

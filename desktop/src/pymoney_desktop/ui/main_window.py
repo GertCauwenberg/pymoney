@@ -26,11 +26,13 @@ from pymoney.api.schemas import (
     TagOut,
     TransactionOut,
 )
-from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QAction, QBrush, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
+    QDateEdit,
     QDialog,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QMainWindow,
@@ -50,6 +52,7 @@ from PySide6.QtWidgets import (
 
 from ..client import ApiError, LedgerClient, OfflineError
 from ..i18n import _, current_locale
+from .date_utils import PERIOD_PRESETS, _pydate, _qdate, period_for
 from .theme import ACCENT, amount_brush
 from .transaction_dialog import TransactionDialog
 
@@ -265,8 +268,29 @@ class MainWindow(QMainWindow):
         self.register.itemSelectionChanged.connect(self._enable_actions)
         self.register_title = QLabel(_("Choose an account"))
         right = QWidget()
+        controls = QHBoxLayout()
+        self.preset = QComboBox()
+        self.preset.addItem(_("Custom period"), "")
+        for key, label in PERIOD_PRESETS:
+            self.preset.addItem(_(label), key)
+        self.preset.setCurrentIndex(self.preset.findData("this-month"))
+        controls.addWidget(QLabel(_("Period")))
+        controls.addWidget(self.preset)
+        controls.addWidget(QLabel(_("From")))
+        self.start = QDateEdit(_qdate(period_for("this-month", date.today())[0]))
+        self.start.setCalendarPopup(True)
+        self.start.setDisplayFormat("yyyy-MM-dd")
+        self.end = QDateEdit(QDate.currentDate())
+        self.end.setCalendarPopup(True)
+        self.end.setDisplayFormat("yyyy-MM-dd")
+        controls.addWidget(self.start)
+        controls.addWidget(QLabel(_("To")))
+        controls.addWidget(self.end)
+        controls.addStretch()
+
         right_layout = QVBoxLayout(right)
         right_layout.addWidget(self.register_title)
+        right_layout.addLayout(controls)
         right_layout.addWidget(self.register)
 
         splitter = QSplitter()
@@ -274,6 +298,12 @@ class MainWindow(QMainWindow):
         splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
         self.setCentralWidget(splitter)
+
+        # -- wiring ----------------------------------------------------------------
+        self.preset.currentIndexChanged.connect(self._preset_chosen)
+        self.start.dateChanged.connect(lambda _: self._custom_period())
+        self.end.dateChanged.connect(lambda _: self._custom_period())
+        self._preset_chosen(self.preset.currentIndex())
 
         # -- menus -------------------------------------------------------------
         reports = self.menuBar().addMenu("&Reports")
@@ -316,6 +346,25 @@ class MainWindow(QMainWindow):
             self._timer = QTimer(self)
             self._timer.timeout.connect(self.sync)
             self._timer.start(sync_every_ms)
+
+    # -- options -----------------------------------------------------------------
+    def _preset_chosen(self, index: int) -> None:
+        key = self.preset.itemData(index)
+        if key:
+            start, end = period_for(key, date.today())
+            self._settling = True
+            self.start.setDate(_qdate(start))
+            self.end.setDate(_qdate(end))
+            self._settling = False
+        self._account_chosen(self.tree.currentItem())
+
+    def _custom_period(self) -> None:
+        if self._settling:
+            return
+        self.preset.blockSignals(True)
+        self.preset.setCurrentIndex(0)
+        self.preset.blockSignals(False)
+        self._account_chosen(self.tree.currentItem())
 
     # -- loading -------------------------------------------------------------------------
     def load(self) -> None:
@@ -407,7 +456,9 @@ class MainWindow(QMainWindow):
             self._account_chosen(items[self.current_account.id])
         self._refresh_status()
 
-    def _account_chosen(self, item: QTreeWidgetItem | None) -> None:
+    def _account_chosen(
+        self, item: QTreeWidgetItem | None, startdate: date | None = None
+    ) -> None:
         if item is None or self.book is None:
             return
         account_id = item.data(0, Qt.ItemDataRole.UserRole)
@@ -419,8 +470,17 @@ class MainWindow(QMainWindow):
             return
         book_id, account = self.book.id, self.current_account
         self.register_title.setText(f"{account.path} · {account.commodity}")
+        if not startdate:
+            startdate = _pydate(self.start.date())
+        enddate = _pydate(self.end.date())
         self.executor.run(
-            lambda: self.client.register(book_id, account.id, limit=500),
+            lambda: self.client.register(
+                book_id,
+                account.id,
+                limit=500,
+                start=startdate,
+                end=enddate,
+            ),
             self._register_loaded,
             self._failed(_("Could not read the register")),
         )
@@ -667,7 +727,7 @@ class MainWindow(QMainWindow):
         self.tree.blockSignals(True)
         self.tree.setCurrentItem(item)
         self.tree.blockSignals(False)
-        self._account_chosen(item)
+        self._account_chosen(item, transaction.date)
         self.raise_()
         self.activateWindow()
 

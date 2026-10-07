@@ -23,7 +23,7 @@ from pymoney.api.schemas import (
     TransactionOut,
 )
 from pymoney.api.testing import PASSWORD, Client
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import QComboBox, QDialog
 
 from pymoney_desktop import OfflineClient
@@ -109,6 +109,16 @@ class TestMainWindow:
         select_account(win, "Visa")
         assert win.new_button.isEnabled()
         assert win.register.rowCount() == 0
+        assert win.preset.currentText() == "This month"
+        today = date.today()
+        startdate = win.start.date()
+        assert startdate.year() == today.year
+        assert startdate.month() == today.month
+        assert startdate.day() == 1
+        enddate = win.end.date()
+        assert enddate.year() == today.year
+        assert enddate.month() == today.month
+        assert enddate.day() == today.day
 
     def test_recording_a_stock_split_from_the_register(self, window):
         from pymoney_desktop.ui.stock_split_dialog import StockSplitDialog
@@ -138,8 +148,6 @@ class TestMainWindow:
         select_account(win, "ACME")
         assert win.split_button.isEnabled()
 
-        from PySide6.QtCore import QDate
-
         def fill(dialog: StockSplitDialog) -> int:
             assert isinstance(dialog, StockSplitDialog)
             dialog.date.setDate(QDate(2026, 3, 1))
@@ -168,6 +176,7 @@ class TestMainWindow:
         # The split shows on the register; the transaction window refuses to
         # edit it and explains why.
         win._reload_book()
+        win.start.setDate(QDate(2026, 3, 1))
         win.register.selectRow(
             next(
                 i
@@ -852,8 +861,6 @@ class TestSearch:
 
 
 def _qdate(value):
-    from PySide6.QtCore import QDate
-
     return QDate(value.year, value.month, value.day)
 
 
@@ -883,6 +890,7 @@ class TestReconciliation:
         self._post(win, book_id, visa, food, "-8.00", "Coffee", "2026-03-20")
         win.load()
         select_account(win, "Visa")
+        win.start.setDate(QDate(2026, 3, 1))
         assert win.register.columnCount() == 7
         assert [win.register.item(i, 4).text() for i in range(2)] == ["", ""]
         assert win.reconcile_button.isEnabled()
@@ -978,6 +986,7 @@ class TestQuickEntryAndStatementCheck:
         )
         win.load()
         select_account(win, "Visa")
+        win.start.setDate(QDate(2026, 3, 1))
         dialog = ReconcileDialog(
             win.current_account, win.rows, {}, opening_minor=win.register_opening_minor
         )
