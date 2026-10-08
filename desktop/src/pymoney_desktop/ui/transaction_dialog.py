@@ -40,8 +40,6 @@ from ..i18n import _
 
 __all__ = ["TransactionDialog"]
 
-NEW_PAYEE = "__new__"
-
 _ATTACHMENT_TYPES = (
     "image/jpeg",
     "image/png",

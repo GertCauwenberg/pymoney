@@ -1969,14 +1969,10 @@
                     "type": "number"
                   },
                   {
-                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                     "type": "string"
                   },
                   {
                     "type": "integer"
-                  },
-                  {
-                    "type": "string"
                   }
                 ],
                 "description": "An exact positive rate. A decimal string or a 'num/den' ratio.",
@@ -2000,14 +1996,10 @@
                     "type": "number"
                   },
                   {
-                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                     "type": "string"
                   },
                   {
                     "type": "integer"
-                  },
-                  {
-                    "type": "string"
                   }
                 ],
                 "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
@@ -2057,14 +2049,10 @@
                     "type": "number"
                   },
                   {
-                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                     "type": "string"
                   },
                   {
                     "type": "integer"
-                  },
-                  {
-                    "type": "string"
                   }
                 ],
                 "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
@@ -2818,14 +2806,10 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
                 "type": "integer"
-              },
-              {
-                "type": "string"
               }
             ],
             "description": "An exact positive rate. A decimal string or a 'num/den' ratio.",
@@ -4306,14 +4290,10 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
                 "type": "integer"
-              },
-              {
-                "type": "string"
               }
             ],
             "description": "An exact positive rate. A decimal string or a 'num/den' ratio.",
@@ -4661,14 +4641,10 @@
                     "type": "number"
                   },
                   {
-                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                     "type": "string"
                   },
                   {
                     "type": "integer"
-                  },
-                  {
-                    "type": "string"
                   }
                 ],
                 "description": "An exact positive rate. A decimal string or a 'num/den' ratio.",
@@ -4691,14 +4667,10 @@
                     "type": "number"
                   },
                   {
-                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                     "type": "string"
                   },
                   {
                     "type": "integer"
-                  },
-                  {
-                    "type": "string"
                   }
                 ],
                 "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
@@ -4722,14 +4694,10 @@
                     "type": "number"
                   },
                   {
-                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                     "type": "string"
                   },
                   {
                     "type": "integer"
-                  },
-                  {
-                    "type": "string"
                   }
                 ],
                 "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
@@ -13855,14 +13823,10 @@
                       "type": "number"
                     },
                     {
-                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                       "type": "string"
                     },
                     {
                       "type": "integer"
-                    },
-                    {
-                      "type": "string"
                     }
                   ],
                   "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
@@ -13893,14 +13857,10 @@
                       "type": "number"
                     },
                     {
-                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                       "type": "string"
                     },
                     {
                       "type": "integer"
-                    },
-                    {
-                      "type": "string"
                     }
                   ],
                   "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
@@ -13931,14 +13891,10 @@
                       "type": "number"
                     },
                     {
-                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                       "type": "string"
                     },
                     {
                       "type": "integer"
-                    },
-                    {
-                      "type": "string"
                     }
                   ],
                   "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
