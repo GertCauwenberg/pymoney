@@ -142,28 +142,23 @@ class TransactionDialog(QDialog):
         self.date.setCalendarPopup(True)
         self.date.setDisplayFormat("yyyy-MM-dd")
         form.addRow(_("Date"), self.date)
-        self.payee = QComboBox()
-        self.payee.addItem("—", None)
-        for p in self._payees:
-            # Ids travel as strings: QComboBox.findData compares QVariants, and
-            # a Python UUID object does not match itself through one.
-            self.payee.addItem(p.name, str(p.id))
-        self.payee.addItem(_("New payee…"), NEW_PAYEE)
+        self.payee = QLineEdit()
+        self.payee.setPlaceholderText(_("Choose a payee"))
+        if self._payees:
+            completer = QCompleter([p.name for p in self._payees], self.payee)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            completer.setModelSorting(
+                QCompleter.ModelSorting.CaseInsensitivelySortedModel
+            )
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            self.payee.setCompleter(completer)
         if draft.payee_id is not None:
-            index = self.payee.findData(str(draft.payee_id))
-            if index >= 0:
-                self.payee.setCurrentIndex(index)
+            payee = next((p for p in self._payees if p.id == draft.payee_id), None)
+            if payee:
+                self.payee.insert(payee.name)
         form.addRow(_("Payee"), self.payee)
-        self.new_payee = QLineEdit()
-        self.new_payee.setPlaceholderText(_("Name of the new payee"))
-        self.new_payee.setVisible(False)
-        form.addRow("", self.new_payee)
-        self._payee_by_id = {str(p.id): p for p in payees}
-        self.payee.currentIndexChanged.connect(
-            lambda _: self.new_payee.setVisible(self.payee.currentData() == NEW_PAYEE)
-        )
         if existing is None:
-            self.payee.currentIndexChanged.connect(lambda _: self._prefill_from_payee())
+            self.payee.editingFinished.connect(lambda: self._prefill_from_payee())
         self.memo = QLineEdit(draft.memo)
         form.addRow(_("Memo"), self.memo)
         self.number = QLineEdit(draft.number)
@@ -212,6 +207,7 @@ class TransactionDialog(QDialog):
         form.addRow(_("Attachments"), self._attachments_row)
 
         self.legs = QTableWidget(0, 5)
+        self.legs.cellClicked.connect(self._enable_remove_button)
         self.legs.setHorizontalHeaderLabels(
             [
                 _("Account"),
@@ -231,11 +227,12 @@ class TransactionDialog(QDialog):
         buttons = QHBoxLayout()
         add = QPushButton(_("Add leg"))
         add.clicked.connect(lambda: self._add_leg(LegDraft()))
-        remove = QPushButton(_("Remove leg"))
-        remove.clicked.connect(self._remove_leg)
+        self.remove = QPushButton(_("Remove leg"))
+        self.remove.setDisabled(True)
+        self.remove.clicked.connect(self._remove_leg)
         self.footer = QLabel()
         buttons.addWidget(add)
-        buttons.addWidget(remove)
+        buttons.addWidget(self.remove)
         buttons.addStretch()
         buttons.addWidget(self.footer)
 
@@ -270,23 +267,18 @@ class TransactionDialog(QDialog):
     # -- legs ------------------------------------------------------------------
     def _add_leg(self, leg: LegDraft) -> None:
         row = self.legs.rowCount()
+        if len(self._keep) <= row:
+            self._keep.append({})
         self.legs.insertRow(row)
-        combo = QComboBox()
-        combo.addItem(_("Choose an account…"), None)
-        if (
-            leg.account_id in self._accounts
-            and self._accounts[leg.account_id] not in self._postable
-        ):
-            stale = self._accounts[leg.account_id]
-            combo.addItem(stale.path, str(stale.id))
-        for a in self._postable:
-            label = a.path + (
-                f" ({a.commodity})" if a.commodity_id != self._currency.id else ""
-            )
-            combo.addItem(label, str(a.id))
+        combo = QLineEdit()
+        combo.setPlaceholderText(_("Choose an account…"))
+        completer = QCompleter([a.path for a in self._postable], combo)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setModelSorting(QCompleter.ModelSorting.CaseInsensitivelySortedModel)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        combo.setCompleter(completer)
         if leg.account_id is not None:
-            combo.setCurrentIndex(max(0, combo.findData(str(leg.account_id))))
-        combo.currentIndexChanged.connect(lambda _: self._refresh_footer())
+            combo.insert(self._accounts[leg.account_id].path)
         self.legs.setCellWidget(row, ACCOUNT, combo)
         self.legs.setItem(row, MEMO, QTableWidgetItem(leg.memo))
 
@@ -308,28 +300,30 @@ class TransactionDialog(QDialog):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         self.legs.setItem(row, AMOUNT, amount)
-        if len(self._keep) <= row:
-            self._keep.append({})
 
     def _remove_leg(self) -> None:
         row = self.legs.currentRow()
         if row >= 0 and self.legs.rowCount() > 2:
             self.legs.removeRow(row)
             del self._keep[row]
+            self.remove.setDisabled(True)
             self._refresh_footer()
+
+    def _enable_remove_button(self) -> None:
+        if self.legs.rowCount() > 2:
+            self.remove.setDisabled(False)
 
     def _prefill_from_payee(self) -> None:
         """The payee's default account goes into the first leg that has none --
         only into a blank one, so nothing the user chose is overwritten."""
-        payee = self._payee_by_id.get(self.payee.currentData() or "")
+        payeeName = self.payee.displayText()
+        payee = next((p for p in self._payees if p.name == payeeName), None)
         if payee is None or payee.default_account_id is None:
             return
         for row in range(1, self.legs.rowCount()):
             combo = self.legs.cellWidget(row, ACCOUNT)
-            if isinstance(combo, QComboBox) and not combo.currentData():
-                index = combo.findData(str(payee.default_account_id))
-                if index >= 0:
-                    combo.setCurrentIndex(index)
+            if isinstance(combo, QLineEdit) and not combo.text():
+                combo.setText(self._accounts[payee.default_account_id].path)
                 return
 
     def _cell(self, row: int, col: int) -> str:
@@ -404,8 +398,12 @@ class TransactionDialog(QDialog):
         legs = []
         for row in range(self.legs.rowCount()):
             combo = self.legs.cellWidget(row, ACCOUNT)
-            chosen = combo.currentData() if isinstance(combo, QComboBox) else None
-            account_id = UUID(chosen) if chosen else None
+            chosen = combo.displayText() if isinstance(combo, QLineEdit) else None
+            account_id = (
+                next((a.id for a in self._accounts.values() if a.path == chosen), None)
+                if chosen
+                else None
+            )
             tag_ids: list[UUID] = []
             new_tag_names: list[str] = []
             for name in _split_tag_names(self._tags_text(row)):
@@ -425,11 +423,12 @@ class TransactionDialog(QDialog):
                     keep=self._keep[row],
                 )
             )
-        payee = self.payee.currentData()
+        payeeName = self.payee.displayText()
+        payee = next((p for p in self._payees if p.name == payeeName), None)
         return TransactionDraft(
             date=self.date.date().toString("yyyy-MM-dd"),
-            payee_id=None if payee in (None, NEW_PAYEE) else UUID(payee),
-            new_payee=self.new_payee.text().strip() if payee == NEW_PAYEE else "",
+            payee_id=payee.id if payee else None,
+            new_payee=payeeName if payee is None else "",
             memo=self.memo.text(),
             number=self.number.text(),
             legs=legs,
@@ -458,8 +457,6 @@ class TransactionDialog(QDialog):
     def _accept(self) -> None:
         draft = self.draft()
         found = problems(draft, self._accounts, self._currency)
-        if self.payee.currentData() == NEW_PAYEE and not draft.new_payee:
-            found.append(_("Give the new payee a name."))
         if found:
             QMessageBox.warning(self, _("Not yet"), "\n".join(found))
             return

@@ -24,7 +24,7 @@ from pymoney.api.schemas import (
 )
 from pymoney.api.testing import PASSWORD, Client
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtWidgets import QComboBox, QDialog
+from PySide6.QtWidgets import QDialog, QLineEdit
 
 from pymoney_desktop import OfflineClient
 from pymoney_desktop.drafts import (
@@ -39,7 +39,6 @@ from pymoney_desktop.ui.main_window import (
     format_amount,
 )
 from pymoney_desktop.ui.transaction_dialog import (
-    NEW_PAYEE,
     TransactionDialog,
 )
 from tests.test_desktop_clients import EMAIL, InProcessTransport
@@ -189,17 +188,16 @@ class TestMainWindow:
         assert any("not edited" in text for _title, text in win.boxes)
 
     def test_post_edit_and_delete_through_the_dialog(self, window):
-        win, api, book_id, visa, food, _transport = window
+        win, api, book_id, visa, _food, _transport = window
         select_account(win, "Visa")
 
         def fill(dialog: TransactionDialog) -> int:
             dialog.memo.setText("Dinner")
-            dialog.payee.setCurrentIndex(dialog.payee.findData(NEW_PAYEE))
-            dialog.new_payee.setText("Trattoria")
+            dialog.payee.setText("Trattoria")
             dialog.legs.item(0, 3).setText("-62.50")
             combo = dialog.legs.cellWidget(1, 0)
-            assert isinstance(combo, QComboBox)
-            combo.setCurrentIndex(combo.findData(str(food)))
+            assert isinstance(combo, QLineEdit)
+            combo.setText("Restaurants")
             assert dialog.footer.text() == "blank leg gets 62.50 EUR"
             dialog._accept()
             return dialog.result()
@@ -274,15 +272,13 @@ class TestMainWindow:
         assert win.register.rowCount() == 0
 
     def test_working_offline_then_reconnecting(self, window):
-        win, _api, _book_id, _visa, food, transport = window
+        win, _api, _book_id, _visa, _food, transport = window
         select_account(win, "Visa")
         transport.plugged = False
 
         def fill(dialog: TransactionDialog) -> int:
             dialog.legs.item(0, 3).setText("-5")
-            dialog.legs.cellWidget(1, 0).setCurrentIndex(
-                dialog.legs.cellWidget(1, 0).findData(str(food))
-            )
+            dialog.legs.cellWidget(1, 0).setText("Restaurants")
             dialog._accept()
             return dialog.result()
 
@@ -304,9 +300,7 @@ class TestMainWindow:
 
         def fill(dialog: TransactionDialog) -> int:
             dialog.legs.item(0, 3).setText("-5")
-            dialog.legs.cellWidget(1, 0).setCurrentIndex(
-                dialog.legs.cellWidget(1, 0).findData(str(food))
-            )
+            dialog.legs.cellWidget(1, 0).setText("Restaurants")
             dialog._accept()
             return dialog.result()
 
@@ -452,10 +446,8 @@ def test_dialog_builds_the_wire_body(qtbot):
     dialog = TransactionDialog([cash, food], [payee], eur, default_account_id=cash.id)
     qtbot.addWidget(dialog)
     dialog.legs.item(0, 3).setText("-10")
-    dialog.legs.cellWidget(1, 0).setCurrentIndex(
-        dialog.legs.cellWidget(1, 0).findData(str(food.id))
-    )
-    dialog.payee.setCurrentIndex(dialog.payee.findData(str(payee.id)))
+    dialog.legs.cellWidget(1, 0).setText("Expenses:Food")
+    dialog.payee.setText("Shop")
     body = dialog.draft().to_wire({cash.id: cash, food.id: food}, eur)
     assert body.payee_id == payee.id
     assert [(leg.account_id, leg.value) for leg in body.legs] == [
@@ -536,9 +528,7 @@ def test_dialog_lets_a_new_transaction_choose_its_currency(qtbot):
     # values it from the book's prices, or mints one if a quantity is given.
     dialog.currency_box.setCurrentIndex(dialog.currency_box.findData(str(eur.id)))
     dialog.legs.item(0, 3).setText("-90")
-    dialog.legs.cellWidget(1, 0).setCurrentIndex(
-        dialog.legs.cellWidget(1, 0).findData(str(wallet.id))
-    )
+    dialog.legs.cellWidget(1, 0).setText("Assets:Dollar Wallet")
     dialog.legs.item(1, 3).setText("90")
     assert problems(dialog.draft(), {cash.id: cash, wallet.id: wallet}, eur) == []
     body = dialog.draft().to_wire({cash.id: cash, wallet.id: wallet}, eur)
@@ -626,9 +616,7 @@ def test_dialog_separates_known_tags_from_typed_new_ones(qtbot):
     )
     qtbot.addWidget(dialog)
     dialog.legs.item(0, 3).setText("-40")
-    dialog.legs.cellWidget(1, 0).setCurrentIndex(
-        dialog.legs.cellWidget(1, 0).findData(str(food.id))
-    )
+    dialog.legs.cellWidget(1, 0).setText("Expenses:Food")
     dialog.legs.cellWidget(1, TAGS).setText(" holiday , Spain; Spain ")
     second = dialog.draft().legs[1]
     assert second.tag_ids == [holiday.id]  # matched, case-insensitively
@@ -772,6 +760,7 @@ def test_the_desktop_speaks_dutch_when_told(qtbot, api: Client, tmp_path):
             "&Vermogen in de tijd…",
             "&Inkomsten en uitgaven per periode…",
             "&Beleggingen per positie…",
+            "Zoeken…",
         ]
         win.load()
         assert (
@@ -814,7 +803,8 @@ class TestSearch:
             )
         win.load()
         search = win.open_search()
-        assert search is not None and win.search_button.isEnabled()
+        assert search is not None
+        assert win.report_actions[8].isEnabled()  # Search
         # Opening it again brings the same window forward rather than a second one.
         assert win.open_search() is search
 
@@ -949,7 +939,7 @@ class TestQuickEntryAndStatementCheck:
 
         from pymoney_desktop.ui.transaction_dialog import TransactionDialog
 
-        win, _api, book_id, _visa, food, _transport = window
+        win, _api, book_id, visa, food, _transport = window
         win.client.create_payee(
             book_id, PayeeIn(name="Trattoria", default_account_id=food)
         )
@@ -957,22 +947,18 @@ class TestQuickEntryAndStatementCheck:
         currency = win._currency()
         assert currency is not None
         dialog = TransactionDialog(
-            win.accounts, win.payees, currency, default_account_id=None
+            win.accounts, win.payees, currency, default_account_id=visa
         )
-        dialog.payee.setCurrentIndex(dialog.payee.findText("Trattoria"))
+        dialog.payee.setText("Trattoria")
+        dialog._prefill_from_payee()
         second = dialog.legs.cellWidget(1, 0)
-        assert second.currentData() == str(food)
+        assert second.text() == "Restaurants"
         # Only a blank leg is filled: choosing again does not overwrite a choice.
-        visa_index = (
-            second.findText(win.accounts[0].path)
-            if second.findText(win.accounts[0].path) >= 0
-            else 1
-        )
-        second.setCurrentIndex(visa_index)
-        chosen = second.currentData()
-        dialog.payee.setCurrentIndex(0)
-        dialog.payee.setCurrentIndex(dialog.payee.findText("Trattoria"))
-        assert second.currentData() == chosen
+        second.setText("Visa")
+        chosen = second.text()
+        dialog.payee.setText("")
+        dialog.payee.setText("Trattoria")
+        assert second.text() == chosen
 
     def test_the_statement_balance_check(self, window):
         from pymoney_desktop.ui.reconcile import ReconcileDialog

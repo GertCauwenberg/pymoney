@@ -430,7 +430,7 @@ def test_the_main_window_opens_charts_from_its_menu(qtbot, api: Client, tmp_path
     win = MainWindow(client, executor=SyncExecutor(), sync_every_ms=0)
     qtbot.addWidget(win)
     win.load()
-    assert [a.text() for a in win.report_actions[3:]] == [
+    assert [a.text() for a in win.report_actions[3:8]] == [
         "&Income by category…",
         "&Expenses by category…",
         "&Net worth over time…",

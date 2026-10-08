@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     settings.setValue("locale", current_locale())
 
     window = MainWindow(client)
-    window.logout_button.clicked.connect(lambda: (client.logout(), app.quit()))
+    window.logout_button.triggered.connect(lambda: (client.logout(), app.quit()))
     window.show()
     window.load()
     try:

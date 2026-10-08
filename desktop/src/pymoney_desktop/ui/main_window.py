@@ -180,7 +180,7 @@ class MainWindow(QMainWindow):
         self.books = QComboBox()
         self.books.setMinimumWidth(220)
         self.books.currentIndexChanged.connect(self._book_chosen)
-        bar.addWidget(QLabel(" Book: "))
+        bar.addWidget(QLabel(f" {_('book')}: "))
         bar.addWidget(self.books)
         bar.addSeparator()
         self.new_button = QPushButton(_("New transaction"))
@@ -215,9 +215,6 @@ class MainWindow(QMainWindow):
         )
         self.split_button.clicked.connect(self.record_stock_split)
         bar.addWidget(self.split_button)
-        self.schedules_button = QPushButton(_("Scheduled…"))
-        self.schedules_button.clicked.connect(self.open_schedules)
-        bar.addWidget(self.schedules_button)
         self.due_button = QPushButton(_("Due"))
         self.due_button.clicked.connect(self.open_due)
         bar.addWidget(self.due_button)
@@ -227,24 +224,12 @@ class MainWindow(QMainWindow):
         )
         self.import_button.clicked.connect(self.import_statement)
         bar.addWidget(self.import_button)
-        self.search_button = QPushButton(_("Search…"))
-        self.search_button.setShortcut(QKeySequence.StandardKey.Find)
-        self.search_button.setToolTip(
-            _("Find transactions by text, amount, date, account or payee (Ctrl+F)")
-        )
-        self.search_button.clicked.connect(self.open_search)
-        bar.addWidget(self.search_button)
         self.search_window: QMainWindow | None = None
         self._select_after_load: UUID | None = None
         self.delete_button = QPushButton(_("Delete"))
         self.delete_button.clicked.connect(self.delete_transaction)
         bar.addWidget(self.delete_button)
         bar.addSeparator()
-        self.sync_button = QPushButton(_("Sync now"))
-        self.sync_button.clicked.connect(self.sync)
-        bar.addWidget(self.sync_button)
-        self.logout_button = QPushButton(_("Log out"))
-        bar.addWidget(self.logout_button)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels([_("Account"), _("Balance")])
@@ -306,7 +291,7 @@ class MainWindow(QMainWindow):
         self._preset_chosen(self.preset.currentIndex())
 
         # -- menus -------------------------------------------------------------
-        reports = self.menuBar().addMenu("&Reports")
+        reports = self.menuBar().addMenu("&" + _("Reports"))
         self.report_actions: list[QAction] = []
         for kind, label in (
             ("balance-sheet", "Balance sheet"),
@@ -332,6 +317,26 @@ class MainWindow(QMainWindow):
             reports.addAction(action)
             self.report_actions.append(action)
         self.report_windows: list[QMainWindow] = []
+
+        action = QAction(_("Search…"), self)
+        action.triggered.connect(self.open_search)
+        action.setShortcut(QKeySequence.StandardKey.Find)
+        action.setToolTip(
+            _("Find transactions by text, amount, date, account or payee (Ctrl+F)")
+        )
+        self.report_actions.append(action)
+        self.menuBar().addAction(action)
+
+        settings = self.menuBar().addMenu("&" + _("Settings"))
+        self.schedules = QAction(_("Scheduled…"), self)
+        self.schedules.triggered.connect(self.open_schedules)
+        settings.addAction(self.schedules)
+        self.sync_button = QAction(_("Sync now"), self)
+        self.sync_button.triggered.connect(self.sync)
+        settings.addAction(self.sync_button)
+
+        self.logout_button = QAction(_("Log out"))
+        self.menuBar().addAction(self.logout_button)
 
         self.status_label = QLabel()
         self.statusBar().addWidget(self.status_label, 1)
@@ -551,11 +556,11 @@ class MainWindow(QMainWindow):
     def mark_selected(self, state: str) -> None:
         """Move the selected row's split to ``state``."""
         row = self._selected_row()
-        if row is None or self.book is None or not self._can_write():
+        if row is None or not self._can_write():
             return
         if state == "FROZEN" and not self._is_owner():
             return
-        book_id = self.book.id
+        book_id = self.book.id  # type: ignore[union-attr]
         wanted = ReconcileStateName(state)
         on = None if wanted is ReconcileStateName.NOT_RECONCILED else date.today()
         self.executor.run(
@@ -569,11 +574,11 @@ class MainWindow(QMainWindow):
     def reconcile_account(self) -> None:
         """Tick the entries on a statement; mark them in one request."""
         account = self.current_account
-        if account is None or self.book is None or not self._can_write():
+        if account is None or not self._can_write():
             return
         from .reconcile import ReconcileDialog
 
-        book_id = self.book.id
+        book_id = self.book.id  # type: ignore[union-attr]
         dialog = ReconcileDialog(
             account,
             self.rows,
@@ -661,13 +666,13 @@ class MainWindow(QMainWindow):
     def import_statement(self) -> None:
         """Bring a bank statement (CSV) into the selected account."""
         account = self.current_account
-        if account is None or self.book is None or not self._can_write():
+        if account is None or not self._can_write():
             return
         from .import_dialog import ImportStatementDialog
 
         dialog = ImportStatementDialog(
             self.client,
-            self.book.id,
+            self.book.id,  # type: ignore[union-attr]
             account,
             self.accounts,
             self.payees,
@@ -748,41 +753,37 @@ class MainWindow(QMainWindow):
     def _enable_actions(self) -> None:
         for action in self.report_actions:
             action.setEnabled(self.book is not None)
-        self.search_button.setEnabled(self.book is not None)
-        writable = self._can_write()
-        self.new_button.setEnabled(
-            writable
+        postable = (
+            self._can_write()
             and self.current_account is not None
             and not self.current_account.placeholder
             and not self.current_account.closed
         )
+        self.new_button.setEnabled(postable)
         selected = self.register.currentRow() >= 0 and self.register.currentRow() < len(
             self.rows
         )
-        self.edit_button.setEnabled(writable and selected)
-        self.delete_button.setEnabled(writable and selected)
+        self.edit_button.setEnabled(postable and selected)
+        self.delete_button.setEnabled(postable and selected)
         row = self._selected_row()
         frozen = row is not None and row.reconcile_state.value == "FROZEN"
-        self.mark_button.setEnabled(writable and selected and not frozen)
+        self.mark_button.setEnabled(postable and selected and not frozen)
         # FROZEN has no way back, so it is the owner's alone (the server checks too).
         self.mark_actions["FROZEN"].setVisible(self._is_owner())
-        on_postable_account = (
-            writable
-            and self.current_account is not None
-            and not self.current_account.placeholder
-        )
-        self.reconcile_button.setEnabled(on_postable_account)
-        self.import_button.setEnabled(on_postable_account)
-        # A split is a change in a *holding*: an account kept in a security or
-        # a foreign currency, not the book's own.
-        account = self.current_account
-        self.split_button.setEnabled(
-            on_postable_account
-            and account is not None
-            and not account.closed
-            and self.book is not None
-            and account.commodity_id != self.book.base_currency_id
-        )
+
+        self.reconcile_button.setEnabled(postable)
+        self.import_button.setEnabled(postable)
+        # A split is a change in a *holding*: an account kept in a security
+        if self.current_account:
+            account = self.current_account
+            commodity = next(
+                (c for c in self.commodities if c.id == account.commodity_id), None
+            )
+            self.split_button.setEnabled(
+                postable and commodity is not None and commodity.kind != "CURRENCY"
+            )
+        else:
+            self.split_button.setEnabled(False)
 
     def _selected_row(self) -> RegisterRowOut | None:
         index = self.register.currentRow()
@@ -872,14 +873,14 @@ class MainWindow(QMainWindow):
 
     def record_stock_split(self) -> None:
         account = self.current_account
-        if account is None or self.book is None or not self._can_write():
+        if account is None or not self._can_write():
             return
         from .stock_split_dialog import StockSplitDialog
 
         dialog = StockSplitDialog(account, parent=self)
         if self.run_dialog(dialog) != QDialog.DialogCode.Accepted:
             return
-        book_id = self.book.id
+        book_id = self.book.id  # type: ignore[union-attr]
         body = dialog.body()
         self.executor.run(
             lambda: self.client.record_stock_split(book_id, account.id, body),
@@ -889,9 +890,9 @@ class MainWindow(QMainWindow):
 
     def edit_transaction(self) -> None:
         row = self._selected_row()
-        if row is None or self.book is None or not self._can_write():
+        if row is None or not self._can_write():
             return
-        book_id = self.book.id
+        book_id = self.book.id  # type: ignore[union-attr]
         try:
             existing = self.client.transaction(book_id, row.transaction_id)
         except (ApiError, OfflineError) as exc:
@@ -931,7 +932,7 @@ class MainWindow(QMainWindow):
             tags=self.tags,
             existing=existing,
             client=self.client,
-            book_id=self.book.id,
+            book_id=self.book.id,  # type: ignore[union-attr]
             parent=self,
         )
         if self.run_dialog(dialog) != QDialog.DialogCode.Accepted:
@@ -955,11 +956,11 @@ class MainWindow(QMainWindow):
 
     def delete_transaction(self) -> None:
         row = self._selected_row()
-        if row is None or self.book is None or not self._can_write():
+        if row is None or not self._can_write():
             return
         if self.confirm(_("Delete this transaction?")) is not True:
             return
-        book_id = self.book.id
+        book_id = self.book.id  # type: ignore[union-attr]
         self.executor.run(
             lambda: self.client.delete_transaction(book_id, row.transaction_id),
             lambda _result: self._reload_book(),

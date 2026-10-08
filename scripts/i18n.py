@@ -45,17 +45,18 @@ def label_keys() -> set[str]:
         "frontend/apps/web/src/ledger/ReconcileMark.tsx",
         "frontend/apps/web/src/reports/NetWorthReport.tsx",
         "frontend/apps/web/src/components/HistoryTable.tsx",
+        "desktop/src/pymoney_desktop/ui/main_window.py",
         "desktop/src/pymoney_desktop/ui/reports.py",
         "desktop/src/pymoney_desktop/ui/charts.py",
+        "desktop/src/pymoney_desktop/ui/date_utils.py",
     ):
         text = (ROOT / rel).read_text(encoding="utf-8")
         head = text.split("export function")[0] if rel.endswith(("ts", "tsx")) else text
         out |= set(LABEL.findall(head))
-        if rel.endswith("reports.py"):
+        if rel.endswith("py"):
             out |= set(re.findall(r'\("[a-z0-9-]+", "([^"]+)"\)', text))
             out |= set(re.findall(r'"[a-z-]+": "([^"]+)",', text.split("PERIOD_PRESETS")[0]))
-    return out - {"Euro", "US Dollar", "Pound Sterling", "Swiss Franc", "Yen", "Canadian Dollar", "Australian Dollar",
-                  "Swedish Krona", "Norwegian Krone", "Danish Krone", "Złoty", "Czech Koruna"}
+    return out - {"expense-pie", "period-table"}
 
 
 def all_keys() -> set[str]:
