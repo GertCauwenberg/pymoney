@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 import pytest
 from pymoney.api.schemas import (
     AccountIn,
+    AccountPatch,
     ImportDecisionIn,
     PayeeIn,
     PostOccurrenceIn,
@@ -209,6 +210,156 @@ class TestBothClients:
         finally:
             client.close()
 
+    def test_the_accounts_of_a_book_can_be_changed(self, server, tmp_path, kind):
+        """Add, rename, move, describe, close and delete: the chart of accounts,
+        one endpoint per kind of change, and the server ends up with the result
+        whichever client asked for it."""
+        api, book_id, checking, _food = server
+        client, _ = make_client(kind, api.http, tmp_path)
+        try:
+            client.login(EMAIL, PASSWORD)
+            assets = client.create_account(
+                book_id, AccountIn(name="Assets", type="ASSET", placeholder=True)
+            )
+            savings = client.create_account(
+                book_id,
+                AccountIn(name="Savings", type="SAVINGS", parent_id=assets.id),
+            )
+
+            assert client.rename_account(book_id, savings.id, "Rainy day").name == (
+                "Rainy day"
+            )
+            assert client.move_account(book_id, savings.id, checking).path == (
+                "Checking:Rainy day"
+            )
+            described = client.patch_account(
+                book_id,
+                savings.id,
+                AccountPatch(code="1100", institution="The Bank", iban="NL01"),
+            )
+            assert (described.code, described.institution, described.iban) == (
+                "1100",
+                "The Bank",
+                "NL01",
+            )
+            assert client.set_account_closed(book_id, savings.id, True).closed is True
+            assert client.set_account_closed(book_id, savings.id, False).closed is False
+
+            # A merge is a disappearance, not an edit: the source is gone.
+            doomed = client.create_account(book_id, AccountIn(name="Old", type="SAVINGS"))
+            merged = client.merge_accounts(book_id, savings.id, doomed.id)
+            assert merged.id == savings.id
+            assert all(a.id != doomed.id for a in client.accounts(book_id))
+
+            client.delete_account(book_id, savings.id)
+            names = {a.name for a in client.accounts(book_id)}
+            assert names == {"Checking", "Food", "Assets"}
+
+            # Queued or not, the server ends up in the same place.
+            status = client.sync()
+            assert status.online and status.queued == 0
+            api.login(EMAIL)
+            server_accounts = {
+                a["name"]: a for a in api.get(f"/books/{book_id}/accounts").json()
+            }
+            assert set(server_accounts) == names
+            assert server_accounts["Assets"]["placeholder"] is True
+        finally:
+            client.close()
+
+    def test_the_accounts_domain_rules_hold_here_too(self, server, tmp_path, kind):
+        """The replica is the same Book over the same store, so an edit that the
+        server would refuse is refused in the living room as well."""
+        api, book_id, checking, food = server
+        client, _ = make_client(kind, api.http, tmp_path)
+        try:
+            client.login(EMAIL, PASSWORD)
+            client.post_transaction(book_id, txn(checking, food))
+            accounts = {a.name: a for a in client.accounts(book_id)}
+
+            # A name is not free: siblings share a path.
+            with pytest.raises(ApiError) as clash:
+                client.create_account(
+                    book_id, AccountIn(name="Checking", type="CHECKING")
+                )
+            assert clash.value.status == 409
+
+            # Checking has a posting against it, so it cannot be deleted...
+            with pytest.raises(ApiError) as busy:
+                client.delete_account(book_id, accounts["Checking"].id)
+            assert busy.value.status == 409
+            assert "merge it into another account" in str(busy.value)
+            # ...nor closed while a child is open.
+            client.create_account(
+                book_id, AccountIn(name="Pocket", type="CHECKING", parent_id=checking)
+            )
+            with pytest.raises(ApiError) as open_child:
+                client.set_account_closed(book_id, checking, True)
+            assert open_child.value.status == 422
+            # Nor moved under one of its own children.
+            pocket = next(a for a in client.accounts(book_id) if a.name == "Pocket")
+            with pytest.raises(ApiError) as cycle:
+                client.move_account(book_id, checking, pocket.id)
+            assert cycle.value.status == 422
+
+            assert any(a.id == checking for a in client.accounts(book_id))
+        finally:
+            client.close()
+
+    def test_only_an_owner_may_change_the_chart_of_accounts(self, server, tmp_path, kind):
+        """An editor may post to the chart, not reshape it. Online the server
+        refuses at once; offline the replica has no grant to check, so the write
+        is queued and the server's 403 on replay stops the queue rather than
+        dropping the work."""
+        api, book_id, _checking, _food = server
+        book_id_str = str(book_id)
+        # A second person, as an editor: they may post, not reshape the book.
+        api.login(EMAIL)
+        api.put(
+            f"/books/{book_id_str}/grants",
+            json={"subject": "ed@example.invalid", "role": "editor"},
+        )
+        api.logout()
+        api.register("ed@example.invalid")
+        api.login("ed@example.invalid")
+        book = next(b for b in api.get("/books").json() if b["id"] == book_id_str)
+        assert book["role"] == "editor"
+
+        client, _ = make_client(kind, api.http, tmp_path)
+        try:
+            client.login("ed@example.invalid", PASSWORD)
+            # Reading the chart is theirs, as on the web.
+            assert {a.name for a in client.accounts(book_id)} == {"Checking", "Food"}
+
+            if kind == "remote":
+                with pytest.raises(ApiError) as refused:
+                    client.create_account(
+                        book_id, AccountIn(name="Sneaky", type="CHECKING")
+                    )
+                assert refused.value.status == 403
+                assert not any(a.name == "Sneaky" for a in client.accounts(book_id))
+            else:
+                assert isinstance(client, OfflineClient)
+                # Locally it stands; the server has not been asked yet.
+                client.create_account(book_id, AccountIn(name="Sneaky", type="CHECKING"))
+                assert any(a.name == "Sneaky" for a in client.accounts(book_id))
+                assert client.status().queued == 1
+
+                # On replay the server refuses, and a 403 does not judge the
+                # command: the entry stays queued for later, nothing is dropped
+                # and nothing is merged.
+                status = client.sync()
+                assert status.queued == 1
+                assert status.rejections == ()
+                assert any(
+                    q.summary.startswith("new account Sneaky") for q in client.queued()
+                )
+                # Still queued on a second try: the grant has not changed.
+                assert client.sync().queued == 1
+        finally:
+            client.close()
+            api.login(EMAIL)
+
     def test_a_wrong_password(self, server, tmp_path, kind):
         api, *_ = server
         client, _ = make_client(kind, api.http, tmp_path)
@@ -252,6 +403,55 @@ class TestRemoteCache:
 
 
 class TestOffline:
+    def test_the_accounts_queue_offline_and_replay_in_order(self, server, tmp_path):
+        """Every account change is applied to the replica at once and queued, and
+        replayed in the order it was made -- which matters, because each step
+        depends on the one before it."""
+        api, book_id, checking, _food = server
+        client, transport = make_client("offline", api.http, tmp_path)
+        assert isinstance(client, OfflineClient)
+        try:
+            client.login(EMAIL, PASSWORD)
+            client.accounts(book_id)  # first touch pulls the replica
+            transport.plugged = False
+
+            assets = client.create_account(
+                book_id, AccountIn(name="Assets", type="ASSET", placeholder=True)
+            )
+            savings = client.create_account(
+                book_id, AccountIn(name="Savings", type="SAVINGS", parent_id=assets.id)
+            )
+            client.rename_account(book_id, savings.id, "Rainy day")
+            client.move_account(book_id, savings.id, checking)
+            client.patch_account(book_id, savings.id, AccountPatch(code="1100"))
+            client.set_account_closed(book_id, savings.id, True)
+            doomed = client.create_account(book_id, AccountIn(name="Old", type="SAVINGS"))
+            client.merge_accounts(book_id, savings.id, doomed.id)
+            client.delete_account(book_id, assets.id)
+
+            # The replica shows the whole story without the network.
+            local = {a.name: a for a in client.accounts(book_id)}
+            assert set(local) == {"Checking", "Food", "Rainy day"}
+            assert local["Rainy day"].path == "Checking:Rainy day"
+            assert local["Rainy day"].code == "1100"
+            assert local["Rainy day"].closed is True
+            assert client.status().queued == 9
+
+            transport.plugged = True
+            status = client.sync()
+            assert status.online and status.queued == 0 and status.rejections == ()
+
+            # And the server agrees, down to the derived paths.
+            api.login(EMAIL)
+            server_accounts = {
+                a["name"]: a for a in api.get(f"/books/{book_id}/accounts").json()
+            }
+            assert set(server_accounts) == set(local)
+            assert server_accounts["Rainy day"]["path"] == "Checking:Rainy day"
+            assert server_accounts["Rainy day"]["closed"] is True
+        finally:
+            client.close()
+
     def test_work_offline_then_replay(self, server, tmp_path):
         api, book_id, checking, food = server
         client, transport = make_client("offline", api.http, tmp_path)

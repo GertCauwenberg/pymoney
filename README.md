@@ -799,7 +799,7 @@ is the naive value-column sum) · budgets · loan amortisation · other import
 formats (OFX, QIF) · attachments · a dedicated tag-management page (tags are
 created and attached from the transaction form, and searched on; renaming or
 retiring one is an API call away but has no screen yet) · the desktop app's
-account, payee and commodity management (the web app has them under
+payee and commodity management (the web app has them under
 **Settings**; see [The web frontend](#the-web-frontend)).
 
 Two performance items are also deliberate non-goals for now:

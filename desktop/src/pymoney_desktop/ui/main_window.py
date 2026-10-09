@@ -328,6 +328,9 @@ class MainWindow(QMainWindow):
         self.menuBar().addAction(action)
 
         settings = self.menuBar().addMenu("&" + _("Settings"))
+        self.accounts_menu = QAction(_("Accounts…"), self)
+        self.accounts_menu.triggered.connect(self.open_accounts)
+        settings.addAction(self.accounts_menu)
         self.schedules = QAction(_("Scheduled…"), self)
         self.schedules.triggered.connect(self.open_schedules)
         settings.addAction(self.schedules)
@@ -604,6 +607,26 @@ class MainWindow(QMainWindow):
             lambda _result: self._reload_book(),
             self._failed(_("Could not reconcile")),
         )
+
+    def open_accounts(self) -> None:
+        """The chart of accounts. Everyone reads it; only an owner may change it,
+        because reshaping it reshapes every report the household shares."""
+        if self.book is None:
+            return
+        from .accounts_dialog import AccountsDialog
+
+        dialog = AccountsDialog(
+            self.client,
+            self.book.id,
+            self.commodities,
+            can_edit=self._is_owner(),
+            base_currency_id=self.book.base_currency_id,
+            on_changed=self._reload_book,
+            run_dialog=self.run_dialog,
+            executor=self.executor,
+            parent=self,
+        )
+        self.run_dialog(dialog)
 
     def open_schedules(self) -> None:
         if self.book is None:

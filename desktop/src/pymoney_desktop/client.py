@@ -32,6 +32,7 @@ from pymoney.api.schemas import (
     AccountBalanceOut,
     AccountIn,
     AccountOut,
+    AccountPatch,
     AttachmentOut,
     BalanceSheetOut,
     BookIn,
@@ -371,6 +372,40 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def create_account(self, book_id: UUID, body: AccountIn) -> AccountOut: ...
+
+    @abstractmethod
+    def patch_account(
+        self, book_id: UUID, account_id: UUID, body: AccountPatch
+    ) -> AccountOut:
+        """Update the descriptive fields: description, code, notes, institution,
+        IBAN, placeholder. Renames, moves, closures and merges are their own
+        methods, as each has its own endpoint and rules."""
+
+    @abstractmethod
+    def rename_account(
+        self, book_id: UUID, account_id: UUID, name: str
+    ) -> AccountOut: ...
+
+    @abstractmethod
+    def move_account(
+        self, book_id: UUID, account_id: UUID, parent_id: UUID | None
+    ) -> AccountOut:
+        """Re-parent, or ``None`` to move to the top level, keeping the history."""
+
+    @abstractmethod
+    def set_account_closed(
+        self, book_id: UUID, account_id: UUID, closed: bool
+    ) -> AccountOut: ...
+
+    @abstractmethod
+    def merge_accounts(
+        self, book_id: UUID, target_id: UUID, source_id: UUID
+    ) -> AccountOut:
+        """Merge ``source_id`` into ``target_id``: postings and children move,
+        the source disappears. There is no undo."""
+
+    @abstractmethod
+    def delete_account(self, book_id: UUID, account_id: UUID) -> None: ...
 
     # -- scheduled / recurring transactions --------------------------------
     @abstractmethod

@@ -54,6 +54,7 @@ from pymoney.api.schemas import (
     AccountBalanceOut,
     AccountIn,
     AccountOut,
+    AccountPatch,
     AmountOut,
     AttachmentOut,
     BalanceSheetOut,
@@ -68,6 +69,8 @@ from pymoney.api.schemas import (
     HoldingsOut,
     ImportDecisionIn,
     IncomeStatementOut,
+    MergeAccountsIn,
+    MoveAccountIn,
     NetWorthSeriesOut,
     PayeeIn,
     PayeeOut,
@@ -76,11 +79,13 @@ from pymoney.api.schemas import (
     ReconcileIn,
     ReconcileStateName,
     RegisterPage,
+    RenameIn,
     ReportInterval,
     ScheduleIn,
     ScheduleOut,
     SchedulePatch,
     SessionOut,
+    SetClosedIn,
     SetSplitStateIn,
     SkipOccurrenceIn,
     StatementImportOut,
@@ -737,6 +742,61 @@ class OfflineClient(LedgerClient):
                     id=account.id,
                 ),
             )
+        if op.name == "patch_account":
+            account_id = UUID(op.path.rsplit("/", 1)[1])
+            account_patch = AccountPatch.model_validate(body)
+            fields = account_patch.model_dump(exclude_unset=True)
+            return self._execute(
+                book,
+                cmd.UpdateAccount(
+                    account_id=account_id,
+                    description=fields.get("description", UNSET),
+                    code=fields.get("code", UNSET),
+                    notes=fields.get("notes", UNSET),
+                    institution=fields.get("institution", UNSET),
+                    iban=fields.get("iban", UNSET),
+                    placeholder=fields.get("placeholder", UNSET),
+                ),
+            )
+        if op.name == "rename_account":
+            rename = RenameIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.RenameAccount(
+                    account_id=UUID(op.path.rsplit("/", 2)[1]), name=rename.name
+                ),
+            )
+        if op.name == "move_account":
+            move = MoveAccountIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.MoveAccount(
+                    account_id=UUID(op.path.rsplit("/", 2)[1]),
+                    new_parent_id=move.parent_id,
+                ),
+            )
+        if op.name == "set_account_closed":
+            closed = SetClosedIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.SetAccountClosed(
+                    account_id=UUID(op.path.rsplit("/", 2)[1]), closed=closed.closed
+                ),
+            )
+        if op.name == "merge_accounts":
+            merge = MergeAccountsIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.MergeAccounts(
+                    source_id=merge.source_id,
+                    target_id=UUID(op.path.rsplit("/", 2)[1]),
+                ),
+            )
+        if op.name == "delete_account":
+            return self._execute(
+                book,
+                cmd.DeleteAccount(account_id=UUID(op.path.rsplit("/", 1)[1])),
+            )
         if op.name == "create_schedule":
             sched_in = ScheduleIn.model_validate(body)
             return self._execute(
@@ -950,6 +1010,91 @@ class OfflineClient(LedgerClient):
             ),
         )
         return AccountOut.of(entity, self._book(book_id).path(entity.id))
+
+    def patch_account(
+        self, book_id: UUID, account_id: UUID, body: AccountPatch
+    ) -> AccountOut:
+        entity = self._write(
+            book_id,
+            _Op(
+                "patch_account",
+                "PATCH",
+                f"/books/{book_id}/accounts/{account_id}",
+                body.model_dump(mode="json", exclude_unset=True),
+                f"edit account {account_id}",
+            ),
+        )
+        return AccountOut.of(entity, self._book(book_id).path(entity.id))
+
+    def rename_account(self, book_id: UUID, account_id: UUID, name: str) -> AccountOut:
+        entity = self._write(
+            book_id,
+            _Op(
+                "rename_account",
+                "POST",
+                f"/books/{book_id}/accounts/{account_id}/rename",
+                {"name": name},
+                f"rename account {account_id} to {name}",
+            ),
+        )
+        return AccountOut.of(entity, self._book(book_id).path(entity.id))
+
+    def move_account(
+        self, book_id: UUID, account_id: UUID, parent_id: UUID | None
+    ) -> AccountOut:
+        entity = self._write(
+            book_id,
+            _Op(
+                "move_account",
+                "POST",
+                f"/books/{book_id}/accounts/{account_id}/move",
+                {"parent_id": None if parent_id is None else str(parent_id)},
+                f"move account {account_id}",
+            ),
+        )
+        return AccountOut.of(entity, self._book(book_id).path(entity.id))
+
+    def set_account_closed(
+        self, book_id: UUID, account_id: UUID, closed: bool
+    ) -> AccountOut:
+        entity = self._write(
+            book_id,
+            _Op(
+                "set_account_closed",
+                "POST",
+                f"/books/{book_id}/accounts/{account_id}/closed",
+                {"closed": closed},
+                f"{'close' if closed else 'reopen'} account {account_id}",
+            ),
+        )
+        return AccountOut.of(entity, self._book(book_id).path(entity.id))
+
+    def merge_accounts(
+        self, book_id: UUID, target_id: UUID, source_id: UUID
+    ) -> AccountOut:
+        entity = self._write(
+            book_id,
+            _Op(
+                "merge_accounts",
+                "POST",
+                f"/books/{book_id}/accounts/{target_id}/merge",
+                {"source_id": str(source_id)},
+                f"merge account {source_id} into {target_id}",
+            ),
+        )
+        return AccountOut.of(entity, self._book(book_id).path(entity.id))
+
+    def delete_account(self, book_id: UUID, account_id: UUID) -> None:
+        self._write(
+            book_id,
+            _Op(
+                "delete_account",
+                "DELETE",
+                f"/books/{book_id}/accounts/{account_id}",
+                None,
+                f"delete account {account_id}",
+            ),
+        )
 
     # ======================================================================
     # scheduled / recurring transactions -- local-first, queued like a post

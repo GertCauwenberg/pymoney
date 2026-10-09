@@ -22,6 +22,7 @@ from pymoney.api.schemas import (
     AccountBalanceOut,
     AccountIn,
     AccountOut,
+    AccountPatch,
     AmountOut,
     AttachmentOut,
     BalanceSheetOut,
@@ -531,6 +532,68 @@ class RemoteClient(LedgerClient):
         )
         self._written(book_id)
         return AccountOut.model_validate(payload)
+
+    def patch_account(
+        self, book_id: UUID, account_id: UUID, body: AccountPatch
+    ) -> AccountOut:
+        payload = self._call(
+            "PATCH",
+            f"/books/{book_id}/accounts/{account_id}",
+            body.model_dump(mode="json", exclude_unset=True),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return AccountOut.model_validate(payload)
+
+    def rename_account(self, book_id: UUID, account_id: UUID, name: str) -> AccountOut:
+        payload = self._call(
+            "POST",
+            f"/books/{book_id}/accounts/{account_id}/rename",
+            {"name": name},
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return AccountOut.model_validate(payload)
+
+    def move_account(
+        self, book_id: UUID, account_id: UUID, parent_id: UUID | None
+    ) -> AccountOut:
+        payload = self._call(
+            "POST",
+            f"/books/{book_id}/accounts/{account_id}/move",
+            {"parent_id": None if parent_id is None else str(parent_id)},
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return AccountOut.model_validate(payload)
+
+    def set_account_closed(
+        self, book_id: UUID, account_id: UUID, closed: bool
+    ) -> AccountOut:
+        payload = self._call(
+            "POST",
+            f"/books/{book_id}/accounts/{account_id}/closed",
+            {"closed": closed},
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return AccountOut.model_validate(payload)
+
+    def merge_accounts(
+        self, book_id: UUID, target_id: UUID, source_id: UUID
+    ) -> AccountOut:
+        payload = self._call(
+            "POST",
+            f"/books/{book_id}/accounts/{target_id}/merge",
+            {"source_id": str(source_id)},
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return AccountOut.model_validate(payload)
+
+    def delete_account(self, book_id: UUID, account_id: UUID) -> None:
+        self._call("DELETE", f"/books/{book_id}/accounts/{account_id}")
+        self._written(book_id)
 
     # -- schedules ------------------------------------------------------------------
     def schedules(self, book_id: UUID) -> list[ScheduleOut]:
