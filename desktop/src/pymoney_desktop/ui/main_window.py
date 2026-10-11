@@ -224,7 +224,7 @@ class MainWindow(QMainWindow):
         )
         self.import_button.clicked.connect(self.import_statement)
         bar.addWidget(self.import_button)
-        self.search_window: QMainWindow | None = None
+        self.search_dialog: QDialog | None = None
         self._select_after_load: UUID | None = None
         self.delete_button = QPushButton(_("Delete"))
         self.delete_button.clicked.connect(self.delete_transaction)
@@ -735,13 +735,13 @@ class MainWindow(QMainWindow):
     def open_search(
         self, payee_id: UUID | None = None, parent: QDialog | None = None
     ) -> None:
-        """The search window for the current book; brought to the
+        """The search dialog for the current book; brought to the
         front. A ``payee_id`` narrows it to that payee's transactions."""
         if self.book is None:
             return None
-        from .search import open_search
+        from .search_dialog import open_search
 
-        self.search_window = open_search(
+        self.search_dialog = open_search(
             self.client,
             self.book.id,
             self.accounts,

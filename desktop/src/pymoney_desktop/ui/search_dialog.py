@@ -23,12 +23,12 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
+    QDialog,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
-    QMainWindow,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -64,7 +64,7 @@ def describe_accounts(
     return names(list(transaction.splits))
 
 
-class SearchWindow(QMainWindow):
+class SearchWindow(QDialog):
     """Criteria above, results below; every result opens in the main window."""
 
     def __init__(
@@ -193,19 +193,21 @@ class SearchWindow(QMainWindow):
         )
         QShortcut(QKeySequence(Qt.Key.Key_Return), self.table, self.open_selected)
 
+        close = QPushButton(_("Close"))
+        close.clicked.connect(self.accept)
+
         self.status = QLabel(_("Fill in one or more criteria and search."))
         self.status.setStyleSheet("color: gray")
         footer = QHBoxLayout()
         footer.addWidget(self.status, 1)
         footer.addWidget(self.open_button)
+        footer.addWidget(close)
 
-        central = QWidget()
-        layout = QVBoxLayout(central)
+        layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addLayout(buttons)
         layout.addWidget(self.table, 1)
         layout.addLayout(footer)
-        self.setCentralWidget(central)
         for field in (self.text, self.amount, self.amount_min, self.amount_max):
             field.returnPressed.connect(self.search)
         self.text.setFocus()

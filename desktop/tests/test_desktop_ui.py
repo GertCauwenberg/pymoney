@@ -777,7 +777,7 @@ def test_the_desktop_speaks_dutch_when_told(qtbot, api: Client, tmp_path):
 
 
 class TestSearch:
-    def test_the_search_window_finds_and_opens_a_transaction(self, window):
+    def test_the_search_dialog_finds_and_opens_a_transaction(self, window):
         from datetime import date
 
         from pymoney.api.schemas import TransactionIn
@@ -803,7 +803,7 @@ class TestSearch:
             )
         win.load()
         win.open_search()
-        search = win.search_window
+        search = win.search_dialog
         assert search is not None
         assert win.report_actions[8].isEnabled()  # Search
 

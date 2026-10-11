@@ -428,7 +428,7 @@ def test_opening_it_from_the_window_changes_the_payees(window):
     assert any(p.name == "Acme Groceries" for p in client.payees(book_id))
 
 
-def test_the_transactions_button_opens_the_search_window_for_that_payee(window):
+def test_the_transactions_button_opens_the_search_dialog_for_that_payee(window):
     win, client, book_id, checking, food = window
     acme = client.create_payee(book_id, PayeeIn(name="Acme"))
     client.post_transaction(
@@ -455,7 +455,7 @@ def test_the_transactions_button_opens_the_search_window_for_that_payee(window):
     win.run_dialog = run  # type: ignore[method-assign]
     win.open_payees()
 
-    search = win.search_window
+    search = win.search_dialog
     assert search is not None
     assert search.isVisible()
     assert search.payee.currentData() == str(acme.id)
