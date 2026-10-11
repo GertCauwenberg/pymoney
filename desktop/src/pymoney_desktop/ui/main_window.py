@@ -708,15 +708,15 @@ class MainWindow(QMainWindow):
             self._reload_book()
 
     # -- search -------------------------------------------------------------------------
-    def open_search(self) -> None:
-        """The search window for the current book; one at a time, brought to the front."""
+    def open_search(
+        self, payee_id: UUID | None = None, parent: QDialog | None = None
+    ) -> None:
+        """The search window for the current book; brought to the
+        front. A ``payee_id`` narrows it to that payee's transactions."""
         if self.book is None:
             return None
         from .search import open_search
 
-        if self.search_window is not None and self.search_window.isVisible():
-            self.search_window.raise_()
-            self.search_window.activateWindow()
         self.search_window = open_search(
             self.client,
             self.book.id,
@@ -724,8 +724,9 @@ class MainWindow(QMainWindow):
             self.payees,
             self.tags,
             on_open=self.show_transaction,
+            payee_id=payee_id,
             executor=self.executor,
-            parent=self,
+            parent=parent if parent else self,
         )
 
     def show_transaction(self, transaction: TransactionOut) -> None:

@@ -76,6 +76,7 @@ class SearchWindow(QMainWindow):
         tags: list[TagOut] | None = None,
         *,
         on_open: Callable[[TransactionOut], None] | None = None,
+        payee_id: UUID | None = None,
         executor: Executor | None = None,
         today: date | None = None,
         parent: QWidget | None = None,
@@ -208,6 +209,16 @@ class SearchWindow(QMainWindow):
         for field in (self.text, self.amount, self.amount_min, self.amount_max):
             field.returnPressed.connect(self.search)
         self.text.setFocus()
+        if payee_id is not None:
+            self.show_payee(payee_id)
+
+    def show_payee(self, payee_id: UUID) -> None:
+        """The transactions naming one payee: set the filter and search."""
+        data = str(payee_id)
+        index = self.payee.findData(data)
+        if index >= 0:
+            self.payee.setCurrentIndex(index)
+            self.search()
 
     # -- criteria ----------------------------------------------------------------
     def criteria(self) -> SearchCriteria:
@@ -338,6 +349,7 @@ def open_search(
     tags: list[TagOut] | None = None,
     *,
     on_open: Callable[[TransactionOut], None] | None = None,
+    payee_id: UUID | None = None,
     executor: Executor | None = None,
     parent: QWidget | None = None,
 ) -> SearchWindow:
@@ -349,6 +361,7 @@ def open_search(
         payees,
         tags,
         on_open=on_open,
+        payee_id=payee_id,
         executor=executor,
         parent=parent,
     )
