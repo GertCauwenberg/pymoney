@@ -15,13 +15,14 @@ from pymoney.api.testing import PASSWORD, Client
 from PySide6.QtWidgets import QTreeWidgetItem
 
 from pymoney_desktop import OfflineClient, RemoteClient
-from pymoney_desktop.ui.main_window import MainWindow, SyncExecutor
+from pymoney_desktop.ui.main_window import MainWindow
 from pymoney_desktop.ui.reports import (
     PERIOD_PRESETS,
     ReportWindow,
     period_for,
     rows_to_csv,
 )
+from pymoney_desktop.ui.ui_utils import SyncExecutor
 from tests.test_desktop_clients import EMAIL, InProcessTransport, leg
 
 TODAY = date(2026, 3, 15)

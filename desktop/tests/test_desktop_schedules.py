@@ -14,8 +14,9 @@ from pymoney.api.testing import PASSWORD, Client
 from PySide6.QtWidgets import QDialog
 
 from pymoney_desktop import OfflineClient
-from pymoney_desktop.ui.main_window import MainWindow, SyncExecutor
+from pymoney_desktop.ui.main_window import MainWindow
 from pymoney_desktop.ui.schedules import DueDialog, ScheduleForm, SchedulesDialog
+from pymoney_desktop.ui.ui_utils import SyncExecutor
 from tests.test_desktop_clients import EMAIL, InProcessTransport
 from tests.test_desktop_ui import select_account
 

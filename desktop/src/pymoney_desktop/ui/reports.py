@@ -49,7 +49,7 @@ from PySide6.QtWidgets import (
 from ..client import LedgerClient, ReportOptions
 from ..i18n import _
 from .date_utils import PERIOD_PRESETS, _pydate, _qdate, period_for
-from .main_window import Executor, ThreadedExecutor, format_amount
+from .ui_utils import Executor, ThreadedExecutor, format_amount
 
 __all__ = [
     "ReportKind",

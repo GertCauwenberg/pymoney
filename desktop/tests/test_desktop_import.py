@@ -21,7 +21,8 @@ from PySide6.QtWidgets import QComboBox, QFileDialog
 
 from pymoney_desktop import OfflineClient
 from pymoney_desktop.ui.import_dialog import ImportStatementDialog
-from pymoney_desktop.ui.main_window import MainWindow, SyncExecutor
+from pymoney_desktop.ui.main_window import MainWindow
+from pymoney_desktop.ui.ui_utils import SyncExecutor
 from tests.test_desktop_clients import EMAIL, InProcessTransport
 from tests.test_desktop_ui import select_account
 

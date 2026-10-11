@@ -33,8 +33,8 @@ from PySide6.QtWidgets import (
 )
 
 from ..i18n import _
-from .main_window import format_amount, natural_sign
 from .theme import amount_brush
+from .ui_utils import format_amount, natural_sign
 
 __all__ = ["ReconcileDialog"]
 

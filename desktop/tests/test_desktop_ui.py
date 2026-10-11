@@ -33,13 +33,13 @@ from pymoney_desktop.drafts import (
     parse_decimal,
     problems,
 )
-from pymoney_desktop.ui.main_window import (
-    MainWindow,
-    SyncExecutor,
-    format_amount,
-)
+from pymoney_desktop.ui.main_window import MainWindow
 from pymoney_desktop.ui.transaction_dialog import (
     TransactionDialog,
+)
+from pymoney_desktop.ui.ui_utils import (
+    SyncExecutor,
+    format_amount,
 )
 from tests.test_desktop_clients import EMAIL, InProcessTransport
 
@@ -692,7 +692,7 @@ def test_dialog_shows_the_tags_a_stored_leg_already_wears(qtbot):
 def test_the_threaded_executor_calls_back_on_the_ui_thread(qtbot):
     import threading
 
-    from pymoney_desktop.ui.main_window import ThreadedExecutor
+    from pymoney_desktop.ui.ui_utils import ThreadedExecutor
 
     executor = ThreadedExecutor()
     seen: dict[str, object] = {}

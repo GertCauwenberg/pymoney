@@ -1,8 +1,5 @@
 """The main window: books, the account tree with balances, a register, and
 the status bar that tells you whether your work has reached the server.
-
-Every call to the client runs off the UI thread through :class:`Executor`; a
-test passes a synchronous one so the window can be driven step by step.
 """
 
 from __future__ import annotations
@@ -10,12 +7,10 @@ from __future__ import annotations
 import traceback
 from collections.abc import Callable
 from datetime import date
-from typing import Any
 from uuid import UUID
 
 from pymoney.api.schemas import (
     AccountOut,
-    AmountOut,
     BookOut,
     CommodityOut,
     PayeeIn,
@@ -26,7 +21,7 @@ from pymoney.api.schemas import (
     TagOut,
     TransactionOut,
 )
-from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QDate, Qt, QTimer
 from PySide6.QtGui import QAction, QBrush, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
@@ -51,14 +46,13 @@ from PySide6.QtWidgets import (
 )
 
 from ..client import ApiError, LedgerClient, OfflineError
-from ..i18n import _, current_locale
+from ..i18n import _
 from .date_utils import PERIOD_PRESETS, _pydate, _qdate, period_for
 from .theme import ACCENT, amount_brush
 from .transaction_dialog import TransactionDialog
+from .ui_utils import Executor, ThreadedExecutor, format_amount, natural_sign
 
-__all__ = ["Executor", "MainWindow", "SyncExecutor", "ThreadedExecutor"]
-
-CREDIT_NORMAL = {"LIABILITY", "EQUITY", "INCOME"}
+__all__ = ["MainWindow"]
 
 # The reconciliation column, as the web app shows it (ReconcileMark.tsx).
 RECONCILE_MARKS = {"NOT_RECONCILED": "", "CLEARED": "C", "RECONCILED": "R", "FROZEN": "F"}
@@ -68,87 +62,6 @@ RECONCILE_LABELS = {
     "RECONCILED": "Reconciled",
     "FROZEN": "Frozen",
 }
-
-
-# Thousands and decimal separators per language; the digits never go through a float.
-SEPARATORS = {"en": (",", "."), "nl": (".", ",")}
-
-
-def format_amount(amount: AmountOut, *, sign: int = 1) -> str:
-    digits = len(str(amount.scale)) - 1
-    minor = amount.minor * sign
-    negative = minor < 0
-    s = str(abs(minor)).rjust(digits + 1, "0")
-    whole, frac = (s[:-digits], s[-digits:]) if digits else (s, "")
-    group, point = SEPARATORS.get(current_locale(), SEPARATORS["en"])
-    whole = f"{int(whole):,}".replace(",", group)
-    text = f"{whole}{point}{frac}" if frac else whole
-    return f"-{text}" if negative else text
-
-
-def natural_sign(account_class: str) -> int:
-    return -1 if account_class in CREDIT_NORMAL else 1
-
-
-# -- running client calls off the UI thread -------------------------------------
-class Executor:
-    def run(
-        self,
-        work: Callable[[], Any],
-        done: Callable[[Any], None],
-        failed: Callable[[Exception], None],
-    ) -> None:
-        raise NotImplementedError
-
-
-class SyncExecutor(Executor):
-    """For tests: run it now, call back now."""
-
-    def run(self, work, done, failed) -> None:
-        try:
-            result = work()
-        except Exception as exc:
-            failed(exc)
-            return
-        done(result)
-
-
-class _Signals(QObject):
-    done = Signal(object)
-    failed = Signal(object)
-
-
-class _Job(QRunnable):
-    def __init__(self, work: Callable[[], Any], signals: _Signals) -> None:
-        super().__init__()
-        self.work, self.signals = work, signals
-
-    def run(self) -> None:
-        try:
-            self.signals.done.emit(self.work())
-        except Exception as exc:
-            self.signals.failed.emit(exc)
-
-
-class ThreadedExecutor(Executor):
-    """One worker thread: the clients are not thread-safe, and one call at a time is plenty."""
-
-    def __init__(self) -> None:
-        self.pool = QThreadPool()
-        self.pool.setMaxThreadCount(1)
-        self._live: list[_Signals] = []
-
-    def run(self, work, done, failed) -> None:
-        signals = _Signals()
-        self._live.append(signals)
-
-        def finish(callback, value):
-            self._live.remove(signals)
-            callback(value)
-
-        signals.done.connect(lambda value: finish(done, value))
-        signals.failed.connect(lambda exc: finish(failed, exc))
-        self.pool.start(_Job(work, signals))
 
 
 # -- the window --------------------------------------------------------------------------

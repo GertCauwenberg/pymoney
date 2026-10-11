@@ -48,7 +48,7 @@ from PySide6.QtWidgets import (
 
 from ..client import LedgerClient
 from ..i18n import _
-from .main_window import Executor, ThreadedExecutor
+from .ui_utils import Executor, ThreadedExecutor
 
 __all__ = ["AccountForm", "AccountsDialog"]
 

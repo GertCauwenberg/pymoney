@@ -43,7 +43,7 @@ from PySide6.QtWidgets import (
 
 from ..client import LedgerClient
 from ..i18n import _
-from .main_window import Executor, ThreadedExecutor, format_amount
+from .ui_utils import Executor, ThreadedExecutor, format_amount
 
 __all__ = ["DueDialog", "ScheduleForm", "SchedulesDialog"]
 

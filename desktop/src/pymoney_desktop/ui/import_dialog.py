@@ -3,7 +3,7 @@
 The same four steps as the web app -- choose the file, confirm the columns,
 review every row, see what was posted -- on one dialog with a stacked pane and
 Back / Next. Each server call runs off the UI thread through the shared
-:class:`~pymoney_desktop.ui.main_window.Executor`; while one is in flight the
+:class:`~pymoney_desktop.ui.ui_utils.Executor`; while one is in flight the
 buttons are disabled and the status line says what is happening.
 
 The import always goes to the server (the duplicate and transfer checks need
@@ -50,7 +50,7 @@ from PySide6.QtWidgets import (
 
 from ..client import LedgerClient
 from ..i18n import _
-from .main_window import Executor, ThreadedExecutor, format_amount, natural_sign
+from .ui_utils import Executor, ThreadedExecutor, format_amount, natural_sign
 
 __all__ = ["ImportStatementDialog"]
 
