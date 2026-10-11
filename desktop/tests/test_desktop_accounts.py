@@ -379,6 +379,7 @@ def test_settings_offers_the_chart_of_accounts(window):
     assert settings is not None
     assert [a.text() for a in settings.actions()] == [
         "Accounts…",
+        "Payees…",
         "Scheduled…",
         "Sync now",
     ]

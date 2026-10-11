@@ -331,6 +331,9 @@ class MainWindow(QMainWindow):
         self.accounts_menu = QAction(_("Accounts…"), self)
         self.accounts_menu.triggered.connect(self.open_accounts)
         settings.addAction(self.accounts_menu)
+        self.payees_menu = QAction(_("Payees…"), self)
+        self.payees_menu.triggered.connect(self.open_payees)
+        settings.addAction(self.payees_menu)
         self.schedules = QAction(_("Scheduled…"), self)
         self.schedules.triggered.connect(self.open_schedules)
         settings.addAction(self.schedules)
@@ -626,6 +629,27 @@ class MainWindow(QMainWindow):
             executor=self.executor,
             parent=self,
         )
+        self.run_dialog(dialog)
+
+    def open_payees(self) -> None:
+        """Who the money went to or came from. Editors and owners manage them;
+        the server refuses to delete one a transaction still names."""
+        if self.book is None:
+            return
+        from .payees_dialog import PayeesDialog
+
+        dialog = PayeesDialog(
+            self.client,
+            self.book.id,
+            self.accounts,
+            can_edit=self._can_write(),
+            on_changed=self._reload_book,
+            on_show_transactions=self.open_search,
+            run_dialog=self.run_dialog,
+            executor=self.executor,
+            parent=self,
+        )
+        self.payeesDialog = dialog
         self.run_dialog(dialog)
 
     def open_schedules(self) -> None:

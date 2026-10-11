@@ -48,6 +48,7 @@ from pymoney.api.schemas import (
     NetWorthSeriesOut,
     PayeeIn,
     PayeeOut,
+    PayeePatch,
     PeriodTableOut,
     PostOccurrenceIn,
     ReconcileStateName,
@@ -345,6 +346,27 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def create_payee(self, book_id: UUID, body: PayeeIn) -> PayeeOut: ...
+
+    @abstractmethod
+    def update_payee(
+        self, book_id: UUID, payee_id: UUID, body: PayeePatch
+    ) -> PayeeOut: ...
+
+    @abstractmethod
+    def merge_payees(
+        self,
+        book_id: UUID,
+        target_id: UUID,
+        source_ids: list[UUID],
+        *,
+        keep_match_keys: bool = True,
+    ) -> PayeeOut:
+        """Merge ``source_ids`` into ``target_id``: transactions naming a
+        source are moved, the sources disappear. Their spellings are kept as
+        matches when ``keep_match_keys``. There is no undo."""
+
+    @abstractmethod
+    def delete_payee(self, book_id: UUID, payee_id: UUID) -> None: ...
 
     @abstractmethod
     def create_tag(self, book_id: UUID, body: TagIn) -> TagOut: ...

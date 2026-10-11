@@ -70,10 +70,12 @@ from pymoney.api.schemas import (
     ImportDecisionIn,
     IncomeStatementOut,
     MergeAccountsIn,
+    MergePayeesIn,
     MoveAccountIn,
     NetWorthSeriesOut,
     PayeeIn,
     PayeeOut,
+    PayeePatch,
     PeriodTableOut,
     PostOccurrenceIn,
     ReconcileIn,
@@ -712,6 +714,40 @@ class OfflineClient(LedgerClient):
                     id=payee.id,
                 ),
             )
+        if op.name == "update_payee":
+            payee_id = UUID(op.path.rsplit("/", 1)[1])
+            payee_patch = PayeePatch.model_validate(body)
+            fields = payee_patch.model_dump(exclude_unset=True)
+            return self._execute(
+                book,
+                cmd.UpdatePayee(
+                    payee_id=payee_id,
+                    name=fields.get("name", UNSET),
+                    notes=fields.get("notes", UNSET),
+                    address=fields.get("address", UNSET),
+                    match_keys=(
+                        tuple(payee_patch.match_keys)
+                        if payee_patch.match_keys is not None
+                        else UNSET
+                    ),
+                    default_account_id=fields.get("default_account_id", UNSET),
+                ),
+            )
+        if op.name == "merge_payees":
+            payee_merge = MergePayeesIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.MergePayees(
+                    source_ids=tuple(payee_merge.source_ids),
+                    target_id=UUID(op.path.rsplit("/", 2)[1]),
+                    keep_match_keys=payee_merge.keep_match_keys,
+                ),
+            )
+        if op.name == "delete_payee":
+            return self._execute(
+                book,
+                cmd.DeletePayee(payee_id=UUID(op.path.rsplit("/", 1)[1])),
+            )
         if op.name == "create_tag":
             tag = TagIn.model_validate(body)
             return self._execute(
@@ -982,6 +1018,52 @@ class OfflineClient(LedgerClient):
             ),
         )
         return PayeeOut.of(entity)
+
+    def update_payee(self, book_id: UUID, payee_id: UUID, body: PayeePatch) -> PayeeOut:
+        entity = self._write(
+            book_id,
+            _Op(
+                "update_payee",
+                "PATCH",
+                f"/books/{book_id}/payees/{payee_id}",
+                body.model_dump(mode="json", exclude_unset=True),
+                f"edit payee {payee_id}",
+            ),
+        )
+        return PayeeOut.of(entity)
+
+    def merge_payees(
+        self,
+        book_id: UUID,
+        target_id: UUID,
+        source_ids: list[UUID],
+        *,
+        keep_match_keys: bool = True,
+    ) -> PayeeOut:
+        body = MergePayeesIn(source_ids=source_ids, keep_match_keys=keep_match_keys)
+        entity = self._write(
+            book_id,
+            _Op(
+                "merge_payees",
+                "POST",
+                f"/books/{book_id}/payees/{target_id}/merge",
+                body.model_dump(mode="json"),
+                f"merge {len(source_ids)} payee(s) into {target_id}",
+            ),
+        )
+        return PayeeOut.of(entity)
+
+    def delete_payee(self, book_id: UUID, payee_id: UUID) -> None:
+        self._write(
+            book_id,
+            _Op(
+                "delete_payee",
+                "DELETE",
+                f"/books/{book_id}/payees/{payee_id}",
+                None,
+                f"delete payee {payee_id}",
+            ),
+        )
 
     def create_tag(self, book_id: UUID, body: TagIn) -> TagOut:
         body = body.model_copy(update={"id": body.id or new_id()})

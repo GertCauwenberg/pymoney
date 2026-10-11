@@ -36,9 +36,11 @@ from pymoney.api.schemas import (
     HoldingsOut,
     ImportDecisionIn,
     IncomeStatementOut,
+    MergePayeesIn,
     NetWorthSeriesOut,
     PayeeIn,
     PayeeOut,
+    PayeePatch,
     PeriodTableOut,
     PostOccurrenceIn,
     ReconcileStateName,
@@ -477,6 +479,39 @@ class RemoteClient(LedgerClient):
         )
         self._written(book_id)
         return PayeeOut.model_validate(payload)
+
+    def update_payee(self, book_id: UUID, payee_id: UUID, body: PayeePatch) -> PayeeOut:
+        payload = self._call(
+            "PATCH",
+            f"/books/{book_id}/payees/{payee_id}",
+            body.model_dump(mode="json", exclude_unset=True),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return PayeeOut.model_validate(payload)
+
+    def merge_payees(
+        self,
+        book_id: UUID,
+        target_id: UUID,
+        source_ids: list[UUID],
+        *,
+        keep_match_keys: bool = True,
+    ) -> PayeeOut:
+        payload = self._call(
+            "POST",
+            f"/books/{book_id}/payees/{target_id}/merge",
+            MergePayeesIn(
+                source_ids=source_ids, keep_match_keys=keep_match_keys
+            ).model_dump(mode="json"),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return PayeeOut.model_validate(payload)
+
+    def delete_payee(self, book_id: UUID, payee_id: UUID) -> None:
+        self._call("DELETE", f"/books/{book_id}/payees/{payee_id}")
+        self._written(book_id)
 
     def create_tag(self, book_id: UUID, body: TagIn) -> TagOut:
         payload = self._call(

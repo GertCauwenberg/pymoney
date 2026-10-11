@@ -18,6 +18,7 @@ from pymoney.api.schemas import (
     AccountPatch,
     ImportDecisionIn,
     PayeeIn,
+    PayeePatch,
     PostOccurrenceIn,
     ScheduleIn,
     SkipOccurrenceIn,
@@ -33,6 +34,7 @@ from pymoney_desktop import (
     OfflineError,
     RemoteClient,
     ReportOptions,
+    SearchCriteria,
 )
 
 EMAIL = "desk@example.invalid"
@@ -303,6 +305,93 @@ class TestBothClients:
             assert cycle.value.status == 422
 
             assert any(a.id == checking for a in client.accounts(book_id))
+        finally:
+            client.close()
+
+    def test_the_payees_of_a_book_can_be_changed(self, server, tmp_path, kind):
+        """Rename, re-describe, merge and delete: payees are plain rows with one
+        edit endpoint, one merge and one delete, and the server ends up with the
+        result whichever client asked for it."""
+        api, book_id, checking, _food = server
+        client, _ = make_client(kind, api.http, tmp_path)
+        try:
+            client.login(EMAIL, PASSWORD)
+            acme = client.create_payee(book_id, PayeeIn(name="Acme"))
+            bakery = client.create_payee(book_id, PayeeIn(name="Bakery"))
+
+            renamed = client.update_payee(
+                book_id,
+                acme.id,
+                PayeePatch(
+                    name="Acme Groceries",
+                    match_keys=["ACME", "Acme BV"],
+                    default_account_id=checking,
+                ),
+            )
+            assert (renamed.name, renamed.match_keys, renamed.default_account_id) == (
+                "Acme Groceries",
+                ["ACME", "Acme BV"],
+                checking,
+            )
+
+            # Only what changed travels: a notes-only patch leaves the name be.
+            noted = client.update_payee(book_id, acme.id, PayeePatch(notes="Wholesale"))
+            assert (noted.name, noted.notes) == ("Acme Groceries", "Wholesale")
+
+            # A merge is a disappearance, not an edit: the source is gone and
+            # its spellings are kept as matches on the target.
+            merged = client.merge_payees(book_id, acme.id, [bakery.id])
+            assert merged.id == acme.id
+            assert {"ACME", "Acme BV", "Bakery"} <= set(merged.match_keys)
+            assert all(p.id != bakery.id for p in client.payees(book_id))
+
+            client.delete_payee(book_id, acme.id)
+            assert client.payees(book_id) == []
+
+            # Queued or not, the server ends up in the same place.
+            status = client.sync()
+            assert status.online and status.queued == 0
+            api.login(EMAIL)
+            assert api.get(f"/books/{book_id}/payees").json() == []
+        finally:
+            client.close()
+
+    def test_the_payee_domain_rules_hold_here_too(self, server, tmp_path, kind):
+        """The replica is the same Book over the same store, so an edit the
+        server would refuse is refused in the living room as well."""
+        api, book_id, checking, food = server
+        client, _ = make_client(kind, api.http, tmp_path)
+        try:
+            client.login(EMAIL, PASSWORD)
+            acme = client.create_payee(book_id, PayeeIn(name="Acme"))
+            client.post_transaction(book_id, txn(checking, food, payee_id=str(acme.id)))
+
+            # A name is not free: payees share a namespace.
+            with pytest.raises(ApiError) as clash:
+                client.create_payee(book_id, PayeeIn(name="acme"))
+            assert clash.value.status == 409
+            bakery = client.create_payee(book_id, PayeeIn(name="Bakery"))
+            with pytest.raises(ApiError) as rename_clash:
+                client.update_payee(book_id, bakery.id, PayeePatch(name="Acme"))
+            assert rename_clash.value.status == 409
+
+            # A payee a transaction names cannot be deleted...
+            with pytest.raises(ApiError) as busy:
+                client.delete_payee(book_id, acme.id)
+            assert busy.value.status == 409
+            assert "transaction" in str(busy.value)
+            # ...but merging it away is the offered way out, and the
+            # transactions follow it.
+            merged = client.merge_payees(book_id, bakery.id, [acme.id])
+            assert all(p.id != acme.id for p in client.payees(book_id))
+            page = client.search(book_id, SearchCriteria(payee_id=bakery.id))
+            assert [t.payee_id for t in page.items] == [merged.id]
+
+            # Now Bakery is the one the transaction names.
+            with pytest.raises(ApiError) as still_busy:
+                client.delete_payee(book_id, bakery.id)
+            assert still_busy.value.status == 409
+            assert any(p.id == bakery.id for p in client.payees(book_id))
         finally:
             client.close()
 
