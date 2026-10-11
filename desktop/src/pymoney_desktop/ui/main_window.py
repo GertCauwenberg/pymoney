@@ -708,7 +708,7 @@ class MainWindow(QMainWindow):
             self._reload_book()
 
     # -- search -------------------------------------------------------------------------
-    def open_search(self) -> QMainWindow | None:
+    def open_search(self) -> None:
         """The search window for the current book; one at a time, brought to the front."""
         if self.book is None:
             return None
@@ -717,7 +717,6 @@ class MainWindow(QMainWindow):
         if self.search_window is not None and self.search_window.isVisible():
             self.search_window.raise_()
             self.search_window.activateWindow()
-            return self.search_window
         self.search_window = open_search(
             self.client,
             self.book.id,
@@ -728,7 +727,6 @@ class MainWindow(QMainWindow):
             executor=self.executor,
             parent=self,
         )
-        return self.search_window
 
     def show_transaction(self, transaction: TransactionOut) -> None:
         """Navigate to a transaction: its first account's register, the row

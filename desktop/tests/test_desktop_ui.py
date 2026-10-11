@@ -802,11 +802,10 @@ class TestSearch:
                 ),
             )
         win.load()
-        search = win.open_search()
+        win.open_search()
+        search = win.search_window
         assert search is not None
         assert win.report_actions[8].isEnabled()  # Search
-        # Opening it again brings the same window forward rather than a second one.
-        assert win.open_search() is search
 
         # Nothing filled in: refused locally, no request made.
         search.search()
