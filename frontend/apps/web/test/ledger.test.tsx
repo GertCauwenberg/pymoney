@@ -146,6 +146,54 @@ describe("AccountRegisterPage", () => {
     mount(fetch, "/books/b1/accounts/sal");
     expect(await screen.findByRole("alert")).toHaveTextContent("no account");
   });
+
+  it("neutralises spreadsheet formulas in the exported register CSV", async () => {
+    const user = userEvent.setup();
+    const { fetch } = server({
+      "/accounts": () => ({ body: accounts }),
+      "/accounts/sal": () => ({ body: accounts[1] }),
+      // A payee name, a memo and a number chosen to look like formulas.
+      "/payees": () => ({ body: [{ id: "p1", name: "=cmd|' /C calc'!A0" }] }),
+      "/register": () => ({
+        body: {
+          items: [row(1, { memo: '=HYPERLINK("http://evil.example","x")', number: "@SUM(A1)" })],
+          has_more: false,
+          next_cursor: null,
+          totals: { opening: eur(0), closing: eur(-300000) },
+        },
+      }),
+    });
+    let csv = "";
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = ((b: Blob) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        csv = String(fr.result);
+      };
+      fr.readAsText(b);
+      return "blob:csv";
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      mount(fetch, "/books/b1/accounts/sal");
+      await user.click(await screen.findByRole("button", { name: "Export CSV" }));
+      await waitFor(() => expect(csv).toContain("date,number,payee"));
+    } finally {
+      click.mockRestore();
+      if (originalCreate) URL.createObjectURL = originalCreate;
+      else delete (URL as { createObjectURL?: unknown }).createObjectURL;
+      if (originalRevoke) URL.revokeObjectURL = originalRevoke;
+      else delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+    }
+    // Each user-typed cell is quoted out of formula territory, amounts are not.
+    expect(csv).toContain(`'=cmd|' /C calc'!A0`);
+    expect(csv).toContain(`"'=HYPERLINK(""http://evil.example"",""x"")"`);
+    expect(csv).toContain(`'@SUM(A1)`);
+    expect(csv).not.toMatch(/(^|,)=/);
+    expect(csv).toContain(",3000.00,EUR,"); // amount stays a plain number
+  });
 });
 
 describe("TransactionPage", () => {

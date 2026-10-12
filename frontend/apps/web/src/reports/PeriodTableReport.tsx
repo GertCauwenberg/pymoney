@@ -1,5 +1,5 @@
 import { useLocale, useT } from "@pymoney/core/hooks";
-import { PERIOD_PRESETS, formatAmount, formatMinor, periodFor, presetOf } from "@pymoney/core";
+import { PERIOD_PRESETS, csvCell, formatAmount, formatMinor, periodFor, presetOf } from "@pymoney/core";
 import type { Amount, PeriodTableQuery, ReportInterval } from "@pymoney/core";
 import { useCommodities, usePeriodTable } from "@pymoney/core/hooks";
 import { useMemo } from "react";
@@ -40,10 +40,9 @@ export function PeriodTableReport() {
     ? () => {
         const d = report.data;
         const plain = (a: Amount) => formatAmount(a, { locale: "en-US" }).replace(/,/g, "");
-        const quote = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
         const lines = [
-          ["account", ...d.columns.map((c) => c.label), "total"].join(","),
-          ...d.rows.map((r) => [quote(r.path), ...r.display_cells.map(plain), plain(r.display_total)].join(",")),
+          ["account", ...d.columns.map((c) => csvCell(c.label)), "total"].join(","),
+          ...d.rows.map((r) => [csvCell(r.path), ...r.display_cells.map(plain), plain(r.display_total)].join(",")),
           ["Income", ...d.income_earned.map(plain)].join(","),
           ["Expenses", ...d.expenses.map(plain)].join(","),
           ["Net", ...d.net.map(plain)].join(","),

@@ -1,4 +1,4 @@
-import { displayOwnValue, hasChildren, leafName, rowsToCsv, sectionRows, visibleRows } from "../src/reports";
+import { csvCell, displayOwnValue, hasChildren, leafName, rowsToCsv, sectionRows, slicesToCsv, visibleRows } from "../src/reports";
 import type { Account, Amount, ReportRow } from "../src/types";
 
 const amt = (minor: number): Amount => ({
@@ -84,12 +84,51 @@ describe("tree helpers", () => {
   });
 });
 
+describe("csvCell", () => {
+  it("quotes and doubles quotes only when needed", () => {
+    expect(csvCell("plain")).toBe("plain");
+    expect(csvCell('a, "b"')).toBe('"a, ""b"""');
+    expect(csvCell("line\nbreak")).toBe('"line\nbreak"');
+  });
+
+  it("neutralises anything a spreadsheet would read as a formula", () => {
+    expect(csvCell("=cmd|' /C calc'!A0")).toBe("'=cmd|' /C calc'!A0");
+    expect(csvCell("+1+1")).toBe("'+1+1");
+    expect(csvCell("-2+3")).toBe("'-2+3");
+    expect(csvCell("@SUM(A1)")).toBe("'@SUM(A1)");
+    expect(csvCell("\t=1+1")).toBe("'\t=1+1");
+    expect(csvCell("\r=1+1")).toBe(`"'\r=1+1"`); // quoted: it holds a CR
+  });
+
+  it("catches a formula behind leading whitespace", () => {
+    expect(csvCell(" =1+1")).toBe("' =1+1");
+  });
+
+  it("neutralises and then quotes when both apply", () => {
+    expect(csvCell('=HYPERLINK("http://evil.example","x")')).toBe(
+      `"'=HYPERLINK(""http://evil.example"",""x"")"`,
+    );
+  });
+});
+
 describe("rowsToCsv", () => {
   it("writes a header, plain decimals and quotes what needs it", () => {
     const csv = rowsToCsv([row("q", 'Expenses:Food, "fancy"', 1, 123456)]);
     expect(csv).toBe(
       'path,depth,value,own_value,commodity\r\n"Expenses:Food, ""fancy""",1,1234.56,1234.56,EUR\r\n',
     );
+  });
+
+  it("neutralises formula-looking account paths and commodity codes", () => {
+    const csv = rowsToCsv([{ ...row("q", "=cmd|' /C calc'!A0", 1, 123456), display_value: { ...amt(123456), commodity: "=EUR" } }]);
+    expect(csv).toContain(`'=cmd|' /C calc'!A0,1,1234.56,1234.56,'=EUR`);
+  });
+});
+
+describe("slicesToCsv", () => {
+  it("neutralises formula-looking labels", () => {
+    const csv = slicesToCsv([{ label: "=cmd|' /C calc'!A0", minor: 500, share: 1 }], "=EUR");
+    expect(csv).toBe(`label,amount,share\n'=cmd|' /C calc'!A0,500,100.0%\n,,'=EUR`);
   });
 });
 

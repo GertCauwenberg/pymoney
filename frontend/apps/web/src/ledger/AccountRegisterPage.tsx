@@ -1,5 +1,5 @@
 import { useT } from "@pymoney/core/hooks";
-import { formatAmount, naturalSign, parseDecimal } from "@pymoney/core";
+import { csvCell, formatAmount, naturalSign, parseDecimal } from "@pymoney/core";
 import type { Account, Amount, ReconcileState, RegisterRow } from "@pymoney/core";
 import {
   useAccount,
@@ -497,22 +497,21 @@ function registerCsv(
   accountsById: Map<string, Account>,
   payeesById: Map<string, string>,
 ): string {
-  const cell = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   const plain = (a: Amount | null | undefined) =>
     a ? formatAmount(naturalSign(a, cls), { locale: "en-US" }).replace(/,/g, "") : "";
   const header = "date,number,payee,memo,account,reconciled,amount,commodity,value,value_commodity,balance";
   const lines = rows.map((r) =>
     [
       r.date,
-      cell(r.number),
-      cell(r.payee_id ? payeesById.get(r.payee_id) ?? "" : ""),
-      cell(r.memo),
-      cell(accountsById.get(r.account_id)?.path ?? ""),
+      csvCell(r.number),
+      csvCell(r.payee_id ? payeesById.get(r.payee_id) ?? "" : ""),
+      csvCell(r.memo),
+      csvCell(accountsById.get(r.account_id)?.path ?? ""),
       r.reconcile_state,
       plain(r.quantity),
-      r.quantity.commodity,
+      csvCell(r.quantity.commodity),
       plain(r.value),
-      r.value.commodity,
+      csvCell(r.value.commodity),
       plain(r.running_balance),
     ].join(","),
   );

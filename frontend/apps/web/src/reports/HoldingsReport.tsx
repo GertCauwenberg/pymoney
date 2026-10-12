@@ -1,5 +1,5 @@
 import { useT } from "@pymoney/core/hooks";
-import { formatAmount, formatRate, today } from "@pymoney/core";
+import { csvCell, formatAmount, formatRate, today } from "@pymoney/core";
 import type { Holding, HoldingsQuery } from "@pymoney/core";
 import { useCommodities, useHoldings } from "@pymoney/core/hooks";
 import { useMemo } from "react";
@@ -23,14 +23,14 @@ function holdingsCsv(positions: readonly Holding[]): string {
   const plain = (a: Parameters<typeof formatAmount>[0]) => formatAmount(a, { locale: "en-US" }).replace(/,/g, "");
   const lines = positions.map((p) =>
     [
-      /[",\n]/.test(p.path) ? `"${p.path.replace(/"/g, '""')}"` : p.path,
-      p.commodity,
+      csvCell(p.path),
+      csvCell(p.commodity),
       plain(p.quantity),
       p.unit_price ? p.unit_price.approx : "",
       plain(p.cost),
-      p.cost.commodity,
+      csvCell(p.cost.commodity),
       plain(p.market_value),
-      p.market_value.commodity,
+      csvCell(p.market_value.commodity),
       p.unrealised_gain ? plain(p.unrealised_gain) : "",
     ].join(","),
   );

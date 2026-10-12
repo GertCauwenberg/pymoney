@@ -145,8 +145,15 @@ export function visibleRows(rows: readonly ReportRow[], collapsed: ReadonlySet<s
   return out;
 }
 
-function csvCell(value: string): string {
-  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+/**
+ * One CSV text cell: quoted when it needs it, and neutralised so user-typed
+ * text cannot become a formula when the file is opened in a spreadsheet
+ * (a payee named `=cmd|...` would otherwise run). Amounts are written as
+ * plain numbers elsewhere and must not go through here.
+ */
+export function csvCell(value: string): string {
+  const safe = /^[\s]*[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 /** CSV with a header row; amounts as plain decimals with a dot, not localised. */
@@ -158,7 +165,7 @@ export function rowsToCsv(rows: readonly ReportRow[]): string {
       String(r.depth),
       formatAmount(r.display_value, { locale: "en-US" }).replace(/,/g, ""),
       formatAmount(r.own_value, { locale: "en-US" }).replace(/,/g, ""),
-      r.display_value.commodity,
+      csvCell(r.display_value.commodity),
     ].join(","),
   );
   return [header.join(","), ...lines].join("\r\n") + "\r\n";
@@ -231,7 +238,7 @@ export function categorySlices(
 
 export function slicesToCsv(slices: readonly PieSlice[], commodity: string): string {
   const lines = ["label,amount,share"];
-  for (const s of slices) lines.push(`${JSON.stringify(s.label)},${s.minor},${(s.share * 100).toFixed(1)}%`);
-  lines.push(`,,${commodity}`);
+  for (const s of slices) lines.push(`${csvCell(s.label)},${s.minor},${(s.share * 100).toFixed(1)}%`);
+  lines.push(`,,${csvCell(commodity)}`);
   return lines.join("\n");
 }
