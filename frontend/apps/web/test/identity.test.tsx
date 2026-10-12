@@ -3,7 +3,7 @@ import { ApiClient } from "@pymoney/core";
 import { ApiProvider, createQueryClient } from "@pymoney/core/hooks";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Outlet, Route, Routes, useLocation } from "react-router-dom";
 
 import type { BookContext } from "../src/pages/BookShell";
 import { BooksPage } from "../src/pages/BooksPage";
@@ -38,12 +38,19 @@ function server(handlers: Record<string, Handler>) {
   return { fetch, calls };
 }
 
+/** Shows the current URL, so tests can see the token scrub happen. */
+function UrlProbe() {
+  const location = useLocation();
+  return <div data-testid="url">{location.pathname + location.search + location.hash}</div>;
+}
+
 function mount(fetch: typeof globalThis.fetch, path: string, role = "owner") {
   const client = new ApiClient({ baseUrl: "/api", fetch });
   const context: BookContext = { bookId: "b1", baseCurrencyId: "eur", role };
   return render(
     <ApiProvider client={client} queryClient={createQueryClient()}>
       <MemoryRouter initialEntries={[path]}>
+        <UrlProbe />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -103,7 +110,29 @@ describe("registering with activation required", () => {
 });
 
 describe("the activation page", () => {
-  it("activates with the token from the link and moves on", async () => {
+  it("activates with the token from the link's fragment and moves on", async () => {
+    const { fetch, calls } = server({
+      ...loggedOut,
+      "POST /auth/activate": () => ({ body: session }),
+      "GET /books": () => ({ body: [] }),
+    });
+    mount(fetch, "/activate#token=abc123xyz");
+    expect(await screen.findByText("Welcome")).toBeInTheDocument(); // landed on /books
+    expect(calls.find((c) => c.path === "/auth/activate")!.body).toEqual({ token: "abc123xyz" });
+  });
+
+  it("scrubs the token out of the URL once read", async () => {
+    const { fetch } = server({
+      ...loggedOut,
+      "POST /auth/activate": () => ({ body: session }),
+      "GET /books": () => ({ body: [] }),
+    });
+    mount(fetch, "/activate#token=abc123xyz");
+    await waitFor(() => expect(screen.getByTestId("url")).toHaveTextContent("/activate"));
+    expect(screen.getByTestId("url")).not.toHaveTextContent("abc123xyz");
+  });
+
+  it("still reads an old-style query link and scrubs it too", async () => {
     const { fetch, calls } = server({
       ...loggedOut,
       "POST /auth/activate": () => ({ body: session }),
@@ -112,6 +141,7 @@ describe("the activation page", () => {
     mount(fetch, "/activate?token=abc123xyz");
     expect(await screen.findByText("Welcome")).toBeInTheDocument(); // landed on /books
     expect(calls.find((c) => c.path === "/auth/activate")!.body).toEqual({ token: "abc123xyz" });
+    expect(screen.getByTestId("url")).not.toHaveTextContent("abc123xyz");
   });
 
   it("says when the link is dead", async () => {
@@ -119,7 +149,7 @@ describe("the activation page", () => {
       ...loggedOut,
       "POST /auth/activate": () => ({ status: 410, body: { detail: "this activation link is invalid, expired or already used; register again or ask for a new one" } }),
     });
-    mount(fetch, "/activate?token=stale");
+    mount(fetch, "/activate#token=stale");
     expect(await screen.findByRole("alert")).toHaveTextContent(/expired or already used/);
     expect(screen.getByRole("link", { name: "Register again" })).toHaveAttribute("href", "/login");
   });
@@ -149,14 +179,17 @@ describe("forgotten passwords", () => {
     expect(calls.find((c) => c.path === "/auth/forgot-password")!.body).toEqual({ email: "alice@example.com" });
   });
 
-  it("resets with the token, insists the two passwords match, and logs in", async () => {
+  it("resets with the token from the fragment, insists the two passwords match, and logs in", async () => {
     const user = userEvent.setup();
     const { fetch, calls } = server({
       ...loggedOut,
       "POST /auth/reset-password": () => ({ body: session }),
       "GET /books": () => ({ body: [] }),
     });
-    mount(fetch, "/reset-password?token=tok-1234");
+    mount(fetch, "/reset-password#token=tok-1234");
+    // The token is taken out of the URL before it is used.
+    await waitFor(() => expect(screen.getByTestId("url")).toHaveTextContent("/reset-password"));
+    expect(screen.getByTestId("url")).not.toHaveTextContent("tok-1234");
     const first = await screen.findByLabelText("New password");
     await user.type(first, "a brand new password");
     await user.type(screen.getByLabelText("Repeat it"), "a brand new passwor");
@@ -168,13 +201,29 @@ describe("forgotten passwords", () => {
     expect(calls.find((c) => c.path === "/auth/reset-password")!.body).toEqual({ token: "tok-1234", password: "a brand new password" });
   });
 
+  it("still reads an old-style query link", async () => {
+    const user = userEvent.setup();
+    const { fetch, calls } = server({
+      ...loggedOut,
+      "POST /auth/reset-password": () => ({ body: session }),
+      "GET /books": () => ({ body: [] }),
+    });
+    mount(fetch, "/reset-password?token=tok-1234");
+    await user.type(await screen.findByLabelText("New password"), "a brand new password");
+    await user.type(screen.getByLabelText("Repeat it"), "a brand new password");
+    await user.click(screen.getByRole("button", { name: "Set the password and log in" }));
+    expect(await screen.findByText("Welcome")).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/auth/reset-password")!.body).toEqual({ token: "tok-1234", password: "a brand new password" });
+    expect(screen.getByTestId("url")).not.toHaveTextContent("tok-1234");
+  });
+
   it("offers a new link when the token is dead", async () => {
     const user = userEvent.setup();
     const { fetch } = server({
       ...loggedOut,
       "POST /auth/reset-password": () => ({ status: 410, body: { detail: "this reset link is invalid, expired or already used; ask for a new one" } }),
     });
-    mount(fetch, "/reset-password?token=old");
+    mount(fetch, "/reset-password#token=old");
     await user.type(await screen.findByLabelText("New password"), "a brand new password");
     await user.type(screen.getByLabelText("Repeat it"), "a brand new password");
     await user.click(screen.getByRole("button", { name: "Set the password and log in" }));

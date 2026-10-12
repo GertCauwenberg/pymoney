@@ -74,7 +74,7 @@ class TestActivation:
         assert "set-cookie" not in response.headers
         assert len(mailer.sent) == 1
         assert mailer.sent[0].to == "new@example.invalid"
-        assert "https://money.example.org/activate?token=" in mailer.sent[0].body
+        assert "https://money.example.org/activate#token=" in mailer.sent[0].body
         # No session yet: logging in says why.
         refused = client.http.post(
             "/auth/login", json={"email": "new@example.invalid", "password": PASSWORD}
@@ -575,7 +575,7 @@ class TestMailers:
         message = Message(
             to="a@example.invalid",
             subject="Hi",
-            body="link: https://x/activate?token=abc",
+            body="link: https://x/activate#token=abc",
         )
         path = tmp_path / "mail" / "out.jsonl"
         FileMailer(path).send(message)

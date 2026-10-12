@@ -201,7 +201,9 @@ def _consume_token(engine: Engine, token: str, kind: str):
 def _send_activation(
     mailer: Mailer, settings: Settings, email: str, token: str, locale: str
 ) -> None:
-    link = f"{settings.public_url.rstrip('/')}/activate?token={token}"
+    # The token rides in the URL fragment: browsers keep fragments to
+    # themselves, so the secret reaches neither access logs nor Referers.
+    link = f"{settings.public_url.rstrip('/')}/activate#token={token}"
     t = lambda key, **p: translate(key, locale, **p)  # noqa: E731
     mailer.send(
         Message(
@@ -226,7 +228,7 @@ def _send_activation(
 def _send_reset(
     mailer: Mailer, settings: Settings, email: str, token: str, locale: str
 ) -> None:
-    link = f"{settings.public_url.rstrip('/')}/reset-password?token={token}"
+    link = f"{settings.public_url.rstrip('/')}/reset-password#token={token}"
     t = lambda key, **p: translate(key, locale, **p)  # noqa: E731
     mailer.send(
         Message(

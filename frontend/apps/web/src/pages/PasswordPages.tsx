@@ -1,11 +1,33 @@
 import { useT } from "@pymoney/core/hooks";
 import { useActivate, useForgotPassword, useResetPassword } from "@pymoney/core/hooks";
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Field } from "../components/fields";
 import { Logo } from "../components/Logo";
+
+/**
+ * The single-use token from the emailed link. It travels in the URL fragment,
+ * which browsers keep to themselves -- no access logs, no Referers -- and
+ * older links still carry it in the query string. Either way it is read once
+ * into state and scrubbed from the address bar, so neither form survives a
+ * refresh, a screenshot or a copied link.
+ */
+function useLinkToken(): string {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [token] = useState(
+    () =>
+      new URLSearchParams(location.hash.replace(/^#/, "")).get("token") ??
+      new URLSearchParams(location.search).get("token") ??
+      "",
+  );
+  useEffect(() => {
+    if (location.search || location.hash) navigate(location.pathname, { replace: true });
+  }, [location.search, location.hash, location.pathname, navigate]);
+  return token;
+}
 
 /** Ask for a reset link. The answer is the same whether the address exists. */
 export function ForgotPasswordPage() {
@@ -58,8 +80,7 @@ export function ForgotPasswordPage() {
 /** The page the reset link opens: choose a new password. */
 export function ResetPasswordPage() {
   const t = useT();
-  const [search] = useSearchParams();
-  const token = search.get("token") ?? "";
+  const token = useLinkToken();
   const reset = useResetPassword();
   const [password, setPassword] = useState("");
   const [again, setAgain] = useState("");
@@ -110,8 +131,7 @@ export function ResetPasswordPage() {
 /** The page the activation link opens: nothing to fill in, it just happens. */
 export function ActivatePage() {
   const t = useT();
-  const [search] = useSearchParams();
-  const token = search.get("token") ?? "";
+  const token = useLinkToken();
   const activate = useActivate();
   // Exactly once: the token is single use, and React (StrictMode, re-renders)
   // runs effects more than once.
