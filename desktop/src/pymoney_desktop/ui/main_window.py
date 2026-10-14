@@ -250,6 +250,10 @@ class MainWindow(QMainWindow):
         self.schedules = QAction(_("Scheduled…"), self)
         self.schedules.triggered.connect(self.open_schedules)
         settings.addAction(self.schedules)
+        self.budget_button = QAction(_("Budget…"), self)
+        self.budget_button.setToolTip(_("What was spent beside what was allowed"))
+        self.budget_button.triggered.connect(self.open_budget)
+        settings.addAction(self.budget_button)
         self.sync_button = QAction(_("Sync now"), self)
         self.sync_button.triggered.connect(self.sync)
         settings.addAction(self.sync_button)
@@ -565,6 +569,19 @@ class MainWindow(QMainWindow):
         self.payeesDialog = dialog
         self.run_dialog(dialog)
 
+    def open_budget(self) -> QMainWindow | None:
+        if self.book is None:
+            return None
+        from .budget import open_budget
+
+        existing = getattr(self, "budget_window", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return existing
+        self.budget_window = open_budget(self.client, self.book.id, parent=self)
+        return self.budget_window
+
     def open_schedules(self) -> None:
         if self.book is None:
             return
@@ -712,6 +729,7 @@ class MainWindow(QMainWindow):
     def _enable_actions(self) -> None:
         for action in self.report_actions:
             action.setEnabled(self.book is not None)
+        self.budget_button.setEnabled(self.book is not None)
         postable = (
             self._can_write()
             and self.current_account is not None

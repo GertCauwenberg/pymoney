@@ -37,6 +37,7 @@ from .routers import (
     attachments,
     auth,
     books,
+    budgets,
     commodities,
     csv_import,
     imports,
@@ -107,6 +108,10 @@ TAGS = [
             "Free-form labels on a transaction's legs. Used for slicing a "
             "report by anything that is not a payee or a category."
         ),
+    },
+    {
+        "name": "budgets",
+        "description": "What an account is allowed to move, month by month.",
     },
     {
         "name": "attachments",
@@ -328,6 +333,7 @@ def create_app(
     app.include_router(accounts.router)
     app.include_router(payees.router)
     app.include_router(tags.router)
+    app.include_router(budgets.router)
     app.include_router(transactions.router)
     app.include_router(attachments.router)
     app.include_router(prices.router)

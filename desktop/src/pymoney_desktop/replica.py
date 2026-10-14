@@ -23,6 +23,7 @@ from uuid import UUID
 from pymoney.api.schemas import (
     AccountOut,
     BookOut,
+    BudgetOut,
     CommodityOut,
     PayeeOut,
     PriceOut,
@@ -32,6 +33,7 @@ from pymoney.api.schemas import (
 )
 from pymoney.core.account import Account, AccountType
 from pymoney.core.amount import Amount
+from pymoney.core.budget import Budget
 from pymoney.core.changelog import EntityKind
 from pymoney.core.commodity import Commodity, CommodityKind
 from pymoney.core.entity import EPOCH
@@ -51,6 +53,7 @@ _KINDS = {
     "ACCOUNT": EntityKind.ACCOUNT,
     "PAYEE": EntityKind.PAYEE,
     "TAG": EntityKind.TAG,
+    "BUDGET": EntityKind.BUDGET,
     "TRANSACTION": EntityKind.TRANSACTION,
     "PRICE": EntityKind.PRICE,
     "SCHEDULE": EntityKind.SCHEDULE,
@@ -122,6 +125,17 @@ def _tag(out: TagOut, book_id: UUID) -> Tag:
         notes=out.notes,
         colour=out.colour,
         closed=out.closed,
+        revision=out.revision,
+    )
+
+
+def _budget(out: BudgetOut, store: Store, book_id: UUID) -> Budget:
+    return Budget(
+        id=out.id,
+        book_id=book_id,
+        account_id=out.account_id,
+        currency=_lookup(store, out.currency_id),
+        months={ym: a.minor for ym, a in out.months.items()},
         revision=out.revision,
     )
 
@@ -243,6 +257,8 @@ def apply_batch(store: Store, book_id: UUID, batch: SyncBatchOut) -> BookOut | N
             _put(store, EntityKind.PAYEE, _payee(p, book_id), at)
         for tg in batch.tags:
             _put(store, EntityKind.TAG, _tag(tg, book_id), at)
+        for bg in batch.budgets:
+            _put(store, EntityKind.BUDGET, _budget(bg, store, book_id), at)
         for pr in batch.prices:
             _put(store, EntityKind.PRICE, _price(pr, store, book_id), at)
         for sc in batch.schedules:
@@ -255,6 +271,7 @@ def apply_batch(store: Store, book_id: UUID, batch: SyncBatchOut) -> BookOut | N
             "TRANSACTION",
             "SCHEDULE",
             "PRICE",
+            "BUDGET",
             "TAG",
             "PAYEE",
             "ACCOUNT",

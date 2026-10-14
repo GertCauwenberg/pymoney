@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -60,6 +60,10 @@ from pymoney.api.schemas import (
     BalanceSheetOut,
     BookIn,
     BookOut,
+    BudgetIn,
+    BudgetMonthsIn,
+    BudgetOut,
+    BudgetTableOut,
     ColumnMappingModel,
     CommodityOut,
     CsvInspectOut,
@@ -104,6 +108,7 @@ from pymoney.api.schemas import (
 from pymoney.api.views import (
     account_balance,
     balance_sheet_out,
+    budget_table_out,
     holdings_out,
     income_statement_out,
     net_worth_series_out,
@@ -275,6 +280,7 @@ class OfflineClient(LedgerClient):
                 schema.splits,
                 schema.transactions,
                 schema.prices,
+                schema.budgets,
                 schema.payees,
                 schema.tags,
                 schema.accounts,
@@ -412,6 +418,13 @@ class OfflineClient(LedgerClient):
     def tags(self, book_id: UUID) -> list[TagOut]:
         return [TagOut.of(t) for t in self._ready(book_id).tags()]
 
+    def budgets(self, book_id: UUID) -> list[BudgetOut]:
+        return [BudgetOut.of(b) for b in self._ready(book_id).budgets()]
+
+    def budget(self, book_id: UUID, account_id: UUID) -> BudgetOut | None:
+        budget = self._ready(book_id).budget_for(account_id)
+        return None if budget is None else BudgetOut.of(budget)
+
     def balance(
         self, book_id: UUID, account_id: UUID, *, as_of: date | None = None
     ) -> AccountBalanceOut:
@@ -495,6 +508,29 @@ class OfflineClient(LedgerClient):
                 self._policy(book, options),
                 start=start,
                 interval=interval,
+                include_closed=options.include_closed,
+                strict=options.strict,
+            )
+        )
+
+    def budget_report(
+        self,
+        book_id: UUID,
+        *,
+        start: date,
+        end: date,
+        options: ReportOptions | None = None,
+    ) -> BudgetTableOut:
+        book = self._ready(book_id)
+        options = options or ReportOptions()
+        if options.as_of is None:
+            options = replace(options, as_of=end)
+        return self._guarded(
+            lambda: budget_table_out(
+                book,
+                self._policy(book, options),
+                start=start,
+                interval="month",
                 include_closed=options.include_closed,
                 strict=options.strict,
             )
@@ -759,6 +795,37 @@ class OfflineClient(LedgerClient):
                     closed=tag.closed,
                     id=tag.id,
                 ),
+            )
+        if op.name == "set_budget":
+            budget = BudgetIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.SetBudget(
+                    account_id=UUID(op.path.split("/")[-2]),
+                    months={ym: to_fraction(a) for ym, a in budget.months.items()},
+                    currency_id=budget.currency_id,
+                    replace=True,
+                    id=budget.id,
+                ),
+            )
+        if op.name == "patch_budget":
+            figure = BudgetMonthsIn.model_validate(body)
+            return self._execute(
+                book,
+                cmd.SetBudget(
+                    account_id=UUID(op.path.split("/")[-2]),
+                    months={
+                        ym: None if a is None else to_fraction(a)
+                        for ym, a in figure.months.items()
+                    },
+                    currency_id=figure.currency_id,
+                    replace=False,
+                ),
+            )
+        if op.name == "delete_budget":
+            return self._execute(
+                book,
+                cmd.DeleteBudget(account_id=UUID(op.path.split("/")[-2])),
             )
         if op.name == "create_account":
             account = AccountIn.model_validate(body)
@@ -1078,6 +1145,47 @@ class OfflineClient(LedgerClient):
             ),
         )
         return TagOut.of(entity)
+
+    def set_budget(self, book_id: UUID, account_id: UUID, body: BudgetIn) -> BudgetOut:
+        body = body.model_copy(update={"id": body.id or new_id()})
+        entity = self._write(
+            book_id,
+            _Op(
+                "set_budget",
+                "PUT",
+                f"/books/{book_id}/accounts/{account_id}/budget",
+                body.model_dump(mode="json"),
+                f"budget for {account_id}",
+            ),
+        )
+        return BudgetOut.of(entity)
+
+    def set_budget_months(
+        self, book_id: UUID, account_id: UUID, body: BudgetMonthsIn
+    ) -> BudgetOut:
+        entity = self._write(
+            book_id,
+            _Op(
+                "patch_budget",
+                "PATCH",
+                f"/books/{book_id}/accounts/{account_id}/budget",
+                body.model_dump(mode="json", exclude_unset=True),
+                f"budget figure for {account_id}",
+            ),
+        )
+        return BudgetOut.of(entity)
+
+    def delete_budget(self, book_id: UUID, account_id: UUID) -> None:
+        self._write(
+            book_id,
+            _Op(
+                "delete_budget",
+                "DELETE",
+                f"/books/{book_id}/accounts/{account_id}/budget",
+                None,
+                f"remove budget for {account_id}",
+            ),
+        )
 
     def create_account(self, book_id: UUID, body: AccountIn) -> AccountOut:
         body = body.model_copy(update={"id": body.id or new_id()})

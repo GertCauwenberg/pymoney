@@ -37,6 +37,7 @@ core/                           the domain. pure stdlib, no dependencies
     account.py      typed, hierarchical accounts
     payee.py        payees, with merge support
     tag.py          free-form labels put on a transaction's legs
+    budget.py       an account's monthly allowance, with per-month exceptions
     transaction.py  Transaction + Split, and their invariants
     posting.py      LegSpec -> booked splits (the rounding problem)
     price.py        bitemporal prices, valuation policy, conversion graph
@@ -403,8 +404,8 @@ posts nothing, if you would rather see the raw sums.
 
 ### What does not come across
 
-Budgets, saved reports, cost centres, online
-banking jobs, and per-account settings like `PreferredAccount`. None of it is
+saved reports, cost centres, online banking jobs, and per-account settings like 
+`PreferredAccount`. None of it is
 dropped quietly — the report counts every one. Also reported: KMyMoney types we
 narrow (a certificate of deposit becomes a savings account), colons stripped from
 account names (we use them as the path separator), duplicate payee (and tag)
@@ -756,6 +757,22 @@ before it (logged as a warning). A foreign leg with neither a quantity nor any
 usable price is refused: there is nothing to value it with. An importer that
 already carries its source's prices turns all of this off
 (`price_foreign_legs=False`).
+
+**A budget is a plan, not a posting.** 
+One `Budget` per account, an amount per month.
+It is a ledger entity (synced, in the change log) but it moves no
+balance: the budget *report* is the period table with, on every budgeted row,
+the subtree's allowance and what is left of it (`budget - spent`, both in the
+account's natural sign, each budget converted to the report's currency under
+the same policy as the actuals). A 'totals' column sums the months.
+`SetBudget` replaces the whole plan; the period-table editor uses
+`SetBudgetAmount`, which touches one figure -- one month -- 
+and creates the budget the first time a number is typed; clearing the
+default removes it. Deleting or merging the account takes the budget with it.
+On the web the figures are edited in the report itself ("what did I spend ->
+what do I allow"), and the expenses-by-category pie grows a ring per slice,
+filled in proportion to spend and red once it is over; the desktop has a
+dedicated budget window.
 
 **Signs are stored raw,** KMyMoney-style: a credit card you owe 500 on has a
 balance of −500, income of 3000 is stored as −3000. `AccountClass.report_sign`

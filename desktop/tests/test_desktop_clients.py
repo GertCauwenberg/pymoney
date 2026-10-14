@@ -1378,6 +1378,58 @@ def test_search_finds_the_same_through_either_client(server, tmp_path, kind):
 
 
 @pytest.mark.parametrize("kind", ["remote", "offline"])
+def test_budgets_round_trip_and_report_through_either_client(server, tmp_path, kind):
+    from pymoney.api.schemas import BudgetIn, BudgetMonthsIn
+
+    api, book_id, checking, food = server
+    api.login(EMAIL)
+    api.post_transaction(
+        "2026-01-05",
+        [{"account_id": str(checking), "value": "-120.00"}, {"account_id": str(food)}],
+    )
+    api.post_transaction(
+        "2026-02-06",
+        [{"account_id": str(checking), "value": "-450.00"}, {"account_id": str(food)}],
+    )
+    api.logout()
+
+    client, _ = make_client(kind, api.http, tmp_path)
+    client.login(EMAIL, PASSWORD)
+    client.accounts(book_id)
+
+    budget = client.set_budget(
+        book_id,
+        food,
+        BudgetIn(months={"2026-01": "400.00", "2026-02": "600.00"}),
+    )
+    assert budget.months["2026-01"].minor == 40000
+    assert client.budget(book_id, food).months["2026-02"].minor == 60000
+    assert [b.account_id for b in client.budgets(book_id)] == [food]
+
+    # A merge writes the months named and leaves the rest of the plan alone.
+    client.set_budget_months(book_id, food, BudgetMonthsIn(months={"2026-01": "450.00"}))
+    plan = client.budget(book_id, food)
+    assert plan.months["2026-01"].minor == 45000
+    assert plan.months["2026-02"].minor == 60000
+    # A month nobody planned is unanswered, not the figure above it.
+    assert "2026-03" not in plan.months
+
+    if kind == "offline":
+        client.sync()
+    report = client.budget_report(book_id, start=date(2026, 1, 1), end=date(2026, 2, 28))
+    assert [c.label for c in report.period.columns] == ["2026-01", "2026-02"]
+    row = next(r for r in report.rows if r.account_id == food)
+    assert [c.minor for c in row.budget] == [45000, 60000]
+    # The server carries plans and movement only, so what is left is the plan
+    # minus the row's own movement (see BudgetTableOut).
+    moved = next(r for r in report.period.rows if r.account_id == food)
+    assert row.budget[1].minor - moved.display_cells[1].minor == 60000 - 45000  # February
+
+    client.delete_budget(book_id, food)
+    assert client.budget(book_id, food) is None
+
+
+@pytest.mark.parametrize("kind", ["remote", "offline"])
 def test_tags_round_trip_and_are_searchable_through_either_client(server, tmp_path, kind):
     from pymoney.api.schemas import TagIn
 

@@ -14,11 +14,15 @@ from uuid import UUID
 
 from ..core.amount import Amount, Balances, RationalAmount
 from ..core.book import Book
+from ..core.budget import Budget
 from ..core.price import ValuationPolicy
 from ..core.reports import (
+    BudgetClassTotals,
     Interval,
+    PeriodTable,
     Valuer,
     balance_sheet,
+    budget_table,
     holdings,
     income_statement,
     net_worth_series,
@@ -31,6 +35,10 @@ from .schemas import (
     AccountOut,
     AmountOut,
     BalanceSheetOut,
+    BudgetClassOut,
+    BudgetOut,
+    BudgetRowOut,
+    BudgetTableOut,
     ConversionOut,
     HoldingOut,
     HoldingsOut,
@@ -54,6 +62,8 @@ __all__ = [
     "account_balance",
     "account_out",
     "balance_sheet_out",
+    "budget_out",
+    "budget_table_out",
     "conversions_out",
     "net_worth_series_out",
     "period_table_out",
@@ -329,6 +339,54 @@ def net_worth_series_out(
     )
 
 
+def budget_out(budget: Budget) -> BudgetOut:
+    return BudgetOut.of(budget)
+
+
+def _amount_or_none(value: Amount | None) -> AmountOut | None:
+    return None if value is None else AmountOut.of(value)
+
+
+def _budget_class_out(totals: BudgetClassTotals) -> BudgetClassOut:
+    return BudgetClassOut(
+        budget=[_amount_or_none(a) for a in totals.budget],
+        spent=[AmountOut.of(a) for a in totals.spent],
+    )
+
+
+def budget_table_out(
+    book: Book,
+    policy: ValuationPolicy,
+    *,
+    start: date,
+    interval: Interval,
+    include_closed: bool,
+    strict: bool,
+) -> BudgetTableOut:
+    bt = budget_table(
+        book,
+        policy,
+        start=start,
+        interval=interval,
+        include_closed=include_closed,
+        strict=strict,
+    )
+    return BudgetTableOut(
+        period=_period_table_out_from(bt.table),
+        rows=[
+            BudgetRowOut(
+                account_id=r.account_id,
+                placeholder=r.placeholder,
+                closed=r.closed,
+                budget=[_amount_or_none(a) for a in r.budget],
+            )
+            for r in bt.rows
+        ],
+        income=_budget_class_out(bt.income),
+        expenses=_budget_class_out(bt.expenses),
+    )
+
+
 def period_table_out(
     book: Book,
     policy: ValuationPolicy,
@@ -338,14 +396,19 @@ def period_table_out(
     include_closed: bool,
     strict: bool,
 ) -> PeriodTableOut:
-    table = period_table(
-        book,
-        policy,
-        start=start,
-        interval=interval,
-        include_closed=include_closed,
-        strict=strict,
+    return _period_table_out_from(
+        period_table(
+            book,
+            policy,
+            start=start,
+            interval=interval,
+            include_closed=include_closed,
+            strict=strict,
+        )
     )
+
+
+def _period_table_out_from(table: PeriodTable) -> PeriodTableOut:
     amounts = lambda cells: [AmountOut.of(a) for a in cells]  # noqa: E731
     return PeriodTableOut(
         start=table.start,

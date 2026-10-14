@@ -37,6 +37,10 @@ from pymoney.api.schemas import (
     BalanceSheetOut,
     BookIn,
     BookOut,
+    BudgetIn,
+    BudgetMonthsIn,
+    BudgetOut,
+    BudgetTableOut,
     ColumnMappingModel,
     CommodityOut,
     CsvInspectOut,
@@ -237,6 +241,22 @@ class LedgerClient(ABC):
     def tags(self, book_id: UUID) -> list[TagOut]: ...
 
     @abstractmethod
+    def budgets(self, book_id: UUID) -> list[BudgetOut]: ...
+
+    @abstractmethod
+    def budget(self, book_id: UUID, account_id: UUID) -> BudgetOut | None: ...
+
+    @abstractmethod
+    def budget_report(
+        self,
+        book_id: UUID,
+        *,
+        start: date,
+        end: date,
+        options: ReportOptions | None = None,
+    ) -> BudgetTableOut: ...
+
+    @abstractmethod
     def balance(
         self, book_id: UUID, account_id: UUID, *, as_of: date | None = None
     ) -> AccountBalanceOut: ...
@@ -370,6 +390,19 @@ class LedgerClient(ABC):
 
     @abstractmethod
     def create_tag(self, book_id: UUID, body: TagIn) -> TagOut: ...
+
+    @abstractmethod
+    def set_budget(
+        self, book_id: UUID, account_id: UUID, body: BudgetIn
+    ) -> BudgetOut: ...
+
+    @abstractmethod
+    def set_budget_months(
+        self, book_id: UUID, account_id: UUID, body: BudgetMonthsIn
+    ) -> BudgetOut: ...
+
+    @abstractmethod
+    def delete_budget(self, book_id: UUID, account_id: UUID) -> None: ...
 
     # -- attachments: receipts/invoices, server-side only -----------------
     @abstractmethod

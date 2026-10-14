@@ -1,7 +1,7 @@
 import { useLocale, useT } from "@pymoney/core/hooks";
-import { PERIOD_PRESETS, categorySlices, periodFor, presetOf, slicesToCsv } from "@pymoney/core";
+import { PERIOD_PRESETS, categorySlices, periodFor, presetOf, slicesToCsv, sumAmounts } from "@pymoney/core";
 import type { IncomeStatementQuery } from "@pymoney/core";
-import { useAccounts, useCommodities, useIncomeStatement } from "@pymoney/core/hooks";
+import { useAccounts, useBudgetReport, useCommodities, useIncomeStatement } from "@pymoney/core/hooks";
 import { useMemo } from "react";
 
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -47,6 +47,17 @@ export function CategoryPieReport({ kind }: { kind: "INCOME" | "EXPENSE" }) {
     () => (report.data && accounts.data ? categorySlices(report.data.rows, accounts.data, kind, t("Other")) : []),
     [report.data, accounts.data, kind, t],
   );
+  // Expenses show a budget ring: the window's allowance (monthly budgets
+  // summed over its months) for each category.
+  const budgets = useBudgetReport(bookId, { start: period.start, end: period.end, ...(params.target ? { target_id: params.target } : {}), include_closed: true }, kind === "EXPENSE" && period.start <= period.end);
+  const budgetByAccount = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of budgets.data?.rows ?? []) {
+      const total = sumAmounts(row.budget);
+      if (total) map.set(row.account_id, total.minor);
+    }
+    return map;
+  }, [budgets.data]);
   const title = kind === "INCOME" ? t("Income by category") : t("Expenses by category");
 
   return (
@@ -89,7 +100,14 @@ export function CategoryPieReport({ kind }: { kind: "INCOME" | "EXPENSE" }) {
 
       {report.data && target && (
         <>
-          <PieChart slices={slices} scale={target.minor_unit_factor} commodity={report.data.target} locale={locale} linkFor={(s) => (s.accountId ? `/books/${bookId}/accounts/${s.accountId}?start=${period.start}&end=${period.end}` : null)} />
+          <PieChart
+            slices={slices}
+            scale={target.minor_unit_factor}
+            commodity={report.data.target}
+            locale={locale}
+            linkFor={(s) => (s.accountId ? `/books/${bookId}/accounts/${s.accountId}?start=${period.start}&end=${period.end}` : null)}
+            budgetFor={kind === "EXPENSE" ? (s) => (s.accountId ? (budgetByAccount.get(s.accountId) ?? null) : null) : undefined}
+          />
           <ValuationPanel conversions={report.data.conversions} unpriced={report.data.unpriced} target={report.data.target} />
         </>
       )}

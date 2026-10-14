@@ -44,6 +44,7 @@ __all__ = [
     "CreateSchedule",
     "CreateTag",
     "DeleteAccount",
+    "DeleteBudget",
     "DeleteCommodity",
     "DeletePayee",
     "DeletePrice",
@@ -59,6 +60,7 @@ __all__ = [
     "RecordStockSplit",
     "RenameAccount",
     "SetAccountClosed",
+    "SetBudget",
     "SetSplitReconcileState",
     "SkipScheduledOccurrence",
     "Unset",
@@ -341,6 +343,34 @@ class UpdatePayee(Command):
     address: Maybe[str] = UNSET
     match_keys: Maybe[tuple[str, ...]] = UNSET
     default_account_id: Maybe[UUID | None] = UNSET
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SetBudget(Command):
+    """Set months of an account's plan: a figure for each month named.
+
+    ``months`` is ``YYYY-MM`` -> major-unit amount, and a ``None`` value
+    removes that month.  By default this writes the months named and leaves
+    the rest of the plan alone -- which is what the period table's editors do,
+    so extending 2026 leaves 2025 exactly as it was and clearing the input
+    clears only what is on screen.  ``replace`` makes ``months`` the entire
+    plan instead, for a client that is writing one from scratch.
+
+    Amounts are positive allowances in the account's reporting orientation.
+    """
+
+    account_id: UUID
+    months: dict[str, Fraction | str | int | None]
+    currency_id: UUID | None = None
+    """Defaults to the book's base currency, or to the budget's if there is one."""
+    replace: bool = False
+    """``False`` merges into the plan; ``True`` makes ``months`` the whole of it."""
+    id: UUID | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DeleteBudget(Command):
+    account_id: UUID
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

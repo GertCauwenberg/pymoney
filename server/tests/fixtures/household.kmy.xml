@@ -197,6 +197,17 @@
  </PRICES>
  <REPORTS count="0"/>
  <BUDGETS count="1">
-  <BUDGET start="2026-01-01" version="2" name="2026" id="B000001"/>
+  <BUDGET start="2026-01-01" version="2" name="2026" id="B000001">
+   <ACCOUNT id="A000007" budgetlevel="monthly" budgetsubaccounts="0" type="income">
+    <PERIOD amount="3000/1" start="2026-01-01"/>
+   </ACCOUNT>
+   <ACCOUNT id="A000009" budgetlevel="monthly" budgetsubaccounts="0">
+    <PERIOD amount="400/1" start="2026-01-01"/>
+   </ACCOUNT>
+   <ACCOUNT id="A000010" budgetlevel="monthbymonth" budgetsubaccounts="0">
+    <PERIOD amount="100/1" start="2026-01-01"/>
+    <PERIOD amount="150/1" start="2026-02-01"/>
+   </ACCOUNT>
+  </BUDGET>
  </BUDGETS>
 </KMYMONEY-FILE>

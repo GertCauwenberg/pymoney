@@ -19,6 +19,7 @@ from uuid import UUID
 
 from ..core.account import Account, AccountType
 from ..core.amount import Amount
+from ..core.budget import Budget
 from ..core.changelog import Change, ChangeOp, EntityKind
 from ..core.commodity import Commodity, CommodityKind
 from ..core.payee import Payee
@@ -201,7 +202,33 @@ class Rows:
             revision=row.revision,
         )
 
-    # -- tags ------------------------------------------------------------
+    # -- budgets ---------------------------------------------------------
+    @staticmethod
+    def budget_to_row(budget: Budget, book_id: UUID) -> dict[str, Any]:
+        return {
+            "id": budget.id,
+            "book_id": book_id,
+            "account_id": budget.account_id,
+            "currency_id": budget.currency.id,
+            "months": {k: int(v) for k, v in budget.months.items()},
+            "created_at": budget.created_at,
+            "updated_at": budget.updated_at,
+            "revision": budget.revision,
+        }
+
+    @staticmethod
+    def budget_from_row(row: Any, registry: Registry) -> Budget:
+        return Budget(
+            id=row.id,
+            book_id=row.book_id,
+            account_id=row.account_id,
+            currency=registry.commodity(row.currency_id),
+            months={k: int(v) for k, v in (row.months or {}).items()},
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            revision=row.revision,
+        )
+
     @staticmethod
     def tag_to_row(tag: Tag, book_id: UUID) -> dict[str, Any]:
         return {

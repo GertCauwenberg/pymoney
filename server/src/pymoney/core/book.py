@@ -16,7 +16,7 @@ so the same rules and the same tests run over memory or over SQL.
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date
@@ -27,6 +27,7 @@ from . import commands as cmd
 from . import sync as sync_protocol
 from .account import ACCOUNT_SEPARATOR, Account, AccountClass, AccountType
 from .amount import Amount, Balances
+from .budget import Budget
 from .changelog import Change, ChangeOp, EntityKind
 from .clock import Clock, SystemClock
 from .commodity import Commodity, CommodityKind
@@ -61,6 +62,7 @@ _ENTITY_KINDS: dict[type, EntityKind] = {
     Account: EntityKind.ACCOUNT,
     Payee: EntityKind.PAYEE,
     Tag: EntityKind.TAG,
+    Budget: EntityKind.BUDGET,
     Transaction: EntityKind.TRANSACTION,
     Price: EntityKind.PRICE,
     Schedule: EntityKind.SCHEDULE,
@@ -309,6 +311,21 @@ class Book:
     def tags(self, *, include_closed: bool = True) -> tuple[Tag, ...]:
         out = [t for t in self._store.tags() if include_closed or not t.closed]
         return tuple(sorted(out, key=lambda t: t.name))
+
+    def budget(self, budget_id: UUID) -> Budget:
+        found = self._store.get(EntityKind.BUDGET, budget_id)
+        if found is None:
+            raise NotFoundError(f"no budget {budget_id}")
+        return cast(Budget, found)
+
+    def budgets(self) -> tuple[Budget, ...]:
+        return tuple(sorted(self._store.budgets(), key=lambda b: self.path(b.account_id)))
+
+    def budget_for(self, account_id: UUID) -> Budget | None:
+        for budget in self._store.budgets():
+            if budget.account_id == account_id:
+                return budget
+        return None
 
     def find_tag(self, name: str) -> Tag | None:
         key = name.strip().casefold()
@@ -991,6 +1008,31 @@ class Book:
     def add_tag(self, name: str, **kwargs: Any) -> Tag:
         return self.execute(cmd.CreateTag(name=name, **kwargs)).entity
 
+    def set_budget(
+        self,
+        account: Account | UUID,
+        months: Mapping[str, Any],
+        *,
+        replace: bool = False,
+        currency_id: UUID | None = None,
+        id: UUID | None = None,
+    ) -> Budget:
+        """Set months of an account's plan, or the whole of it.
+
+        ``months`` maps ``YYYY-MM`` to a major-unit amount; ``None`` removes
+        that month.  Merges by default, so writing one year leaves the others
+        alone; pass ``replace=True`` to make ``months`` the entire plan.
+        """
+        return self.execute(
+            cmd.SetBudget(
+                account_id=_require_id(account),
+                months=dict(months),
+                replace=replace,
+                currency_id=currency_id,
+                id=id,
+            )
+        ).entity
+
     def post(
         self,
         on: date,
@@ -1079,6 +1121,7 @@ class Book:
             "commodities": tuple(c.id for c in self._store.commodities()),
             "accounts": tuple(a.id for a in self._store.accounts()),
             "payees": tuple(p.id for p in self._store.payees()),
+            "budgets": tuple(b.id for b in self._store.budgets()),
             "schedules": tuple(s.id for s in self._store.schedules()),
             "transactions": self._store.transaction_ids(),
             "prices": tuple(p.id for p in self.prices.all()),
@@ -1125,6 +1168,12 @@ class Book:
         payee_ids = {p.id for p in self._store.payees()}
         tag_ids = {t.id for t in self._store.tags()}
         accounts = {a.id: a for a in self._store.accounts()}
+
+        for budget in self._store.budgets():
+            if budget.account_id not in accounts:
+                problems.append(f"budget {budget.id} references a missing account")
+            if budget.currency.id not in commodity_ids:
+                problems.append(f"budget {budget.id} uses an unknown commodity")
 
         for account in accounts.values():
             if account.parent_id is not None:

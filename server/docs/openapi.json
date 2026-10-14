@@ -734,6 +734,288 @@
         "title": "BookOut",
         "type": "object"
       },
+      "BudgetClassOut": {
+        "additionalProperties": false,
+        "description": "What one class of accounts has across the columns: income, or expenses.\n\nThe rollup of the topmost rows of this class carrying a plan, so the\nfooter reads as the table above it.  Both sides read as positive\nmagnitudes -- what is earned and what is spent -- so a client subtracts\nthem into a savings figure.  One entry per column and no total entry: a\nclient derives remaining as budget minus spent (null where budget is\nnull), and a total as the null-skipping sum of the columns.",
+        "properties": {
+          "budget": {
+            "description": "Per column, in the table's currency; null where nothing is budgeted.",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AmountOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Budget",
+            "type": "array"
+          },
+          "spent": {
+            "description": "What those accounts moved, per column.",
+            "items": {
+              "$ref": "#/components/schemas/AmountOut"
+            },
+            "title": "Spent",
+            "type": "array"
+          }
+        },
+        "required": [
+          "budget",
+          "spent"
+        ],
+        "title": "BudgetClassOut",
+        "type": "object"
+      },
+      "BudgetIn": {
+        "additionalProperties": false,
+        "description": "An account's whole plan, for `PUT`.",
+        "properties": {
+          "currency_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Defaults to the book's base currency.",
+            "title": "Currency Id"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "months": {
+            "patternProperties": {
+              "^\\d{4}-(0[1-9]|1[0-2])$": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
+                "examples": [
+                  "12.34",
+                  "-1000",
+                  "1/3"
+                ]
+              }
+            },
+            "propertyNames": {
+              "description": "A calendar month, `YYYY-MM`.",
+              "examples": [
+                "2026-03"
+              ]
+            },
+            "title": "Months",
+            "type": "object"
+          }
+        },
+        "title": "BudgetIn",
+        "type": "object"
+      },
+      "BudgetMonthsIn": {
+        "additionalProperties": false,
+        "description": "Set months of a plan, for `PATCH`: the months on screen.\n\nEach entry is that month's allowance; `null` removes the month. Months that\nare not named keep whatever they had, so filling one year leaves the others\nalone and clearing the input clears only what it was showing.",
+        "properties": {
+          "currency_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency Id"
+          },
+          "months": {
+            "patternProperties": {
+              "^\\d{4}-(0[1-9]|1[0-2])$": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ],
+                    "description": "An exact quantity in major units. A string, or an integer. Never a JSON float.",
+                    "examples": [
+                      "12.34",
+                      "-1000",
+                      "1/3"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "propertyNames": {
+              "description": "A calendar month, `YYYY-MM`.",
+              "examples": [
+                "2026-03"
+              ]
+            },
+            "title": "Months",
+            "type": "object"
+          }
+        },
+        "required": [
+          "months"
+        ],
+        "title": "BudgetMonthsIn",
+        "type": "object"
+      },
+      "BudgetOut": {
+        "additionalProperties": false,
+        "description": "An account's plan: the figure for each month that has one.\n\nAmounts are positive allowances in the account's reporting orientation. A\nmonth that is not in ``months`` is unbudgeted -- there is no default that\nwould apply to months nobody planned.",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "currency_id": {
+            "format": "uuid",
+            "title": "Currency Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "months": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AmountOut"
+            },
+            "description": "`YYYY-MM` -> that month's allowance; a month that is absent is unbudgeted.",
+            "title": "Months",
+            "type": "object"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "currency_id",
+          "currency",
+          "revision"
+        ],
+        "title": "BudgetOut",
+        "type": "object"
+      },
+      "BudgetRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "budget": {
+            "description": "Subtree budget per column, in the table's currency; null where none. One entry per column and no total entry: a client derives remaining as budget minus the same-indexed `period.rows` display_cells (null where budget is null), and a total as the null-skipping sum of the columns.",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AmountOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Budget",
+            "type": "array"
+          },
+          "closed": {
+            "description": "Closed accounts keep their history and take no new plan, so a client should not offer the editor on this row either.",
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "placeholder": {
+            "description": "The account only groups its children: it takes no plan of its own, so a client should not offer the editor on this row.",
+            "title": "Placeholder",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account_id",
+          "placeholder",
+          "closed",
+          "budget"
+        ],
+        "title": "BudgetRowOut",
+        "type": "object"
+      },
+      "BudgetTableOut": {
+        "additionalProperties": false,
+        "description": "The period table, with a plan for every budgeted row.\n\nWhat is left is derived, not carried: per row as `budget` minus the\nsame-indexed `period.rows` display_cells, per class as `budget` minus\n`spent`, and a savings figure as `income` minus `expenses`.  A total\nanywhere is the null-skipping sum of the columns.",
+        "properties": {
+          "expenses": {
+            "$ref": "#/components/schemas/BudgetClassOut",
+            "description": "The expense accounts only."
+          },
+          "income": {
+            "$ref": "#/components/schemas/BudgetClassOut",
+            "description": "The income accounts only."
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodTableOut"
+          },
+          "rows": {
+            "description": "One per `period.rows`, same order.",
+            "items": {
+              "$ref": "#/components/schemas/BudgetRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "period",
+          "rows",
+          "income",
+          "expenses"
+        ],
+        "title": "BudgetTableOut",
+        "type": "object"
+      },
       "ChangeOut": {
         "additionalProperties": false,
         "properties": {
@@ -4341,6 +4623,13 @@
               }
             ]
           },
+          "budgets": {
+            "items": {
+              "$ref": "#/components/schemas/BudgetOut"
+            },
+            "title": "Budgets",
+            "type": "array"
+          },
           "changes": {
             "description": "The row-level audit records.",
             "items": {
@@ -6946,6 +7235,422 @@
         ]
       }
     },
+    "/books/{book_id}/accounts/{account_id}/budget": {
+      "delete": {
+        "operationId": "delete_budget_books__book_id__accounts__account_id__budget_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Remove an account's budget",
+        "tags": [
+          "budgets"
+        ]
+      },
+      "get": {
+        "operationId": "get_budget_books__book_id__accounts__account_id__budget_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "One account's budget",
+        "tags": [
+          "budgets"
+        ]
+      },
+      "patch": {
+        "description": "Write the months named and leave the rest of the plan alone.\n\nA `null` amount removes that month. Clearing every month a plan holds\nremoves the budget; to remove it regardless of what is in it, use DELETE.",
+        "operationId": "patch_budget_books__book_id__accounts__account_id__budget_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetMonthsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Set months of an account's budget",
+        "tags": [
+          "budgets"
+        ]
+      },
+      "put": {
+        "operationId": "put_budget_books__book_id__accounts__account_id__budget_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "Set an account's whole budget",
+        "tags": [
+          "budgets"
+        ]
+      }
+    },
     "/books/{book_id}/accounts/{account_id}/closed": {
       "post": {
         "operationId": "set_closed_books__book_id__accounts__account_id__closed_post",
@@ -8496,6 +9201,90 @@
         "summary": "Download an attachment's bytes",
         "tags": [
           "attachments"
+        ]
+      }
+    },
+    "/books/{book_id}/budgets": {
+      "get": {
+        "operationId": "list_budgets_books__book_id__budgets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BudgetOut"
+                  },
+                  "title": "Response List Budgets Books  Book Id  Budgets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "List budgets",
+        "tags": [
+          "budgets"
         ]
       }
     },
@@ -11351,6 +12140,223 @@
           }
         },
         "summary": "Balance sheet",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/books/{book_id}/reports/budget": {
+      "get": {
+        "description": "What was spent beside what was allowed. Each budget is converted to the\nreport's currency under the same policy as the actuals.",
+        "operationId": "get_budget_report_books__book_id__reports_budget_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive, and also the valuation date for translation.",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive, and also the valuation date for translation.",
+              "title": "End"
+            }
+          },
+          {
+            "description": "Budgets are monthly; a quarter or year column sums the months it spans.",
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "month",
+              "description": "Budgets are monthly; a quarter or year column sums the months it spans.",
+              "enum": [
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Interval",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "known_before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Known Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sources",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sources"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_staleness_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Staleness Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_closed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Closed",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "strict",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Strict",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetTableOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "403": {
+            "description": "Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`."
+          },
+          "404": {
+            "description": "No such book, or no grant on it."
+          },
+          "409": {
+            "description": "Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited."
+          },
+          "422": {
+            "description": "The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price."
+          }
+        },
+        "summary": "The period table with a plan and a remaining per account",
         "tags": [
           "reports"
         ]
@@ -14861,6 +15867,10 @@
     {
       "description": "Free-form labels on a transaction's legs. Used for slicing a report by anything that is not a payee or a category.",
       "name": "tags"
+    },
+    {
+      "description": "What an account is allowed to move, month by month.",
+      "name": "budgets"
     },
     {
       "description": "Receipts and invoices pinned to a transaction (server-side blobs).",

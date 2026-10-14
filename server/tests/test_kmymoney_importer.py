@@ -33,6 +33,7 @@ from pymoney.core.rounding import RoundingMode, round_fraction
 from pymoney.importers.kmymoney import (
     ImportOptions,
     KmyFile,
+    KmyImporter,
     Level,
     import_kmymoney,
 )
@@ -695,7 +696,9 @@ class TestReport:
 
     def test_nothing_is_dropped_silently(self, imported):
         _, report = imported
-        assert report.skipped["budgets"] == 1
+        # Budgets came across in one piece, so they are not among the things
+        # left behind.
+        assert "budgets" not in report.skipped
         assert report.skipped["split bank id (import reference)"] == 1
         assert any("account setting" in key for key in report.skipped)
 
@@ -711,6 +714,31 @@ class TestReport:
         assert report.imported["payees"] == 4
         assert report.imported["currencies"] == 3
         assert report.imported["securities"] == 1
+        assert report.imported["budgets"] == 3
+
+    def test_the_plans_come_across(self, imported):
+        """The three shapes the fixture holds: a flat allowance, a month-by-
+        month one whose later months the file never mentions, and an income
+        target.  Each is stored as the months it covers, and no further."""
+        book, _ = imported
+        plans = {book.path(book.account(b.account_id)): b for b in book.budgets()}
+        year = {f"2026-{m:02d}": 300000 for m in range(1, 13)}
+
+        assert plans["Income:Salary"].months == year
+        assert plans["Expenses:Shared Taxi"].months == {
+            f"2026-{m:02d}": 40000 for m in range(1, 13)
+        }
+
+        # KMyMoney writes no zero periods, so the months the file leaves out
+        # are months it planned at nothing: an explicit 0, not an absent entry.
+        # Neither figure runs on into 2027.
+        charges = plans["Expenses:Bank Charges"]
+        assert charges.months == {
+            "2026-01": 10000,
+            "2026-02": 15000,
+            **{f"2026-{m:02d}": 0 for m in range(3, 13)},
+        }
+        assert charges.for_month("2027-01") is None
 
     def test_revisions_and_timing(self, imported):
         book, report = imported
@@ -898,6 +926,236 @@ CASH_AND_FOOD = (
     '<ACCOUNT id="A2" name="Food" type="13" currency="EUR" parentaccount="AStd::Expense"/>'
     "</ACCOUNTS>"
 )
+
+
+class TestBudgetImport:
+    """The plan comes across or says why not -- never half of it.
+
+    A plan is its months: every month the file covers lands as an explicit
+    figure, and nothing runs on past the last one.  So the shapes below are
+    written as whole spans rather than as a default plus exceptions.
+    """
+
+    ACCOUNTS = (
+        '<ACCOUNTS count="3">'
+        '<ACCOUNT id="A1" name="Cash" type="3" currency="EUR" parentaccount="AStd::Asset"/>'
+        '<ACCOUNT id="A2" name="Groceries" type="13" currency="EUR" parentaccount="AStd::Expense"/>'
+        '<ACCOUNT id="A3" name="Salary" type="12" currency="EUR" parentaccount="AStd::Income"/>'
+        "</ACCOUNTS>"
+    )
+
+    def _plan(
+        self, tmp_path, store_backend, clock, body, *, accounts=None, currencies=None
+    ):
+        book = store_backend.open(clock=clock)
+        report = import_kmymoney(
+            write(
+                tmp_path / "plans.kmy",
+                body=(accounts or self.ACCOUNTS) + body,
+                currencies=currencies,
+            ),
+            book,
+        )
+        return book, report
+
+    @staticmethod
+    def _span(figure: int, first: str, count: int) -> dict[str, int]:
+        """`figure` in minor units for `count` months from `first`."""
+        year, month = (int(part) for part in first.split("-"))
+        out: dict[str, int] = {}
+        for i in range(count):
+            out[f"{year + (month - 1 + i) // 12:04d}-{(month - 1 + i) % 12 + 1:02d}"] = (
+                figure
+            )
+        return out
+
+    def test_a_monthly_plan_fills_the_year_it_is_for(
+        self, tmp_path, store_backend, clock
+    ):
+        book, report = self._plan(
+            tmp_path,
+            store_backend,
+            clock,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A2" budgetlevel="monthly" budgetsubaccounts="0">'
+            '<PERIOD amount="400/1" start="2026-01-01"/>'
+            "</ACCOUNT></BUDGET></BUDGETS>",
+        )
+        (plan,) = book.budgets()
+        assert plan.months == self._span(40000, "2026-01", 12)
+        # Nothing runs on: the file planned a year, so 2027 is unanswered.
+        assert plan.for_month("2027-01") is None
+        assert report.imported["budgets"] == 1
+
+    def test_a_month_by_month_plan_zero_fills_the_months_it_omits(
+        self, tmp_path, store_backend, clock
+    ):
+        book, _ = self._plan(
+            tmp_path,
+            store_backend,
+            clock,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A2" budgetlevel="monthbymonth" budgetsubaccounts="0">'
+            '<PERIOD amount="100/1" start="2026-01-01"/>'
+            '<PERIOD amount="301/2" start="2026-02-01"/>'
+            "</ACCOUNT></BUDGET></BUDGETS>",
+        )
+        (plan,) = book.budgets()
+        # KMyMoney writes no zero periods, so a month it leaves out is a month
+        # it planned at nothing -- an explicit 0, not an absent entry.
+        assert plan.months == {
+            "2026-01": 10000,
+            "2026-02": 15050,
+            **{f"2026-{m:02d}": 0 for m in range(3, 13)},
+        }
+
+    def test_a_yearly_plan_divides_into_twelve_months(
+        self, tmp_path, store_backend, clock
+    ):
+        book, report = self._plan(
+            tmp_path,
+            store_backend,
+            clock,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A2" budgetlevel="yearly" budgetsubaccounts="0">'
+            '<PERIOD amount="1200/1" start="2026-01-01"/>'
+            "</ACCOUNT></BUDGET></BUDGETS>",
+        )
+        (plan,) = book.budgets()
+        assert plan.months == self._span(10000, "2026-01", 12)  # 1200.00 / 12
+        assert not report.warnings
+
+    def test_a_yearly_plan_that_does_not_divide_says_so(
+        self, tmp_path, store_backend, clock
+    ):
+        book, report = self._plan(
+            tmp_path,
+            store_backend,
+            clock,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A2" budgetlevel="yearly" budgetsubaccounts="0">'
+            '<PERIOD amount="100/1" start="2026-01-01"/>'
+            "</ACCOUNT></BUDGET></BUDGETS>",
+        )
+        (plan,) = book.budgets()
+        assert plan.months == self._span(833, "2026-01", 12)  # 100.00 / 12, to the cent
+        assert any("minor units" in p.message for p in report.problems)
+
+    def test_several_budgets_lie_side_by_side(self, tmp_path, store_backend, clock):
+        """A KMyMoney file holds one budget per year; PyMoney holds the months.
+        So two years at two figures are two runs of months, and neither figure
+        applies to months the other year already answered."""
+        book, _ = self._plan(
+            tmp_path,
+            store_backend,
+            clock,
+            '<BUDGETS count="2">'
+            '<BUDGET id="B1" name="2025" start="2025-01-01">'
+            '<ACCOUNT id="A2" budgetlevel="monthly" budgetsubaccounts="0">'
+            '<PERIOD amount="400/1" start="2025-01-01"/>'
+            "</ACCOUNT></BUDGET>"
+            '<BUDGET id="B2" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A2" budgetlevel="monthly" budgetsubaccounts="0">'
+            '<PERIOD amount="450/1" start="2026-01-01"/>'
+            "</ACCOUNT></BUDGET></BUDGETS>",
+        )
+        (plan,) = book.budgets()
+        assert plan.months == {
+            **self._span(40000, "2025-01", 12),
+            **self._span(45000, "2026-01", 12),
+        }
+        assert plan.for_month("2027-01") is None
+
+    def test_a_plan_for_an_account_that_was_not_imported_is_reported(
+        self, tmp_path, store_backend, clock
+    ):
+        book, report = self._plan(
+            tmp_path,
+            store_backend,
+            clock,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A999" budgetlevel="monthly" budgetsubaccounts="0">'
+            '<PERIOD amount="400/1" start="2026-01-01"/>'
+            "</ACCOUNT></BUDGET></BUDGETS>",
+        )
+        assert book.budgets() == ()
+        assert report.skipped["budgets"] == 1
+        assert any("not imported" in p.message for p in report.warnings)
+
+    def test_a_plan_on_a_root_is_refused_and_said_so(
+        self, tmp_path, store_backend, clock
+    ):
+        """The five KMyMoney roots become placeholders, and a placeholder
+        groups its children rather than taking a plan of its own."""
+        book, report = self._plan(
+            tmp_path,
+            store_backend,
+            clock,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="AStd::Expense" budgetlevel="monthly" budgetsubaccounts="1">'
+            '<PERIOD amount="400/1" start="2026-01-01"/>'
+            "</ACCOUNT></BUDGET></BUDGETS>",
+        )
+        assert book.budgets() == ()
+        assert report.skipped["budgets"] == 1
+        assert any("placeholder" in p.message for p in report.warnings)
+
+    def test_a_treat_as_that_disagrees_with_the_account_is_reported(
+        self, tmp_path, store_backend, clock
+    ):
+        _, report = self._plan(
+            tmp_path,
+            store_backend,
+            clock,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A2" budgetlevel="monthly" budgetsubaccounts="0" type="income">'
+            '<PERIOD amount="400/1" start="2026-01-01"/>'
+            "</ACCOUNT></BUDGET></BUDGETS>",
+        )
+        assert any("marked income" in p.message for p in report.problems)
+
+    def test_a_plan_lands_in_the_accounts_own_currency(
+        self, tmp_path, store_backend, clock
+    ):
+        currencies = (
+            '<CURRENCIES count="2">'
+            '<CURRENCY id="EUR" saf="100" name="Euro"/>'
+            '<CURRENCY id="USD" saf="100" name="US Dollar"/>'
+            "</CURRENCIES>"
+        )
+        book, _ = self._plan(
+            tmp_path,
+            store_backend,
+            clock,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A4" budgetlevel="monthly" budgetsubaccounts="0">'
+            '<PERIOD amount="50/1" start="2026-01-01"/>'
+            "</ACCOUNT></BUDGET></BUDGETS>",
+            accounts=(
+                '<ACCOUNTS count="1">'
+                '<ACCOUNT id="A4" name="Wallet" type="3" currency="USD" '
+                'parentaccount="AStd::Asset"/>'
+                "</ACCOUNTS>"
+            ),
+            currencies=currencies,
+        )
+        (plan,) = book.budgets()
+        assert plan.currency.code == "USD"
+        assert plan.months == self._span(5000, "2026-01", 12)
+
+    def test_a_budget_with_no_accounts_imports_nothing(
+        self, tmp_path, store_backend, clock
+    ):
+        book, report = self._plan(
+            tmp_path,
+            store_backend,
+            clock,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01"/>'
+            "</BUDGETS>",
+        )
+        assert book.budgets() == ()
+        assert "budgets" not in report.imported
+        assert "budgets" not in report.skipped
 
 
 class TestAwkwardFiles:

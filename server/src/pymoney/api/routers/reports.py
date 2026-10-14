@@ -20,6 +20,7 @@ from ...core.price import ValuationPolicy
 from ..deps import ReadableBook
 from ..schemas import (
     BalanceSheetOut,
+    BudgetTableOut,
     HoldingsOut,
     IncomeStatementOut,
     NetWorthSeriesOut,
@@ -28,6 +29,7 @@ from ..schemas import (
 )
 from ..views import (
     balance_sheet_out,
+    budget_table_out,
     holdings_out,
     income_statement_out,
     net_worth_series_out,
@@ -172,6 +174,44 @@ def get_period_table(
     set_revision(response, book)
     policy = _policy(book, end, target_id, known_before, sources, max_staleness_days)
     return period_table_out(
+        book,
+        policy,
+        start=start,
+        interval=interval,
+        include_closed=include_closed,
+        strict=strict,
+    )
+
+
+@router.get(
+    "/budget",
+    response_model=BudgetTableOut,
+    summary="The period table with a plan and a remaining per account",
+)
+def get_budget_report(
+    book: ReadableBook,
+    response: Response,
+    start: date,
+    end: date | None = Query(
+        default=None,
+        description="Inclusive, and also the valuation date for translation.",
+    ),
+    interval: ReportInterval = Query(
+        default="month",
+        description="Budgets are monthly; a quarter or year column sums the months it spans.",
+    ),
+    target_id: UUID | None = Query(default=None),
+    known_before: datetime | None = Query(default=None),
+    sources: list[str] | None = Query(default=None),
+    max_staleness_days: int | None = Query(default=None, ge=0),
+    include_closed: bool = Query(default=False),
+    strict: bool = Query(default=False),
+) -> BudgetTableOut:
+    """What was spent beside what was allowed. Each budget is converted to the
+    report's currency under the same policy as the actuals."""
+    set_revision(response, book)
+    policy = _policy(book, end, target_id, known_before, sources, max_staleness_days)
+    return budget_table_out(
         book,
         policy,
         start=start,

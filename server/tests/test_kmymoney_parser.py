@@ -234,6 +234,23 @@ class TestSections:
         assert source.declared_counts["schedules"] == 2
         assert source.declared_counts["budgets"] == 1
 
+    def test_budgets(self, source):
+        assert len(source.budgets) == 1
+        budget = source.budgets[0]
+        assert budget.id == "B000001"
+        assert budget.name == "2026"
+        assert budget.start == date(2026, 1, 1)
+        by_account = {a.account_id: a for a in budget.accounts}
+        assert by_account["A000007"].budget_level == "monthly"
+        assert by_account["A000007"].treat_as == "income"
+        assert by_account["A000007"].periods[0].amount == F(3000)
+        assert by_account["A000010"].budget_level == "monthbymonth"
+        assert [p.start for p in by_account["A000010"].periods] == [
+            date(2026, 1, 1),
+            date(2026, 2, 1),
+        ]
+        assert [p.amount for p in by_account["A000010"].periods] == [F(100), F(150)]
+
     def test_commodity_lookup_by_id_and_by_symbol(self, source):
         assert source.commodity("EUR").id == "EUR"
         assert source.commodity("E000001").symbol == "AAPL"
@@ -244,6 +261,79 @@ class TestSections:
 
     def test_commodities_are_one_namespace(self, source):
         assert set(source.commodities) == {"EUR", "USD", "JPY", "E000001"}
+
+
+class TestBudgetShapes:
+    """The oddities a real ``<BUDGETS>`` section holds."""
+
+    @staticmethod
+    def _read(tmp_path: Path, body: str) -> KmyFile:
+        path = tmp_path / "budgets.kmy"
+        path.write_text(
+            '<?xml version="1.0"?><KMYMONEY-FILE>'
+            '<CURRENCIES count="1"><CURRENCY id="EUR" saf="100" name="Euro"/>'
+            "</CURRENCIES>"
+            f"{body}</KMYMONEY-FILE>"
+        )
+        return KmyFile.read(path)
+
+    def test_a_period_needing_both_halves_is_skipped_not_fatal(self, tmp_path):
+        source = self._read(
+            tmp_path,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A1" budgetlevel="monthbymonth" budgetsubaccounts="0">'
+            '<PERIOD amount="100/1" start="2026-01-01"/>'
+            '<PERIOD amount="200/1"/>'  # no start
+            '<PERIOD start="2026-03-01"/>'  # no amount
+            "</ACCOUNT></BUDGET></BUDGETS>",
+        )
+        assert [p.amount for p in source.budgets[0].accounts[0].periods] == [F(100)]
+
+    def test_an_unreduced_amount_is_kept_exact(self, tmp_path):
+        # The writer emits lowest terms (975/2) but hand-edited and older files
+        # carry what the user typed (4875/10). Both are 487.50.
+        source = self._read(
+            tmp_path,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A1" budgetlevel="monthly" budgetsubaccounts="0">'
+            '<PERIOD amount="4875/10" start="2026-01-01"/>'
+            "</ACCOUNT></BUDGET></BUDGETS>",
+        )
+        assert source.budgets[0].accounts[0].periods[0].amount == F(4875, 10)
+
+    def test_budgetsubaccounts_accepts_the_spellings_the_writer_may_leave(self, tmp_path):
+        source = self._read(
+            tmp_path,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A1" budgetlevel="monthly" budgetsubaccounts="true"/>'
+            '<ACCOUNT id="A2" budgetlevel="monthly" budgetsubaccounts="yes"/>'
+            '<ACCOUNT id="A3" budgetlevel="monthly" budgetsubaccounts="0"/>'
+            '<ACCOUNT id="A4" budgetlevel="monthly"/>'
+            "</BUDGET></BUDGETS>",
+        )
+        flags = [a.budget_subaccounts for a in source.budgets[0].accounts]
+        assert flags == [True, True, False, False]
+
+    def test_an_unknown_level_is_kept_verbatim_for_the_importer_to_refuse(self, tmp_path):
+        source = self._read(
+            tmp_path,
+            '<BUDGETS count="1"><BUDGET id="B1" name="2026" start="2026-01-01">'
+            '<ACCOUNT id="A1" budgetlevel="fortnightly" budgetsubaccounts="0"/>'
+            "</BUDGET></BUDGETS>",
+        )
+        assert source.budgets[0].accounts[0].budget_level == "fortnightly"
+
+    def test_count_and_version_are_ignored(self, tmp_path):
+        # `count` is legacy-only and `version` is skipped by KMyMoney's own
+        # reader too. The one thing that matters is that nothing is required.
+        source = self._read(
+            tmp_path,
+            '<BUDGETS count="7"><BUDGET id="B1" name="2026" version="2">'
+            "</BUDGET></BUDGETS>",
+        )
+        budget = source.budgets[0]
+        assert budget.id == "B1" and budget.accounts == ()
+        assert budget.start is None
 
 
 class TestTransactionStreaming:

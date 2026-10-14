@@ -23,6 +23,7 @@ from ..deps import ReadableBook
 from ..schemas import (
     AccountOut,
     BookOut,
+    BudgetOut,
     ChangeOut,
     CommodityOut,
     DeletionOut,
@@ -70,6 +71,8 @@ def _batch(book: Any, batch: Any) -> SyncBatchOut:
         out.payees.append(PayeeOut.of(entity))
     for entity in batch.upserts_of(EntityKind.TAG):
         out.tags.append(TagOut.of(entity))
+    for entity in batch.upserts_of(EntityKind.BUDGET):
+        out.budgets.append(BudgetOut.of(entity))
     for entity in batch.upserts_of(EntityKind.TRANSACTION):
         out.transactions.append(TransactionOut.of(entity))
     for entity in batch.upserts_of(EntityKind.PRICE):

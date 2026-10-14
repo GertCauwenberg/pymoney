@@ -40,12 +40,25 @@ function arc(cx: number, cy: number, r: number, from: number, to: number): strin
   return `M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z`;
 }
 
+/** A stroke-only arc (no centre lines): the budget ring. */
+function ringArc(cx: number, cy: number, r: number, from: number, to: number): string {
+  const a0 = (from - 0.25) * 2 * Math.PI;
+  const a1 = (to - 0.25) * 2 * Math.PI;
+  const x0 = cx + r * Math.cos(a0);
+  const y0 = cy + r * Math.sin(a0);
+  const x1 = cx + r * Math.cos(a1);
+  const y1 = cy + r * Math.sin(a1);
+  const large = to - from > 0.5 ? 1 : 0;
+  return `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1}`;
+}
+
 export function PieChart({
   slices,
   scale,
   commodity,
   linkFor,
   locale,
+  budgetFor,
 }: {
   slices: readonly PieSlice[];
   scale: number;
@@ -53,6 +66,9 @@ export function PieChart({
   /** A register link for a slice that is one account. */
   linkFor?: (slice: PieSlice) => string | null;
   locale?: string | undefined;
+  /** The budget for a slice, if it has one: drawn as an outer ring filled in
+   *  proportion to how much of it is spent (red once it is over). */
+  budgetFor?: ((slice: PieSlice) => number | null) | undefined;
 }) {
   const t = useT();
   const [active, setActive] = useState<number | null>(null);
@@ -87,6 +103,28 @@ export function PieChart({
             </path>
           ))
         )}
+        {wedges.map((w, i) => {
+          const budget = budgetFor?.(w.slice) ?? null;
+          if (!budget || budget <= 0) return null;
+          const ratio = w.slice.minor / budget;
+          const filled = Math.min(1, ratio);
+          const span = w.to - w.from;
+          return (
+            <g key={`ring-${i}`} aria-hidden="true">
+              <path d={ringArc(100, 100, 97, w.from, w.to)} fill="none" stroke="#ddd" strokeWidth={5} />
+              {filled > 0 && (
+                <path
+                  d={ringArc(100, 100, 97, w.from, w.from + span * filled)}
+                  fill="none"
+                  stroke={ratio > 1 ? "#c0392b" : "#27ae60"}
+                  strokeWidth={5}
+                >
+                  <title>{`${w.slice.label}: ${(ratio * 100).toFixed(0)}% of budget`}</title>
+                </path>
+              )}
+            </g>
+          );
+        })}
       </svg>
       <table className="pie__legend report">
         <tbody>

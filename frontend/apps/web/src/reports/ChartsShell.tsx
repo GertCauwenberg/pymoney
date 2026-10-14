@@ -13,6 +13,7 @@ export function ChartsShell() {
         <NavLink to="expenses">{t("Expenses by category")}</NavLink>
         <NavLink to="net-worth">{t("Net worth over time")}</NavLink>
         <NavLink to="by-period">{t("Income and expenses by period")}</NavLink>
+        <NavLink to="budget">{t("Budget")}</NavLink>
         <NavLink to="holdings">{t("Holdings by position")}</NavLink>
       </nav>
       <Outlet context={context} />

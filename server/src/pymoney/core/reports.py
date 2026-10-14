@@ -30,6 +30,9 @@ from .rounding import DEFAULT_ROUNDING, RoundingMode
 __all__ = [
     "AccountRow",
     "BalanceSheet",
+    "BudgetClassTotals",
+    "BudgetRow",
+    "BudgetTable",
     "Holding",
     "HoldingsReport",
     "IncomeStatement",
@@ -42,6 +45,7 @@ __all__ = [
     "Valuer",
     "account_tree",
     "balance_sheet",
+    "budget_table",
     "holdings",
     "income_statement",
     "net_worth_series",
@@ -811,3 +815,190 @@ def period_table(
         conversions=valuer.conversions,
         unpriced=valuer.unpriced,
     )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BudgetRow:
+    """One account's plan beside its period-table row.
+
+    ``budget`` is the account's whole subtree budget for each column, already
+    in the table's target commodity.  ``None`` means the subtree has no budget
+    for that month, or its currency could not be converted.
+
+    A client derives the rest from this and the row's movement:
+    ``remaining[i]`` is ``budget[i]`` minus ``table.rows[i].display_cells[i]``
+    (``None`` where ``budget[i]`` is ``None``), and a total is the
+    ``None``-skipping sum of the columns.
+    """
+
+    account_id: UUID
+    placeholder: bool
+    """The account only groups its children, so it takes no plan of its own:
+    a client should show the rolled-up figures but not the editor."""
+    closed: bool
+    """Closed accounts keep their history and refuse new postings, so no plan
+    can be set on one either."""
+    budget: tuple[Amount | None, ...]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BudgetClassTotals:
+    """What one class of accounts has, per column -- income, or expenses.
+
+    Counted over just the budgeted accounts of this class that the period
+    table shows, each movement once.  ``budget`` is the plan on those
+    accounts, ``spent`` what they moved; both read as positive magnitudes --
+    what is earned, what is spent -- so a client subtracts them into savings.
+    Both tuples have one entry per column and no total entry.
+
+    A client derives ``remaining[i]`` as ``budget[i] - spent[i]``
+    (``None`` where ``budget[i]`` is ``None``), and a total as the
+    ``None``-skipping sum of the columns.
+    """
+
+    budget: tuple[Amount | None, ...]
+    spent: tuple[Amount, ...]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BudgetTable:
+    """The period table, plus a plan for every budgeted row."""
+
+    table: PeriodTable
+    rows: tuple[BudgetRow, ...]
+    """One per ``table.rows`` entry, in the same order."""
+    income: BudgetClassTotals
+    """The income accounts only."""
+    expenses: BudgetClassTotals
+    """The expense accounts only."""
+
+
+def _months_of(column: Period) -> tuple[str, ...]:
+    """The ``YYYY-MM`` labels a column covers (one for a month, three for a
+    quarter, twelve for a year)."""
+    return tuple(p.label for p in periods_between(column.start, column.end, "month"))
+
+
+def budget_table(
+    book: Book,
+    policy: ValuationPolicy,
+    *,
+    start: date,
+    interval: Interval = "month",
+    include_closed: bool = False,
+    strict: bool = True,
+) -> BudgetTable:
+    """The period table with each account's budget and what is left of it.
+
+    Budgets are monthly; a quarter or year column sums the months it spans.
+    Each budget is converted to the table's target under the same policy as
+    the actuals, so ``remaining`` is comparable down the column.
+    """
+    table = period_table(
+        book,
+        policy,
+        start=start,
+        interval=interval,
+        include_closed=include_closed,
+        strict=strict,
+    )
+    valuer = Valuer(book, policy, strict=strict)
+    budgets = {b.account_id: b for b in book.budgets()}
+    col_months = [_months_of(c) for c in table.columns]
+
+    def own_budget(account_id: UUID, months: tuple[str, ...]) -> Amount | None:
+        budget = budgets.get(account_id)
+        if budget is None:
+            return None
+        minors = [m for ym in months if (m := budget.for_month(ym)) is not None]
+        if not minors:
+            return None
+        raw = Amount(budget.currency, sum(minors))
+        conversion = valuer.conversion(budget.currency)
+        if conversion is None:
+            return None
+        return conversion.apply(raw).book()
+
+    # Subtree budget per (account, column): own plus the children's, paralleling
+    # the period table's subtree cells.
+    subtree: dict[UUID, list[Amount | None]] = {}
+
+    def roll(account: Account) -> list[Amount | None]:
+        acc: list[Amount | None] = [
+            own_budget(account.id, months) for months in col_months
+        ]
+        for child in book.children(account.id):
+            child_cells = roll(child)
+            acc = [
+                _add_optional(a, b, valuer.target)
+                for a, b in zip(acc, child_cells, strict=True)
+            ]
+        subtree[account.id] = acc
+        return acc
+
+    for root in book.roots():
+        roll(root)
+
+    budget_rows: list[BudgetRow] = []
+    for row in table.rows:
+        cells = subtree.get(row.account.id, [None] * len(table.columns))
+        budget_rows.append(
+            BudgetRow(
+                account_id=row.account.id,
+                placeholder=row.account.placeholder,
+                closed=row.account.closed,
+                budget=tuple(cells),
+            )
+        )
+
+    def class_totals(*classes: AccountClass) -> BudgetClassTotals:
+        """The footer for one class: the rollup of the topmost rows carrying a plan.
+
+        Reading it as a row rollup rather than a sum of accounts keeps it equal
+        to the table above it, counts each movement once when a budgeted
+        account has a budgeted child (whose subtree its ancestor's rollup
+        already carries), and leaves the footer alone when a plan sits on an
+        account this report cannot show -- an asset, or a closed account while
+        those are hidden -- rather than inflating a figure no row explains.
+        """
+        carrying = {
+            row.account.id
+            for row, budget_row in zip(table.rows, budget_rows, strict=True)
+            if row.account.account_class in classes
+            and any(b is not None for b in budget_row.budget)
+        }
+        topmost = [
+            (row, budget_row)
+            for row, budget_row in zip(table.rows, budget_rows, strict=True)
+            if row.account.id in carrying
+            and not any(a.id in carrying for a in book.ancestors(row.account))
+        ]
+        per_budget: list[Amount | None] = []
+        per_spent: list[Amount] = []
+        for i in range(len(table.columns)):
+            b_total: Amount | None = None
+            s_total = Amount.zero(valuer.target)
+            for row, budget_row in topmost:
+                plan = budget_row.budget[i]
+                if plan is None:
+                    continue
+                b_total = plan if b_total is None else b_total + plan
+                s_total = s_total + row.display_cells[i]
+            per_budget.append(b_total)
+            per_spent.append(s_total)
+        return BudgetClassTotals(budget=tuple(per_budget), spent=tuple(per_spent))
+
+    return BudgetTable(
+        table=table,
+        rows=tuple(budget_rows),
+        income=class_totals(AccountClass.INCOME),
+        expenses=class_totals(AccountClass.EXPENSE),
+    )
+
+
+def _add_optional(a: Amount | None, b: Amount | None, target: Commodity) -> Amount | None:
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a + b

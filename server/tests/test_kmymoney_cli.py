@@ -30,11 +30,14 @@ class TestInspect:
         assert "securities:    1" in out
         assert "transactions:  15 (as declared)" in out
 
-    def test_names_what_will_not_be_imported(self, kmy, capsys):
+    def test_names_what_the_file_holds_and_where_it_goes(self, kmy, capsys):
         main([str(kmy), "--inspect"])
         out = capsys.readouterr().out
-        assert "schedules:     2 (not imported)" in out
-        assert "budgets:       1 (not imported)" in out
+        # Schedules and budgets are read now.  Only saved reports and cost
+        # centres still have no home in PyMoney, and this file holds none.
+        assert "schedules:     2 (imported)" in out
+        assert "budgets:       1 (imported)" in out
+        assert "not imported" not in out
 
     def test_needs_no_database(self, kmy):
         """Inspecting is safe and side-effect free."""

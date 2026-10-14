@@ -35,6 +35,7 @@ from typing import Any
 from uuid import UUID
 
 from .account import Account
+from .budget import Budget
 from .changelog import Change, ChangeLog, EntityKind
 from .commodity import Commodity
 from .entity import Entity
@@ -59,6 +60,7 @@ _ENTITY_KINDS = (
     EntityKind.ACCOUNT,
     EntityKind.PAYEE,
     EntityKind.TAG,
+    EntityKind.BUDGET,
     EntityKind.SCHEDULE,
     EntityKind.TRANSACTION,
 )
@@ -266,6 +268,9 @@ class Store(ABC):
 
     @abstractmethod
     def tags(self) -> tuple[Tag, ...]: ...
+
+    @abstractmethod
+    def budgets(self) -> tuple[Budget, ...]: ...
 
     @abstractmethod
     def schedules(self) -> tuple[Schedule, ...]: ...
@@ -605,6 +610,9 @@ class MemoryStore(Store):
 
     def tags(self) -> tuple[Tag, ...]:
         return tuple(self._entities[EntityKind.TAG].values())
+
+    def budgets(self) -> tuple[Budget, ...]:
+        return tuple(self._entities[EntityKind.BUDGET].values())
 
     def schedules(self) -> tuple[Schedule, ...]:
         return tuple(self._entities[EntityKind.SCHEDULE].values())

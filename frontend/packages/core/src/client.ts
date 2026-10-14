@@ -46,6 +46,11 @@ import type {
   NetWorthQuery,
   NetWorthSeries,
   Attachment,
+  Budget,
+  BudgetMonthsIn,
+  BudgetIn,
+  BudgetReportQuery,
+  BudgetTable,
   Payee,
   PayeeIn,
   PayeePatch,
@@ -809,5 +814,42 @@ export class ApiClient {
   /** Income and expense accounts down, periods across. */
   periodTable(bookId: string, query: PeriodTableQuery): Promise<PeriodTable> {
     return this.get<PeriodTable>(`/books/${bookId}/reports/period-table${queryString(query)}`);
+  }
+
+  // -- budgets --------------------------------------------------------
+
+  /** Every account that has a budget. */
+  budgets(bookId: string): Promise<Budget[]> {
+    return this.get<Budget[]>(`/books/${bookId}/budgets`);
+  }
+
+  /** An account's budget, or null if it has none. */
+  async budget(bookId: string, accountId: string): Promise<Budget | null> {
+    try {
+      return await this.get<Budget>(`/books/${bookId}/accounts/${accountId}/budget`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }
+  }
+
+  /** Replace an account's whole plan with `body.months`. */
+  setBudget(bookId: string, accountId: string, body: BudgetIn): Promise<Budget> {
+    return this.put<Budget>(`/books/${bookId}/accounts/${accountId}/budget`, body);
+  }
+
+  /** Set months of a plan, leaving the rest alone. A null value removes that
+   *  month; a plan left with none is removed. */
+  setBudgetMonths(bookId: string, accountId: string, body: BudgetMonthsIn): Promise<Budget> {
+    return this.patch<Budget>(`/books/${bookId}/accounts/${accountId}/budget`, body);
+  }
+
+  deleteBudget(bookId: string, accountId: string): Promise<void> {
+    return this.delete(`/books/${bookId}/accounts/${accountId}/budget`);
+  }
+
+  /** The period table with a plan and a remaining on every budgeted row. */
+  budgetReport(bookId: string, query: BudgetReportQuery): Promise<BudgetTable> {
+    return this.get<BudgetTable>(`/books/${bookId}/reports/budget${queryString(query)}`);
   }
 }
