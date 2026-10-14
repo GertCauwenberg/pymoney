@@ -27,6 +27,9 @@ __all__ = [
     "SECURITY_KINDS",
     "STANDARD_ACCOUNTS",
     "KmyAccount",
+    "KmyBudget",
+    "KmyBudgetAccount",
+    "KmyBudgetPeriod",
     "KmyCommodity",
     "KmyFileInfo",
     "KmyInstitution",
@@ -241,6 +244,57 @@ class KmySchedule:
     fixed: bool = True
     """``False`` means KMyMoney treats the amounts as an estimate."""
     transaction: KmyTransaction | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class KmyBudgetPeriod:
+    """One planned figure, as the ``<PERIOD>`` tag holds it.
+
+    ``amount`` is an exact rational in the account's **major** units -- KMyMoney
+    writes bare ``num/den`` with no currency and no scaling, so ``400/1`` is
+    400.00 EUR and ``75/2`` is 37.50.
+    """
+
+    start: date | None = None
+    amount: Fraction = Fraction(0)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class KmyBudgetAccount:
+    """One account's plan inside a budget: its level and its figures."""
+
+    account_id: str
+    budget_level: str = "none"
+    """``eMyMoney::Budget::Level`` as the lowercase string KMyMoney writes:
+    ``none`` / ``monthly`` / ``monthbymonth`` / ``yearly``."""
+    budget_subaccounts: bool = False
+    """KMyMoney's "include subaccounts": where a non-budgeted child's *actuals*
+    are attributed in its reports.  It moves no planned amounts -- the parent's
+    figure covers its subtree either way -- and PyMoney's period table shows
+    the child's own row beside the parent's rollup regardless, so this has no
+    effect on what we import."""
+    treat_as: str = ""
+    """``""`` / ``"income"`` / ``"expense"``: which side of KMyMoney's P&L the
+    figure sits on.  PyMoney takes its side from the account class instead, so
+    this is only worth saying something about when the two disagree."""
+    periods: tuple[KmyBudgetPeriod, ...] = ()
+    """One for ``monthly``/``yearly``; up to one per month for ``monthbymonth``,
+    whose absent months are zero (KMyMoney writes no zero periods)."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class KmyBudget:
+    """A named budget: one plan, spanning twelve months from ``start``.
+
+    KMyMoney holds several of these per file -- its UI creates one per year --
+    where PyMoney has a single open-ended plan per account.  The importer merges
+    them, so this is kept as the file has it.
+    """
+
+    id: str = ""
+    name: str = ""
+    start: date | None = None
+    accounts: tuple[KmyBudgetAccount, ...] = ()
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

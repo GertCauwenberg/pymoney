@@ -38,6 +38,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 from ..core.account import Account, AccountClass, AccountType
 from ..core.amount import Amount
+from ..core.budget import Budget
 from ..core.commodity import Commodity, CommodityKind
 from ..core.payee import Payee
 from ..core.price import Price
@@ -676,6 +677,74 @@ class TagOut(Out):
 
 
 # ==========================================================================
+# budgets
+# ==========================================================================
+Month = Annotated[
+    str,
+    Field(
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+        examples=["2026-03"],
+        description="A calendar month, `YYYY-MM`.",
+    ),
+]
+
+
+class BudgetOut(Out):
+    """An account's plan: the figure for each month that has one.
+
+    Amounts are positive allowances in the account's reporting orientation. A
+    month that is not in ``months`` is unbudgeted -- there is no default that
+    would apply to months nobody planned.
+    """
+
+    id: UUID
+    account_id: UUID
+    currency_id: UUID
+    currency: str
+    months: dict[str, AmountOut] = Field(
+        default_factory=dict,
+        description="`YYYY-MM` -> that month's allowance; a month that is absent is unbudgeted.",
+    )
+    revision: int
+
+    @classmethod
+    def of(cls, budget: Budget) -> BudgetOut:
+        return cls(
+            id=budget.id,
+            account_id=budget.account_id,
+            currency_id=budget.currency.id,
+            currency=budget.currency.code,
+            months={
+                ym: AmountOut.of(Amount(budget.currency, minor))
+                for ym, minor in budget.months.items()
+            },
+            revision=budget.revision,
+        )
+
+
+class BudgetIn(In):
+    """An account's whole plan, for `PUT`."""
+
+    months: dict[Month, Exact] = Field(default_factory=dict)
+    currency_id: UUID | None = Field(
+        default=None, description="Defaults to the book's base currency."
+    )
+    id: UUID | None = None
+
+
+class BudgetMonthsIn(In):
+    """Set months of a plan, for `PATCH`: the months on screen.
+
+    Each entry is that month's allowance; `null` removes the month. Months that
+    are not named keep whatever they had, so filling one year leaves the others
+    alone and clearing the input clears only what it was showing.
+    """
+
+    months: dict[Month, Exact | None]
+    currency_id: UUID | None = None
+
+
+# ==========================================================================
 # transactions
 # ==========================================================================
 class LegIn(In):
@@ -1171,6 +1240,63 @@ class PeriodTableOut(Out):
     unpriced: list[str]
 
 
+class BudgetRowOut(Out):
+    account_id: UUID
+    placeholder: bool = Field(
+        description=(
+            "The account only groups its children: it takes no plan of its own, "
+            "so a client should not offer the editor on this row."
+        )
+    )
+    closed: bool = Field(
+        description=(
+            "Closed accounts keep their history and take no new plan, so a "
+            "client should not offer the editor on this row either."
+        )
+    )
+    budget: list[AmountOut | None] = Field(
+        description=(
+            "Subtree budget per column, in the table's currency; null where "
+            "none. One entry per column and no total entry: a client derives "
+            "remaining as budget minus the same-indexed `period.rows` "
+            "display_cells (null where budget is null), and a total as the "
+            "null-skipping sum of the columns."
+        )
+    )
+
+
+class BudgetClassOut(Out):
+    """What one class of accounts has across the columns: income, or expenses.
+
+    The rollup of the topmost rows of this class carrying a plan, so the
+    footer reads as the table above it.  Both sides read as positive
+    magnitudes -- what is earned and what is spent -- so a client subtracts
+    them into a savings figure.  One entry per column and no total entry: a
+    client derives remaining as budget minus spent (null where budget is
+    null), and a total as the null-skipping sum of the columns.
+    """
+
+    budget: list[AmountOut | None] = Field(
+        description="Per column, in the table's currency; null where nothing is budgeted."
+    )
+    spent: list[AmountOut] = Field(description="What those accounts moved, per column.")
+
+
+class BudgetTableOut(Out):
+    """The period table, with a plan for every budgeted row.
+
+    What is left is derived, not carried: per row as `budget` minus the
+    same-indexed `period.rows` display_cells, per class as `budget` minus
+    `spent`, and a savings figure as `income` minus `expenses`.  A total
+    anywhere is the null-skipping sum of the columns.
+    """
+
+    period: PeriodTableOut
+    rows: list[BudgetRowOut] = Field(description="One per `period.rows`, same order.")
+    income: BudgetClassOut = Field(description="The income accounts only.")
+    expenses: BudgetClassOut = Field(description="The expense accounts only.")
+
+
 # ==========================================================================
 # sync
 # ==========================================================================
@@ -1205,6 +1331,7 @@ class SyncBatchOut(Out):
     accounts: list[AccountOut] = Field(default_factory=list)
     payees: list[PayeeOut] = Field(default_factory=list)
     tags: list[TagOut] = Field(default_factory=list)
+    budgets: list[BudgetOut] = Field(default_factory=list)
     transactions: list[TransactionOut] = Field(default_factory=list)
     prices: list[PriceOut] = Field(default_factory=list)
     schedules: list[ScheduleOut] = Field(default_factory=list)

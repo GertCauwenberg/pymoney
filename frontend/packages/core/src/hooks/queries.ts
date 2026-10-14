@@ -7,6 +7,8 @@ import type {
   AccountsQuery,
   BalanceSheetQuery,
   BookIn,
+  BudgetMonthsIn,
+  BudgetReportQuery,
   ColumnMapping,
   CommoditiesQuery,
   CommodityIn,
@@ -254,6 +256,34 @@ export function useNetWorth(bookId: string, query: NetWorthQuery, enabled = true
     queryFn: () => api.netWorth(bookId, query),
     enabled,
     placeholderData: (previous) => previous,
+  });
+}
+
+export function useBudgetReport(bookId: string, query: BudgetReportQuery, enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["books", bookId, "reports", "budget", query] as const,
+    queryFn: () => api.budgetReport(bookId, query),
+    enabled,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useSetBudgetMonths(bookId: string, accountId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: (body: BudgetMonthsIn) => api.setBudgetMonths(bookId, accountId, body),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteBudget(bookId: string, accountId: string) {
+  const api = useApi();
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: () => api.deleteBudget(bookId, accountId),
+    onSuccess: invalidate,
   });
 }
 

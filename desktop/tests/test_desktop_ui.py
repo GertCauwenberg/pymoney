@@ -317,6 +317,81 @@ class TestMainWindow:
         assert set(tree_texts(win)) == {"Visa"}
         assert win.register.rowCount() == 0
 
+    def test_the_budget_window_shows_and_edits_the_plan(self, window):
+        from pymoney_desktop.ui.budget import BudgetWindow
+
+        win, api, book_id, _visa, food, _transport = window
+        api.login(EMAIL)
+        api.post_transaction(
+            "2026-01-05",
+            [
+                {"account_id": str(_visa), "value": "-30.00"},
+                {"account_id": str(food)},
+            ],
+        )
+        api.logout()
+        win.sync()
+        win._reload_book()
+
+        bw = win.open_budget()
+        assert isinstance(bw, BudgetWindow)
+        # Point the window at a window that spans January.
+        from PySide6.QtCore import QDate
+
+        bw.start.setDate(QDate(2026, 1, 1))
+        bw.end.setDate(QDate(2026, 1, 1))
+        # One row per income/expense leaf; find Restaurants.
+        rows = {bw.table.item(r, 0).data(256): r for r in range(bw.table.rowCount())}
+        food_row = rows[str(food)]
+        # No budget yet: the Monthly cell is blank.
+        assert bw.table.item(food_row, 1).text() == ""
+        # Type a monthly amount; it fills the months on screen and the report
+        # reloads with them. The window spans January alone.
+        bw.table.item(food_row, 1).setText("200.00")
+        win.sync()
+        api.login(EMAIL)
+        plan = api.get(f"/books/{book_id}/accounts/{food}/budget").json()
+        assert list(plan["months"]) == ["2026-01"]
+        assert plan["months"]["2026-01"]["minor"] == 20000
+        api.logout()
+        # Clearing it removes those months. A plan left with none of them is
+        # no plan at all, so the account is unbudgeted again.
+        rows = {bw.table.item(r, 0).data(256): r for r in range(bw.table.rowCount())}
+        bw.table.item(rows[str(food)], 1).setText("")
+        win.sync()
+        api.login(EMAIL)
+        assert api.get(f"/books/{book_id}/accounts/{food}/budget").status_code == 404
+
+    def test_the_budget_window_leaves_a_placeholder_read_only(self, window):
+        """A placeholder only groups its children, so it takes no plan: the
+        rolled-up figures show and there is nothing to type into."""
+        from pymoney_desktop.ui.budget import BudgetWindow
+
+        win, api, book_id, _visa, _food, _transport = window
+        api.login(EMAIL)
+        shelf = api.account("Shelf", "EXPENSE", placeholder=True)
+        plates = api.account("Plates", "EXPENSE", parent_id=shelf["id"])
+        api.put(
+            f"/books/{book_id}/accounts/{plates['id']}/budget",
+            json={"months": {"2026-01": "100.00"}},
+        )
+        api.logout()
+        win.sync()
+        win._reload_book()
+
+        bw = win.open_budget()
+        assert isinstance(bw, BudgetWindow)
+        bw.start.setDate(QDate(2026, 1, 1))
+        bw.end.setDate(QDate(2026, 1, 1))
+        names = {bw.table.item(r, 0).text(): r for r in range(bw.table.rowCount())}
+        placeholder = bw.table.item(names["Shelf"], 1)
+        assert placeholder is not None
+        assert placeholder.text() == "100.00"  # the child's plan, rolled up
+        assert not (placeholder.flags() & Qt.ItemFlag.ItemIsEditable)
+        leaf = bw.table.item(names["  Plates"], 1)
+        assert leaf is not None
+        assert leaf.flags() & Qt.ItemFlag.ItemIsEditable
+
 
 class TestDrafts:
     def test_parse_decimal(self):

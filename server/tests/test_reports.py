@@ -710,3 +710,211 @@ class TestPeriodTable:
         shown = period_table(book, policy, start=date(2026, 1, 1), include_closed=True)
         assert "Expenses:Bank Fees" not in {r.path for r in hidden.rows}
         assert "Expenses:Bank Fees" in {r.path for r in shown.rows}
+
+
+def months_of_2026(*figures: str) -> dict[str, str]:
+    """``figures[0]`` for January, ``figures[1]`` for February, and so on.
+
+    The plan is exactly these months: there is no figure that runs on past the
+    last one named, so a column the user never planned comes out blank.
+    """
+    return {f"2026-{m:02d}": figure for m, figure in enumerate(figures, start=1)}
+
+
+class TestBudgetTable:
+    def test_plan_and_remaining_per_account(self, funded: Chart):
+        """A row carries only its plan: a client subtracts the row's movement
+        for what is left, and adds the columns up for a total."""
+        from pymoney.core.reports import budget_table
+
+        book = funded.book
+        book.post(
+            date(2026, 2, 3),
+            [LegSpec.of(funded.checking.id, "-450.00"), LegSpec.of(funded.groceries.id)],
+        )
+        book.set_budget(funded.groceries.id, months_of_2026("400.00", "600.00"))
+        book.set_budget(funded.fuel.id, months_of_2026("80.00", "80.00"))
+
+        bt = budget_table(
+            book, book.default_policy(date(2026, 2, 28)), start=date(2026, 1, 1)
+        )
+        rows = {br.account_id: br for br in bt.rows}
+        moved = {r.account.id: r.display_cells for r in bt.table.rows}
+
+        groceries = rows[funded.groceries.id]
+        assert [a.minor for a in groceries.budget] == [40000, 60000]
+        # spent in Jan 84.20, in Feb 450.00; remaining = budget - spent.
+        assert [
+            groceries.budget[i].minor - moved[funded.groceries.id][i].minor
+            for i in (0, 1)
+        ] == [40000 - 8420, 60000 - 45000]
+        assert sum(a.minor for a in groceries.budget) == 100000
+
+        # The parent row rolls its children up, column by column.
+        expenses = rows[funded.expenses.id]
+        assert [a.minor for a in expenses.budget] == [40000 + 8000, 60000 + 8000]
+
+        # An account with no budget has no plan to show.
+        assert rows[funded.salary.id].budget == (None, None)
+
+        # The footer carries the same shape: one figure per column and no
+        # total entry, so the client sums and subtracts the same way.
+        assert [a.minor for a in bt.expenses.budget] == [48000, 68000]
+        assert [a.minor for a in bt.expenses.spent] == [8420 + 6150, 45000]
+        assert [
+            bt.expenses.budget[i].minor - bt.expenses.spent[i].minor for i in (0, 1)
+        ] == [48000 - (8420 + 6150), 68000 - 45000]
+
+    def test_a_month_nobody_planned_does_not_show(self, funded: Chart):
+        from pymoney.core.reports import budget_table
+
+        book = funded.book
+        book.set_budget(funded.groceries.id, {"2026-02": "400.00"})
+        bt = budget_table(
+            book, book.default_policy(date(2026, 2, 28)), start=date(2026, 1, 1)
+        )
+        rows = {br.account_id: br for br in bt.rows}
+        groceries = rows[funded.groceries.id]
+        assert groceries.budget[0] is None  # January: no figure, and no default
+        assert groceries.budget[1].minor == 40000
+
+    def test_a_row_says_whether_its_account_can_take_a_plan(self, funded: Chart):
+        """The plan belongs on the rows that can carry one; the report says
+        which those are, so a client need not guess and refuse later."""
+        from pymoney.core import SetAccountClosed
+        from pymoney.core.reports import budget_table
+
+        book = funded.book
+        book.set_budget(funded.groceries.id, months_of_2026("400.00"))
+        book.execute(SetAccountClosed(account_id=funded.fees.id, closed=True))
+        bt = budget_table(
+            book,
+            book.default_policy(JAN31),
+            start=date(2026, 1, 1),
+            include_closed=True,
+        )
+        rows = {br.account_id: br for br in bt.rows}
+        # "Expenses" only groups its children, so it takes no plan of its own.
+        assert rows[funded.expenses.id].placeholder
+        assert not rows[funded.groceries.id].placeholder
+        # A closed account keeps its history and takes nothing new.
+        assert rows[funded.fees.id].closed
+        assert not rows[funded.fees.id].placeholder
+        assert not rows[funded.groceries.id].closed
+
+    def test_a_quarter_column_sums_the_months(self, funded: Chart):
+        from pymoney.core.reports import budget_table
+
+        book = funded.book
+        book.set_budget(funded.groceries.id, months_of_2026("400.00", "400.00", "400.00"))
+        bt = budget_table(
+            book,
+            book.default_policy(date(2026, 3, 31)),
+            start=date(2026, 1, 1),
+            interval="quarter",
+        )
+        rows = {br.account_id: br for br in bt.rows}
+        assert rows[funded.groceries.id].budget[0].minor == 120000  # 3 x 400
+
+    def test_the_totals_split_income_from_expenses(self, funded: Chart):
+        """The footer of the budget page: income beside expenses, and the
+        difference a client subtracts into savings.  Both sides read as
+        positive magnitudes, so the sums are plain arithmetic."""
+        from pymoney.core.reports import budget_table
+
+        book = funded.book
+        book.set_budget(funded.salary.id, months_of_2026("3000.00"))
+        book.set_budget(funded.groceries.id, months_of_2026("400.00"))
+        book.set_budget(funded.fuel.id, months_of_2026("80.00"))
+        bt = budget_table(book, book.default_policy(JAN31), start=date(2026, 1, 1))
+
+        # One column (January) and no total entry: the client adds up.
+        assert [a.minor for a in bt.income.budget] == [300000]
+        # The fixture earns 3,200.00 in January, 200.00 over the plan.
+        assert [a.minor for a in bt.income.spent] == [320000]
+        assert bt.income.budget[0].minor - bt.income.spent[0].minor == -20000
+        assert [a.minor for a in bt.expenses.budget] == [48000]
+        # 84.20 at the supermarket plus 61.50 of petrol.
+        assert [a.minor for a in bt.expenses.spent] == [14570]
+        assert bt.expenses.budget[0].minor - bt.expenses.spent[0].minor == 33430
+
+        # Savings is what the two plans leave over: income minus expenses.
+        assert bt.income.budget[0].minor - bt.expenses.budget[0].minor == 252000
+        assert (bt.income.budget[0].minor - bt.income.spent[0].minor) - (
+            bt.expenses.budget[0].minor - bt.expenses.spent[0].minor
+        ) == -53430
+        # The grand total is still both classes added up.
+        assert bt.income.budget[0].minor + bt.expenses.budget[0].minor == 348000
+        assert (bt.income.budget[0].minor - bt.income.spent[0].minor) + (
+            bt.expenses.budget[0].minor - bt.expenses.spent[0].minor
+        ) == 13430
+
+        # A plan on an account this report cannot show -- an asset -- leaves
+        # the totals alone rather than inflating a figure no row explains.
+        book.set_budget(funded.checking.id, months_of_2026("500.00"))
+        again = budget_table(book, book.default_policy(JAN31), start=date(2026, 1, 1))
+        assert [a.minor for a in again.income.budget] == [300000]
+        assert [a.minor for a in again.expenses.budget] == [48000]
+
+    def test_the_footer_counts_each_movement_once(self, chart: Chart):
+        """A budgeted account with a budgeted child would put its subtree in
+        twice if the footer summed accounts: the ancestor's rollup already
+        carries the child.  Reading the footer as the rollup of the topmost
+        rows keeps it equal to the table above it, plan and spend alike."""
+        from pymoney.core.reports import budget_table
+
+        book = chart.book
+        supermarket = book.add_account(
+            "Supermarket", AccountType.EXPENSE, parent=chart.groceries
+        )
+        book.post(
+            date(2026, 1, 5),
+            [LegSpec.of(chart.checking.id, "-50.00"), LegSpec.of(supermarket.id)],
+        )
+        book.post(
+            date(2026, 1, 6),
+            [LegSpec.of(chart.checking.id, "-30.00"), LegSpec.of(chart.groceries.id)],
+        )
+        book.set_budget(chart.groceries.id, months_of_2026("400.00"))
+        book.set_budget(supermarket.id, months_of_2026("200.00"))
+
+        bt = budget_table(book, book.default_policy(JAN31), start=date(2026, 1, 1))
+        rows = {br.account_id: br for br in bt.rows}
+        assert [a.minor for a in rows[supermarket.id].budget] == [20000]
+        # Groceries' row rolls its child up: 400 of its own plus 200 below it.
+        assert [a.minor for a in rows[chart.groceries.id].budget] == [60000]
+
+        # The footer is that topmost rollup -- not 200 + 600, and not the
+        # child's 50.00 counted on top of the 80.00 its parent already shows.
+        assert [a.minor for a in bt.expenses.budget] == [60000]
+        assert [a.minor for a in bt.expenses.spent] == [8000]
+        # So the footer reads as the Groceries row above it: 600 planned
+        # against 80 spent leaves 520.
+        groceries_row = rows[chart.groceries.id]
+        groceries_moved = next(
+            r for r in bt.table.rows if r.account.id == chart.groceries.id
+        )
+        assert bt.expenses.budget[0].minor - bt.expenses.spent[0].minor == 52000
+        assert (
+            groceries_row.budget[0].minor - groceries_moved.display_cells[0].minor
+            == 52000
+        )
+
+    def test_a_plan_below_a_hidden_row_is_rolled_into_the_one_above(self, funded: Chart):
+        """Closing an account hides its row but keeps its history, so its plan
+        stays in the ancestor's rollup and the footer keeps matching the
+        table.  A plan on an account with no row at all does not."""
+        from pymoney.core import SetAccountClosed
+        from pymoney.core.reports import budget_table
+
+        book = funded.book
+        book.set_budget(funded.groceries.id, months_of_2026("400.00"))
+        book.set_budget(funded.fees.id, months_of_2026("10.00"))
+        book.execute(SetAccountClosed(account_id=funded.fees.id, closed=True))
+        bt = budget_table(book, book.default_policy(JAN31), start=date(2026, 1, 1))
+
+        rows = {br.account_id: br for br in bt.rows}
+        assert funded.fees.id not in rows  # hidden, like the period table
+        # The plan is still in "Expenses", which is what the footer reads.
+        assert [a.minor for a in rows[funded.expenses.id].budget] == [41000]
+        assert [a.minor for a in bt.expenses.budget] == [41000]

@@ -108,6 +108,69 @@ export function sameAmount(a: Amount, b: Amount): boolean {
 }
 
 /**
+ * Exact plain rendering of minor units ("1234.50", "-200.00"), matching the
+ * server's `AmountOut.text`. A derived amount must carry one, or the tooltip
+ * in `<Money>` shows the figure it was derived from.
+ */
+function textOf(minor: bigint, scale: number): string {
+  const decimals = decimalsOf(scale);
+  const negative = minor < 0n;
+  const magnitude = (negative ? -minor : minor).toString();
+  const padded = magnitude.padStart(decimals + 1, "0");
+  const whole = padded.slice(0, padded.length - decimals);
+  const fraction = padded.slice(padded.length - decimals);
+  const body = decimals > 0 ? `${whole}.${fraction}` : whole;
+  return negative ? `-${body}` : body;
+}
+
+function withMinor(amount: Amount, minor: bigint): Amount {
+  return { ...amount, minor: Number(minor), text: textOf(minor, amount.scale) };
+}
+
+/**
+ * `a` minus `b`, where "nothing budgeted" counts as zero -- unless neither
+ * side has a figure, in which case there is nothing to say.
+ *
+ * This is how a client turns two parallel plan arrays into a difference, such
+ * as a savings figure from `income.budget` and `expenses.budget`.
+ */
+export function subtractAmounts(a: Amount | null, b: Amount | null): Amount | null {
+  if (a === null && b === null) return null;
+  if (a === null) return withMinor(b!, -BigInt(b!.minor));
+  return withMinor(a, BigInt(a.minor) - BigInt(b?.minor ?? 0));
+}
+
+/**
+ * What is left of a plan: `budget` minus `spent`, or null where there is no
+ * plan to measure against -- never spend measured against nothing.
+ *
+ * `BudgetTableOut` carries plans and movement only, so this is the contract
+ * every budget client applies to a row (`budget` against the same-indexed
+ * `period.rows` display_cells) and to a class (`budget` against `spent`).
+ */
+export function budgetRemaining(budget: Amount | null, spent: Amount): Amount | null {
+  return budget === null ? null : subtractAmounts(budget, spent);
+}
+
+/**
+ * The null-skipping sum of a column: null where nothing is budgeted, and
+ * otherwise the total over the entries that have one.
+ *
+ * This is how a client closes a per-column walk into a whole-period figure,
+ * since `BudgetTableOut` no longer appends a total to every array.
+ */
+export function sumAmounts(values: readonly (Amount | null)[]): Amount | null {
+  let first: Amount | null = null;
+  let sum = 0n;
+  for (const value of values) {
+    if (value === null) continue;
+    if (first === null) first = value;
+    sum += BigInt(value.minor);
+  }
+  return first === null ? null : withMinor(first, sum);
+}
+
+/**
  * A rate as a percentage with fixed decimals, computed from the exact
  * `num`/`den` pair by integer arithmetic, rounding half away from zero.
  */

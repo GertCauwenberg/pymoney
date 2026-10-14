@@ -42,6 +42,9 @@ from defusedxml.ElementTree import iterparse
 
 from .model import (
     KmyAccount,
+    KmyBudget,
+    KmyBudgetAccount,
+    KmyBudgetPeriod,
     KmyCommodity,
     KmyFileInfo,
     KmyInstitution,
@@ -194,6 +197,16 @@ def _date(element: Element, name: str) -> date | None:
         return None
 
 
+def _bool(element: Element, name: str) -> bool:
+    """Parse KMyMoney's boolean attribute.
+
+    The writer emits ``"1"``/``"0"``; its own reader also accepts ``on``/``off``,
+    ``true``/``false`` and ``yes``/``no``, so a hand-edited or older file is not
+    a surprise.  Anything unrecognised is false, matching that reader's default.
+    """
+    return (element.get(name) or "").strip().lower() in ("1", "on", "true", "yes")
+
+
 def parse_rational(raw: str | None, default: Fraction | None = None) -> Fraction | None:
     """Parse KMyMoney's ``"num/den"`` (or a bare integer).
 
@@ -237,6 +250,7 @@ class KmyFile:
     prices: list[KmyPrice] = field(default_factory=list)
     tags: dict[str, str] = field(default_factory=dict)
     schedules: list[KmySchedule] = field(default_factory=list)
+    budgets: list[KmyBudget] = field(default_factory=list)
     key_values: dict[str, str] = field(default_factory=dict)
     max_bytes: int = DEFAULT_MAX_XML_BYTES
     """The most XML the file may inflate to (see :func:`open_kmy`)."""
@@ -309,6 +323,13 @@ class KmyFile:
                 elif element.tag == "SCHEDULES":
                     parsed.declared_counts["schedules"] = _int(element, "count", -1)
                     _read_schedules(parsed, element)
+                    element.clear()
+                elif element.tag == "BUDGETS":
+                    # The `count` attribute is legacy-only (the current writer
+                    # emits none) but where a file has one, it is worth keeping
+                    # as the file's own claim.
+                    parsed.declared_counts["budgets"] = _int(element, "count", -1)
+                    _read_budgets(parsed, element)
                     element.clear()
                 elif element.tag in _COUNTED_SECTIONS:
                     parsed.declared_counts[element.tag.lower()] = _int(
@@ -519,9 +540,7 @@ class KmyFile:
 
 
 # Sections we do not read, but whose size the user should be told about.
-_COUNTED_SECTIONS = frozenset(
-    {"SCHEDULES", "BUDGETS", "REPORTS", "COSTCENTERS", "ONLINEJOBS"}
-)
+_COUNTED_SECTIONS = frozenset({"REPORTS", "COSTCENTERS", "ONLINEJOBS"})
 
 
 def _read_schedules(parsed: KmyFile, element: Element) -> None:
@@ -543,6 +562,45 @@ def _read_schedules(parsed: KmyFile, element: Element) -> None:
                 auto_enter=sched.get("autoEnter", "0") == "1",
                 fixed=sched.get("fixed", "1") == "1",
                 transaction=_transaction(txn_el) if txn_el is not None else None,
+            )
+        )
+
+
+def _read_budgets(parsed: KmyFile, element: Element) -> None:
+    """Parse <BUDGET> children: a name and start, and the per-account figures.
+
+    A file holds several budgets -- KMyMoney's UI creates one per year -- each
+    spanning twelve months from its ``start``.  ``BUDGETS@count`` is legacy-only
+    and ``BUDGET@version`` is ignored by KMyMoney's own reader too, so neither
+    is worth recording.
+    """
+    for budget in element.findall("BUDGET"):
+        accounts: list[KmyBudgetAccount] = []
+        for account in budget.findall("ACCOUNT"):
+            periods: list[KmyBudgetPeriod] = []
+            for period in account.findall("PERIOD"):
+                # Upstream skips a PERIOD missing either half rather than
+                # failing the file (xmlstoragehelper.cpp).
+                amount = parse_rational(period.get("amount"))
+                start = _date(period, "start")
+                if amount is None or start is None:
+                    continue
+                periods.append(KmyBudgetPeriod(start=start, amount=amount))
+            accounts.append(
+                KmyBudgetAccount(
+                    account_id=account.get("id", ""),
+                    budget_level=(account.get("budgetlevel") or "none").strip().lower(),
+                    budget_subaccounts=_bool(account, "budgetsubaccounts"),
+                    treat_as=(account.get("type") or "").strip().lower(),
+                    periods=tuple(periods),
+                )
+            )
+        parsed.budgets.append(
+            KmyBudget(
+                id=budget.get("id", ""),
+                name=(budget.get("name") or "").strip(),
+                start=_date(budget, "start"),
+                accounts=tuple(accounts),
             )
         )
 

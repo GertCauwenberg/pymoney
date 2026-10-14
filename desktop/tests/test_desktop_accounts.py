@@ -381,6 +381,7 @@ def test_settings_offers_the_chart_of_accounts(window):
         "Accounts…",
         "Payees…",
         "Scheduled…",
+        "Budget…",
         "Sync now",
     ]
 

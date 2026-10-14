@@ -1279,3 +1279,20 @@ a.btn--link {
 .schedules__legs, .schedules__rule { border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.8rem; margin: 0.6rem 0; }
 .schedules__legs legend, .schedules__rule legend { padding: 0 0.3rem; color: var(--muted); font-size: 0.85em; }
 .schedules__leg-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.5rem 0.9rem; }
+
+/* budget report */
+.budget-cell { vertical-align: top; }
+.budget-cell__spent { display: block; }
+.budget-cell__input {
+  width: 5.5rem;
+  margin: 0.1rem 0;
+  font-size: 0.85rem;
+}
+.budget-cell__remaining { display: block; font-size: 0.8rem; color: var(--text-muted, var(--text)); }
+.report--budget th.report__account { font-weight: 400; text-align: left; }
+/* the footer: the plan for the whole period, income beside expenses */
+.report--budget tfoot .report__total:last-child th,
+.report--budget tfoot .report__total:last-child td {
+  border-top: 2px solid var(--border-strong);
+  border-bottom: none;
+}

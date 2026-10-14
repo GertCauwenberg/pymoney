@@ -36,6 +36,7 @@ def delete_book(conn: Connection, book_id: UUID) -> bool:
         schema.transactions,
         schema.prices,
         schema.schedules,
+        schema.budgets,
         schema.payees,
         schema.tags,
         schema.accounts,

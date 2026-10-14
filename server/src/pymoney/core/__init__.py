@@ -31,6 +31,7 @@ from __future__ import annotations
 from .account import ACCOUNT_SEPARATOR, Account, AccountClass, AccountType
 from .amount import Amount, Balances, RationalAmount
 from .book import Book, SplitRef
+from .budget import Budget
 from .changelog import Change, ChangeLog, ChangeOp, EntityKind
 from .clock import Clock, ManualClock, SystemClock
 from .commands import (
@@ -43,6 +44,7 @@ from .commands import (
     CreatePayee,
     CreateTag,
     DeleteAccount,
+    DeleteBudget,
     DeleteCommodity,
     DeletePayee,
     DeletePrice,
@@ -60,6 +62,7 @@ from .commands import (
     SetAccountClosed,
     SetAccountCommodity,
     SetBaseCurrency,
+    SetBudget,
     SetSplitReconcileState,
     Unset,
     UpdateAccount,
@@ -176,6 +179,7 @@ __all__ = [  # noqa: RUF022
     "book_legs",
     # book & sync
     "Book",
+    "Budget",
     "SplitRef",
     "Change",
     "ChangeLog",
@@ -194,6 +198,7 @@ __all__ = [  # noqa: RUF022
     "UpdateCommodity",
     "DeleteCommodity",
     "SetBaseCurrency",
+    "SetBudget",
     "RenameBook",
     "InitialiseBook",
     "CreateAccount",
@@ -204,6 +209,7 @@ __all__ = [  # noqa: RUF022
     "SetAccountClosed",
     "MergeAccounts",
     "DeleteAccount",
+    "DeleteBudget",
     "CreatePayee",
     "UpdatePayee",
     "MergePayees",

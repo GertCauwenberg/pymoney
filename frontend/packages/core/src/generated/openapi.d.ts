@@ -276,6 +276,32 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/books/{book_id}/accounts/{account_id}/budget": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** One account's budget */
+        readonly get: operations["get_budget_books__book_id__accounts__account_id__budget_get"];
+        /** Set an account's whole budget */
+        readonly put: operations["put_budget_books__book_id__accounts__account_id__budget_put"];
+        readonly post?: never;
+        /** Remove an account's budget */
+        readonly delete: operations["delete_budget_books__book_id__accounts__account_id__budget_delete"];
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Set months of an account's budget
+         * @description Write the months named and leave the rest of the plan alone.
+         *
+         *     A `null` amount removes that month. Clearing every month a plan holds
+         *     removes the budget; to remove it regardless of what is in it, use DELETE.
+         */
+        readonly patch: operations["patch_budget_books__book_id__accounts__account_id__budget_patch"];
+        readonly trace?: never;
+    };
     readonly "/books/{book_id}/accounts/{account_id}/closed": {
         readonly parameters: {
             readonly query?: never;
@@ -504,6 +530,23 @@ export interface paths {
         readonly post?: never;
         /** Remove an attachment */
         readonly delete: operations["delete_attachment_books__book_id__attachments__attachment_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/budgets": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List budgets */
+        readonly get: operations["list_budgets_books__book_id__budgets_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -842,6 +885,27 @@ export interface paths {
         };
         /** Balance sheet */
         readonly get: operations["get_balance_sheet_books__book_id__reports_balance_sheet_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/books/{book_id}/reports/budget": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * The period table with a plan and a remaining per account
+         * @description What was spent beside what was allowed. Each budget is converted to the
+         *     report's currency under the same policy as the actuals.
+         */
+        readonly get: operations["get_budget_report_books__book_id__reports_budget_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -1574,6 +1638,142 @@ export interface components {
              * @description The caller's role on this book.
              */
             readonly role?: string | null;
+        };
+        /**
+         * BudgetClassOut
+         * @description What one class of accounts has across the columns: income, or expenses.
+         *
+         *     The rollup of the topmost rows of this class carrying a plan, so the
+         *     footer reads as the table above it.  Both sides read as positive
+         *     magnitudes -- what is earned and what is spent -- so a client subtracts
+         *     them into a savings figure.  One entry per column and no total entry: a
+         *     client derives remaining as budget minus spent (null where budget is
+         *     null), and a total as the null-skipping sum of the columns.
+         */
+        readonly BudgetClassOut: {
+            /**
+             * Budget
+             * @description Per column, in the table's currency; null where nothing is budgeted.
+             */
+            readonly budget: readonly (components["schemas"]["AmountOut"] | null)[];
+            /**
+             * Spent
+             * @description What those accounts moved, per column.
+             */
+            readonly spent: readonly components["schemas"]["AmountOut"][];
+        };
+        /**
+         * BudgetIn
+         * @description An account's whole plan, for `PUT`.
+         */
+        readonly BudgetIn: {
+            /**
+             * Currency Id
+             * @description Defaults to the book's base currency.
+             */
+            readonly currency_id?: string | null;
+            /** Id */
+            readonly id?: string | null;
+            /** Months */
+            readonly months?: {
+                readonly [key: string]: number | string;
+            };
+        };
+        /**
+         * BudgetMonthsIn
+         * @description Set months of a plan, for `PATCH`: the months on screen.
+         *
+         *     Each entry is that month's allowance; `null` removes the month. Months that
+         *     are not named keep whatever they had, so filling one year leaves the others
+         *     alone and clearing the input clears only what it was showing.
+         */
+        readonly BudgetMonthsIn: {
+            /** Currency Id */
+            readonly currency_id?: string | null;
+            /** Months */
+            readonly months: {
+                readonly [key: string]: (number | string) | null;
+            };
+        };
+        /**
+         * BudgetOut
+         * @description An account's plan: the figure for each month that has one.
+         *
+         *     Amounts are positive allowances in the account's reporting orientation. A
+         *     month that is not in ``months`` is unbudgeted -- there is no default that
+         *     would apply to months nobody planned.
+         */
+        readonly BudgetOut: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            readonly account_id: string;
+            /** Currency */
+            readonly currency: string;
+            /**
+             * Currency Id
+             * Format: uuid
+             */
+            readonly currency_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /**
+             * Months
+             * @description `YYYY-MM` -> that month's allowance; a month that is absent is unbudgeted.
+             */
+            readonly months?: {
+                readonly [key: string]: components["schemas"]["AmountOut"];
+            };
+            /** Revision */
+            readonly revision: number;
+        };
+        /** BudgetRowOut */
+        readonly BudgetRowOut: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            readonly account_id: string;
+            /**
+             * Budget
+             * @description Subtree budget per column, in the table's currency; null where none. One entry per column and no total entry: a client derives remaining as budget minus the same-indexed `period.rows` display_cells (null where budget is null), and a total as the null-skipping sum of the columns.
+             */
+            readonly budget: readonly (components["schemas"]["AmountOut"] | null)[];
+            /**
+             * Closed
+             * @description Closed accounts keep their history and take no new plan, so a client should not offer the editor on this row either.
+             */
+            readonly closed: boolean;
+            /**
+             * Placeholder
+             * @description The account only groups its children: it takes no plan of its own, so a client should not offer the editor on this row.
+             */
+            readonly placeholder: boolean;
+        };
+        /**
+         * BudgetTableOut
+         * @description The period table, with a plan for every budgeted row.
+         *
+         *     What is left is derived, not carried: per row as `budget` minus the
+         *     same-indexed `period.rows` display_cells, per class as `budget` minus
+         *     `spent`, and a savings figure as `income` minus `expenses`.  A total
+         *     anywhere is the null-skipping sum of the columns.
+         */
+        readonly BudgetTableOut: {
+            /** @description The expense accounts only. */
+            readonly expenses: components["schemas"]["BudgetClassOut"];
+            /** @description The income accounts only. */
+            readonly income: components["schemas"]["BudgetClassOut"];
+            readonly period: components["schemas"]["PeriodTableOut"];
+            /**
+             * Rows
+             * @description One per `period.rows`, same order.
+             */
+            readonly rows: readonly components["schemas"]["BudgetRowOut"][];
         };
         /** ChangeOut */
         readonly ChangeOut: {
@@ -3156,6 +3356,8 @@ export interface components {
              */
             readonly at: string;
             readonly book?: components["schemas"]["BookOut"] | null;
+            /** Budgets */
+            readonly budgets?: readonly components["schemas"]["BudgetOut"][];
             /**
              * Changes
              * @description The row-level audit records.
@@ -4791,6 +4993,259 @@ export interface operations {
             };
         };
     };
+    readonly get_budget_books__book_id__accounts__account_id__budget_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly account_id: string;
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BudgetOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly put_budget_books__book_id__accounts__account_id__budget_put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly account_id: string;
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["BudgetIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BudgetOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly delete_budget_books__book_id__accounts__account_id__budget_delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly account_id: string;
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly patch_budget_books__book_id__accounts__account_id__budget_patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "idempotency-key"?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly account_id: string;
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["BudgetMonthsIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BudgetOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     readonly set_closed_books__book_id__accounts__account_id__closed_post: {
         readonly parameters: {
             readonly query?: never;
@@ -5673,6 +6128,66 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly list_budgets_books__book_id__budgets_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["BudgetOut"][];
+                };
             };
             /** @description Not authenticated. */
             readonly 401: {
@@ -7331,6 +7846,78 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["BalanceSheetOut"];
+                };
+            };
+            /** @description Not authenticated. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated, but not allowed to do this: writes need `editor`, changes to the account tree and to sharing need `owner`. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such book, or no grant on it. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused because of the ledger's state: a duplicate name, or a reconciled transaction that may not be edited. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was understood and breaks a rule: an unbalanced transaction, a float where an exact value was required, a missing price. */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly get_budget_report_books__book_id__reports_budget_get: {
+        readonly parameters: {
+            readonly query: {
+                /** @description Inclusive, and also the valuation date for translation. */
+                readonly end?: string | null;
+                readonly include_closed?: boolean;
+                /** @description Budgets are monthly; a quarter or year column sums the months it spans. */
+                readonly interval?: "month" | "quarter" | "year";
+                readonly known_before?: string | null;
+                readonly max_staleness_days?: number | null;
+                readonly sources?: readonly string[] | null;
+                readonly start: string;
+                readonly strict?: boolean;
+                readonly target_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+                readonly "x-csrf-token"?: string | null;
+            };
+            readonly path: {
+                readonly book_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BudgetTableOut"];
                 };
             };
             /** @description Not authenticated. */

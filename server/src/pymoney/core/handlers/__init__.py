@@ -19,6 +19,7 @@ from typing import Any
 from .. import commands as cmd
 from . import (
     accounts,
+    budgets,
     commodities,
     payees,
     prices,
@@ -53,6 +54,9 @@ HANDLERS: dict[type[cmd.Command], Callable[..., Any]] = {
     cmd.UpdatePayee: payees.update_payee,
     cmd.MergePayees: payees.merge_payees,
     cmd.DeletePayee: payees.delete_payee,
+    # budgets
+    cmd.SetBudget: budgets.set_budget,
+    cmd.DeleteBudget: budgets.delete_budget,
     # tags
     cmd.CreateTag: tags.create_tag,
     cmd.UpdateTag: tags.update_tag,

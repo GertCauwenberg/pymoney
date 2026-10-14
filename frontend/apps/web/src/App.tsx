@@ -21,6 +21,7 @@ import { ChartsShell } from "./reports/ChartsShell";
 import { HoldingsPieReport } from "./reports/HoldingsPieReport";
 import { NetWorthReport } from "./reports/NetWorthReport";
 import { PeriodTableReport } from "./reports/PeriodTableReport";
+import { BudgetReport } from "./reports/BudgetReport";
 import { HoldingsReport } from "./reports/HoldingsReport";
 import { IncomeStatementReport } from "./reports/IncomeStatementReport";
 import { AccountRegisterPage } from "./ledger/AccountRegisterPage";
@@ -56,6 +57,7 @@ export function App() {
             <Route path="expenses" element={<CategoryPieReport kind="EXPENSE" />} />
             <Route path="net-worth" element={<NetWorthReport />} />
             <Route path="by-period" element={<PeriodTableReport />} />
+            <Route path="budget" element={<BudgetReport />} />
             <Route path="holdings" element={<HoldingsPieReport />} />
           </Route>
           <Route path="settings" element={<SettingsShell />}>

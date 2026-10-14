@@ -359,6 +359,29 @@ command_results = Table(
     ),
 )
 
+# What an account is *allowed* to move, month by month. One row per budgeted
+# account: a JSON map of the months that carry a figure, in minor units. A
+# month that is not in the map is unbudgeted -- there is no default that would
+# quietly apply to months nobody planned. A ledger table -- synced, in the
+# change log -- but it changes no balance: it is the plan the report compares
+# actuals against.
+budgets = Table(
+    "budgets",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("book_id", Uuid, ForeignKey("books.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "account_id",
+        Uuid,
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("currency_id", Uuid, ForeignKey("commodities.id"), nullable=False),
+    Column("months", JsonDict, nullable=False, server_default="{}"),
+    *_audit(),
+    UniqueConstraint("book_id", "account_id", name="uq_budgets_book_id_account_id"),
+)
+
 # Receipts, invoices and scans pinned to a transaction. The bytes live on the
 # filesystem (one file per row, named by id); this table is only the link, plus
 # enough metadata to list and serve them. Not a ledger table and not synced:
@@ -406,6 +429,7 @@ ALL_TABLES = (
     accounts,
     payees,
     tags,
+    budgets,
     schedules,
     transactions,
     splits,

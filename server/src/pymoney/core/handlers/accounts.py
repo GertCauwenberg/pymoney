@@ -240,6 +240,12 @@ def merge_accounts(book: Book, command: cmd.MergeAccounts) -> Account:
             note=note,
         )
 
+    # A per-account budget belongs to the account it was set on; merging is
+    # not the place to decide how two plans combine, so the source's goes.
+    source_budget = book.budget_for(source.id)
+    if source_budget is not None:
+        book.drop(EntityKind.BUDGET, source_budget.id, note=f"merged into {target.id}")
+
     book.drop(EntityKind.ACCOUNT, source.id, note=f"merged into {target.id}")
     return book.account(target.id)
 
@@ -256,4 +262,7 @@ def delete_account(book: Book, command: cmd.DeleteAccount) -> Account:
             f"{book.path(account)!r} is used by {count} transaction(s); "
             f"merge it into another account instead"
         )
+    budget = book.budget_for(account.id)
+    if budget is not None:
+        book.drop(EntityKind.BUDGET, budget.id, note="account deleted")
     return book.drop(EntityKind.ACCOUNT, account.id)

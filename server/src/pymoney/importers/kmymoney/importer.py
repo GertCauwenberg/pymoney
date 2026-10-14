@@ -152,6 +152,7 @@ class KmyImporter:
                 self._import_prices()
             self._post_rounding_adjustments()
             self._import_schedules()
+            self._import_budgets()
             self._close_accounts()
 
         self._record_skipped()
@@ -639,6 +640,131 @@ class KmyImporter:
                 continue
             self.report.count("schedules")
 
+    def _import_budgets(self) -> None:
+        """Bring the plans across.
+
+        KMyMoney holds a budget per year, each spanning twelve months from its
+        ``start``, where PyMoney has one plan per account holding whatever
+        months carry a figure.  So every budget's figures land in a single
+        month-by-month map per account, and that map is the plan -- one figure
+        per month, with no default that would run on past the last month the
+        file ever planned.
+        """
+        from ...core.recurrence import add_months
+
+        planned: dict[str, dict[str, Fraction]] = defaultdict(dict)
+        treat_as: dict[str, str] = {}
+        for kmy in self.source.budgets:
+            for entry in kmy.accounts:
+                if entry.budget_level in ("", "none") or not entry.account_id:
+                    continue
+                anchor = kmy.start or next(
+                    (p.start for p in entry.periods if p.start is not None), None
+                )
+                if anchor is None:
+                    self.report.warn(
+                        "budget",
+                        f"{kmy.name!r}: a plan with no start date; skipped",
+                        source_id=kmy.id,
+                    )
+                    continue
+                span = []
+                for i in range(12):
+                    month = add_months(anchor, i)
+                    span.append(f"{month.year:04d}-{month.month:02d}")
+
+                if entry.budget_level in ("monthly", "yearly"):
+                    if not entry.periods:
+                        self.report.warn(
+                            "budget",
+                            f"{kmy.name!r}: {entry.budget_level} with no figure; skipped",
+                            source_id=kmy.id,
+                        )
+                        continue
+                    figure = entry.periods[0].amount
+                    if entry.budget_level == "yearly":
+                        # KMyMoney's own reports divide the year by twelve too
+                        # (pivottable.cpp). Whatever is left over shows up below
+                        # as a figure that is not whole minor units.
+                        figure = figure / 12
+                    planned[entry.account_id].update((ym, figure) for ym in span)
+                elif entry.budget_level == "monthbymonth":
+                    given = {
+                        f"{p.start.year:04d}-{p.start.month:02d}": p.amount
+                        for p in entry.periods
+                        if p.start is not None
+                    }
+                    # KMyMoney writes no zero periods, so a month of the span it
+                    # leaves out is a month budgeted at nothing.
+                    figures = dict(given)
+                    for ym in span:
+                        figures.setdefault(ym, Fraction(0))
+                    planned[entry.account_id].update(figures)
+                else:
+                    self.report.warn(
+                        "budget",
+                        f"{kmy.name!r}: budget level {entry.budget_level!r} is not "
+                        f"one PyMoney can express; skipped",
+                        source_id=kmy.id,
+                    )
+                    continue
+                if entry.treat_as:
+                    treat_as[entry.account_id] = entry.treat_as
+
+        for kmy_id, months in planned.items():
+            account = self.accounts.get(kmy_id)
+            if account is None:
+                self.report.warn(
+                    "budget",
+                    "a plan for an account that was not imported; skipped",
+                    source_id=kmy_id,
+                )
+                self.report.skip("budgets", 1)
+                continue
+            path = self.book.path(account)
+            commodity = account.commodity
+            scale = commodity.minor_unit_factor
+
+            written: dict[str, Fraction | str | int | None] = {}
+            inexact: list[str] = []
+            for ym, figure in months.items():
+                scaled = figure * scale
+                written[ym] = Fraction(round_fraction(scaled), scale)
+                if scaled.denominator != 1:
+                    inexact.append(ym)
+            if inexact:
+                self.report.note(
+                    "budget",
+                    f"{path!r}: {len(inexact)} planned figure(s) are not whole "
+                    f"{commodity.code} minor units; rounded to the nearest",
+                    source_id=kmy_id,
+                )
+
+            wants = treat_as.get(kmy_id, "")
+            if wants and wants != account.account_class.name.lower():
+                self.report.note(
+                    "budget",
+                    f"{path!r}: the plan is marked {wants} in KMyMoney but the "
+                    f"account is {account.account_class.name.lower()}; "
+                    f"imported on the account's own side",
+                    source_id=kmy_id,
+                )
+
+            try:
+                self.book.execute(
+                    cmd.SetBudget(
+                        account_id=account.id,
+                        months=written,
+                        currency_id=commodity.id,
+                        replace=True,
+                    )
+                )
+            except Exception as exc:
+                self.report.warn("budget", f"{path!r}: {exc}; skipped", source_id=kmy_id)
+                self.report.skip("budgets", 1)
+                continue
+            self.report.count("budgets")
+
     def _close_accounts(self) -> None:
         for kmy_id, kmy in self.source.accounts.items():
             if not kmy.closed:
@@ -1090,14 +1216,16 @@ class KmyImporter:
     # ====================================================================
     def _record_skipped(self) -> None:
         for name, key in (
-            ("budgets", "budgets"),
             ("saved reports", "reports"),
             ("cost centres", "costcenters"),
             ("online banking jobs", "onlinejobs"),
         ):
             self.report.skip(name, max(self.source.declared_counts.get(key, 0), 0))
-        # Schedules are imported now; only those the mapper could not express
-        # stay behind. They were counted into `schedules` below.
+        # Schedules and budgets are imported now, and what could not come across
+        # is counted where it happens rather than here.  A schedule is counted
+        # one-for-one with the file's, so the section's `count` says what is
+        # left; a budget is counted per account plan rather than per <BUDGET>
+        # element, so that count is a different unit and cannot be subtracted.
         declared = max(self.source.declared_counts.get("schedules", 0), 0)
         self.report.skip(
             "scheduled transactions",

@@ -42,7 +42,13 @@ def _inspect(path: Path) -> int:
     print(f"  tags:          {len(source.tags)}")
     declared = source.declared_counts.get("transactions", -1)
     print(f"  transactions:  {declared if declared >= 0 else '?'} (as declared)")
-    for name in ("schedules", "budgets", "reports", "costcenters"):
+    for name, count in (
+        ("schedules", len(source.schedules)),
+        ("budgets", len(source.budgets)),
+    ):
+        if count > 0:
+            print(f"  {name + ':':<14} {count} (imported)")
+    for name in ("reports", "costcenters"):
         count = source.declared_counts.get(name, 0)
         if count > 0:
             print(f"  {name + ':':<14} {count} (not imported)")

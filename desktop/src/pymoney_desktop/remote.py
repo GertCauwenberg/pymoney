@@ -28,6 +28,10 @@ from pymoney.api.schemas import (
     BalanceSheetOut,
     BookIn,
     BookOut,
+    BudgetIn,
+    BudgetMonthsIn,
+    BudgetOut,
+    BudgetTableOut,
     ColumnMappingModel,
     CommodityOut,
     CsvInspectOut,
@@ -285,6 +289,68 @@ class RemoteClient(LedgerClient):
             NetWorthSeriesOut,
             f"/books/{book_id}/reports/net-worth{query}",
         )
+
+    def budget_report(
+        self,
+        book_id: UUID,
+        *,
+        start: date,
+        end: date,
+        options: ReportOptions | None = None,
+    ) -> BudgetTableOut:
+        params = self._report_query(options, start=start, end=end, interval="month")
+        params.pop("as_of", None)
+        query = _query(params)
+        return self._cached(
+            book_id,
+            f"budget:{query}",
+            BudgetTableOut,
+            f"/books/{book_id}/reports/budget{query}",
+        )
+
+    def budgets(self, book_id: UUID) -> list[BudgetOut]:
+        return self._cached_list(
+            book_id, "budgets", BudgetOut, f"/books/{book_id}/budgets"
+        )
+
+    def budget(self, book_id: UUID, account_id: UUID) -> BudgetOut | None:
+        try:
+            payload = self._call("GET", f"/books/{book_id}/accounts/{account_id}/budget")
+        except ApiError as exc:
+            if exc.status == 404:
+                return None
+            raise
+        return BudgetOut.model_validate(payload)
+
+    def set_budget(self, book_id: UUID, account_id: UUID, body: BudgetIn) -> BudgetOut:
+        payload = self._call(
+            "PUT",
+            f"/books/{book_id}/accounts/{account_id}/budget",
+            body.model_dump(mode="json"),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return BudgetOut.model_validate(payload)
+
+    def set_budget_months(
+        self, book_id: UUID, account_id: UUID, body: BudgetMonthsIn
+    ) -> BudgetOut:
+        payload = self._call(
+            "PATCH",
+            f"/books/{book_id}/accounts/{account_id}/budget",
+            body.model_dump(mode="json", exclude_unset=True),
+            book_id=book_id,
+        )
+        self._written(book_id)
+        return BudgetOut.model_validate(payload)
+
+    def delete_budget(self, book_id: UUID, account_id: UUID) -> None:
+        self._call(
+            "DELETE",
+            f"/books/{book_id}/accounts/{account_id}/budget",
+            book_id=book_id,
+        )
+        self._written(book_id)
 
     def period_table(
         self,

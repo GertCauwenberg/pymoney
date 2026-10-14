@@ -57,6 +57,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.sql import Executable
 
 from ..core.account import Account
+from ..core.budget import Budget
 from ..core.changelog import Change, EntityKind
 from ..core.clock import Clock, SystemClock
 from ..core.commodity import Commodity
@@ -78,6 +79,7 @@ _TABLES = {
     EntityKind.ACCOUNT: schema.accounts,
     EntityKind.PAYEE: schema.payees,
     EntityKind.TAG: schema.tags,
+    EntityKind.BUDGET: schema.budgets,
     EntityKind.SCHEDULE: schema.schedules,
     EntityKind.PRICE: schema.prices,
 }
@@ -137,6 +139,7 @@ class SqlStore(Store):
         self._accounts: dict[UUID, Account] = {}
         self._payees: dict[UUID, Payee] = {}
         self._tags: dict[UUID, Tag] = {}
+        self._budgets: dict[UUID, Budget] = {}
         self._schedules: dict[UUID, Schedule] = {}
         self._prices = PriceDB()
         self._loaded = False
@@ -330,6 +333,12 @@ class SqlStore(Store):
                 select(schema.tags).where(schema.tags.c.book_id == self._book_id)
             )
         }
+        self._budgets = {
+            r.id: Rows.budget_from_row(r, registry)
+            for r in conn.execute(
+                select(schema.budgets).where(schema.budgets.c.book_id == self._book_id)
+            )
+        }
         self._schedules = {
             r.id: Rows.schedule_from_row(r)
             for r in conn.execute(
@@ -367,6 +376,8 @@ class SqlStore(Store):
             return self._payees.get(entity_id)
         if kind is EntityKind.TAG:
             return self._tags.get(entity_id)
+        if kind is EntityKind.BUDGET:
+            return self._budgets.get(entity_id)
         if kind is EntityKind.SCHEDULE:
             return self._schedules.get(entity_id)
         if kind is EntityKind.PRICE:
@@ -434,6 +445,8 @@ class SqlStore(Store):
             return Rows.payee_to_row(entity, self._book_id)
         if kind is EntityKind.TAG:
             return Rows.tag_to_row(entity, self._book_id)
+        if kind is EntityKind.BUDGET:
+            return Rows.budget_to_row(entity, self._book_id)
         if kind is EntityKind.SCHEDULE:
             return Rows.schedule_to_row(entity, self._book_id)
         return Rows.price_to_row(entity, self._book_id)
@@ -447,6 +460,8 @@ class SqlStore(Store):
             self._payees[entity.id] = entity
         elif kind is EntityKind.TAG:
             self._tags[entity.id] = entity
+        elif kind is EntityKind.BUDGET:
+            self._budgets[entity.id] = entity
         elif kind is EntityKind.SCHEDULE:
             self._schedules[entity.id] = entity
         else:
@@ -461,6 +476,8 @@ class SqlStore(Store):
             del self._payees[entity_id]
         elif kind is EntityKind.TAG:
             del self._tags[entity_id]
+        elif kind is EntityKind.BUDGET:
+            del self._budgets[entity_id]
         elif kind is EntityKind.SCHEDULE:
             del self._schedules[entity_id]
         else:
@@ -481,6 +498,10 @@ class SqlStore(Store):
     def tags(self) -> tuple[Tag, ...]:
         self._ensure_loaded()
         return tuple(self._tags.values())
+
+    def budgets(self) -> tuple[Budget, ...]:
+        self._ensure_loaded()
+        return tuple(self._budgets.values())
 
     def schedules(self) -> tuple[Schedule, ...]:
         self._ensure_loaded()

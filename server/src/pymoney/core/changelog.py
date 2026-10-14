@@ -43,6 +43,7 @@ class EntityKind(StrEnum):
     ACCOUNT = "ACCOUNT"
     PAYEE = "PAYEE"
     TAG = "TAG"
+    BUDGET = "BUDGET"
     TRANSACTION = "TRANSACTION"
     PRICE = "PRICE"
     SCHEDULE = "SCHEDULE"
