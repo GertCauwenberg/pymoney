@@ -231,7 +231,8 @@ class KmySchedule:
     id: str = ""
     name: str = ""
     occurrence: int = 0
-    """KMyMoney's ``eRecurrence`` code (128 = monthly, 16384 = yearly, ...)."""
+    """KMyMoney's ``eMyMoney::Schedule::Occurrence`` code (32 = monthly,
+    16384 = yearly, ...). See ``kmymoney/mymoney/mymoneyenums.h``."""
     occurrence_multiplier: int = 1
     start_date: date | None = None
     end_date: date | None = None

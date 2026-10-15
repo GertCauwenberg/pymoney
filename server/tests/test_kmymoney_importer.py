@@ -24,8 +24,10 @@ from pymoney.core import (
     Commodity,
     CommodityKind,
     ConflictError,
+    Frequency,
     ManualClock,
     ReconcileState,
+    Recurrence,
     ValuationPolicy,
     balance_sheet,
 )
@@ -687,10 +689,10 @@ class TestReport:
         assert report.imported["schedules"] == 2
         assert "scheduled transactions" not in report.skipped  # none left behind
         by_name = {s.name: s for s in book.schedules()}
-        assert by_name["Rent"].recurrence.describe() == "every 3 weeks on Sunday"
+        assert by_name["Rent"].recurrence.describe() == "every month on day 1"
         assert by_name["Rent"].next_due.isoformat() == "2026-02-01"
         assert by_name["Rent"].auto_post is True
-        assert by_name["Insurance"].recurrence.describe() == "every 2 months on day 1"
+        assert by_name["Insurance"].recurrence.describe() == "every 6 months on day 1"
         assert by_name["Insurance"].auto_post is False
 
     def test_nothing_is_dropped_silently(self, imported):
@@ -742,6 +744,117 @@ class TestReport:
         problem = report.warnings[0]
         assert problem.level.value in str(problem)
         assert problem.source_id in str(problem)
+
+
+UPSTREAM_OCCURRENCE = frozenset(
+    {
+        0,  # Any
+        1,  # Once
+        2,  # Daily
+        4,  # Weekly
+        8,  # Fortnightly
+        16,  # EveryOtherWeek
+        18,  # EveryHalfMonth
+        20,  # EveryThreeWeeks
+        30,  # EveryThirtyDays
+        32,  # Monthly
+        64,  # EveryFourWeeks
+        126,  # EveryEightWeeks
+        128,  # EveryOtherMonth
+        256,  # EveryThreeMonths
+        1024,  # TwiceYearly
+        2048,  # EveryOtherYear
+        4096,  # Quarterly
+        8192,  # EveryFourMonths
+        16384,  # Yearly
+    }
+)
+"""``eMyMoney::Schedule::Occurrence``, from KMyMoney's ``mymoneyenums.h``.
+
+Kept here rather than in the importer so that the completeness test below fails
+when KMyMoney grows a code we do not handle, instead of that schedule silently
+becoming "not one PyMoney can express".
+"""
+
+
+class TestRecurrenceMapping:
+    """One assertion per KMyMoney code, so a wrong interval cannot pass green."""
+
+    def test_every_upstream_code_is_accounted_for(self):
+        # 0/1 are the one-off entries, 18 is semi-monthly: all three are
+        # skipped on purpose rather than mapped.
+        handled = set(KmyImporter._RECURRENCE) | {0, 1, 18}
+        assert handled == UPSTREAM_OCCURRENCE
+
+    @pytest.mark.parametrize(
+        ("occurrence", "expected"),
+        [
+            (2, "every day"),
+            (4, "every week on Thursday"),
+            (8, "every 2 weeks on Thursday"),
+            (16, "every 2 weeks on Thursday"),
+            (20, "every 3 weeks on Thursday"),
+            (30, "every 30 days"),
+            (32, "every month on day 1"),
+            (64, "every 4 weeks on Thursday"),
+            (126, "every 8 weeks on Thursday"),
+            (128, "every 2 months on day 1"),
+            (256, "every 3 months on day 1"),
+            (1024, "every 6 months on day 1"),
+            (2048, "every 2 years"),
+            (4096, "every 3 months on day 1"),
+            (8192, "every 4 months on day 1"),
+            (16384, "every year"),
+        ],
+    )
+    def test_every_recurrence_maps_as_documented(self, occurrence, expected):
+        frequency, interval = KmyImporter._RECURRENCE[occurrence]
+        recurrence = Recurrence(
+            frequency=Frequency(frequency),
+            start=date(2026, 1, 1),  # a Thursday, the 1st
+            interval=interval,
+        )
+        assert recurrence.describe() == expected
+
+    @pytest.mark.parametrize(
+        ("occurrence", "expected"),
+        [(18, None), (4096, "every 3 months on day 1")],
+    )
+    def test_schedules_end_to_end(
+        self, occurrence, expected, store_backend, clock, tmp_path
+    ):
+        """Semi-monthly is skipped and said so; quarterly comes across."""
+        path = tmp_path / f"occ{occurrence}.xml"
+        path.write_text(
+            '<?xml version="1.0"?><KMYMONEY-FILE>'
+            '<CURRENCIES count="1"><CURRENCY id="EUR" saf="100" name="Euro"/>'
+            "</CURRENCIES>"
+            '<ACCOUNTS count="2">'
+            '<ACCOUNT id="A1" name="Cash" type="3" currency="EUR" '
+            'parentaccount="AStd::Asset"/>'
+            '<ACCOUNT id="A2" name="Food" type="13" currency="EUR" '
+            'parentaccount="AStd::Expense"/></ACCOUNTS>'
+            '<SCHEDULES count="1">'
+            f'<SCHEDULED_TX startDate="2026-01-01" autoEnter="0" weekendOption="2" '
+            f'lastPayment="" paymentType="2" endDate="" type="1" name="Rent" '
+            f'fixed="1" occurenceMultiplier="1" occurence="{occurrence}" '
+            f'id="SCH000001">'
+            '<TRANSACTION postdate="2026-02-01" memo="" id="" commodity="EUR" '
+            'entrydate="2026-01-01"><SPLITS>'
+            '<SPLIT account="A1" shares="-80000/100" value="-80000/100"/>'
+            '<SPLIT account="A2" shares="80000/100" value="80000/100"/>'
+            "</SPLITS></TRANSACTION></SCHEDULED_TX></SCHEDULES></KMYMONEY-FILE>"
+        )
+        book = store_backend.open(clock=clock)
+        report = import_kmymoney(path, book)
+        schedules = book.schedules()
+        if expected is None:
+            assert schedules == ()
+            assert report.skipped["scheduled transactions"] == 1
+            assert any("not one PyMoney" in p.message for p in report.warnings)
+        else:
+            assert report.skipped.get("scheduled transactions", 0) == 0
+            assert schedules[0].recurrence.describe() == expected
 
 
 class TestFailureModes:

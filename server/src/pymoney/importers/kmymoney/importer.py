@@ -530,24 +530,25 @@ class KmyImporter:
                 )
                 return candidate
 
-    # KMyMoney eRecurrence -> (our Frequency, interval). None = cannot express;
-    # an approximation carries a note.
-    _RECURRENCE: dict[int, tuple[str, int, bool]] = {
-        2: ("DAILY", 1, False),
-        4: ("WEEKLY", 1, False),
-        8: ("WEEKLY", 2, False),
-        16: ("WEEKLY", 2, False),  # fortnightly
-        32: ("WEEKLY", 3, False),
-        64: ("DAILY", 30, True),  # "every thirty days" ~ monthly
-        128: ("MONTHLY", 1, False),
-        256: ("WEEKLY", 4, False),
-        512: ("WEEKLY", 8, False),
-        1024: ("MONTHLY", 2, False),
-        2048: ("MONTHLY", 3, False),
-        4096: ("MONTHLY", 4, False),
-        8192: ("MONTHLY", 6, False),
-        16384: ("YEARLY", 1, False),
-        32768: ("YEARLY", 2, False),
+    # eMyMoney::Schedule::Occurrence -> (our Frequency, interval). Codes not
+    # listed cannot be expressed; the schedule is reported and skipped.
+    _RECURRENCE: dict[int, tuple[str, int]] = {
+        2: ("DAILY", 1),  # Daily
+        4: ("WEEKLY", 1),  # Weekly
+        8: ("WEEKLY", 2),  # Fortnightly
+        16: ("WEEKLY", 2),  # EveryOtherWeek
+        20: ("WEEKLY", 3),  # EveryThreeWeeks
+        30: ("DAILY", 30),  # EveryThirtyDays
+        32: ("MONTHLY", 1),  # Monthly
+        64: ("WEEKLY", 4),  # EveryFourWeeks
+        126: ("WEEKLY", 8),  # EveryEightWeeks
+        128: ("MONTHLY", 2),  # EveryOtherMonth
+        256: ("MONTHLY", 3),  # EveryThreeMonths
+        1024: ("MONTHLY", 6),  # TwiceYearly
+        2048: ("YEARLY", 2),  # EveryOtherYear
+        4096: ("MONTHLY", 3),  # Quarterly
+        8192: ("MONTHLY", 4),  # EveryFourMonths
+        16384: ("YEARLY", 1),  # Yearly
     }
 
     def _import_schedules(self) -> None:
@@ -573,7 +574,7 @@ class KmyImporter:
                 )
                 continue
             mapped = self._RECURRENCE.get(kmy.occurrence)
-            if mapped is None or kmy.occurrence == 18:  # 18 = semi-monthly
+            if mapped is None:
                 self.report.warn(
                     "schedule",
                     f"{kmy.name!r}: its recurrence is not one PyMoney can express; "
@@ -581,7 +582,7 @@ class KmyImporter:
                     source_id=kmy.id,
                 )
                 continue
-            freq, interval, approx = mapped
+            freq, interval = mapped
             interval *= max(1, kmy.occurrence_multiplier)
 
             legs: list[TemplateLeg] = []
@@ -637,13 +638,6 @@ class KmyImporter:
                 )
                 continue
             self.report.count("schedules")
-            if approx:
-                self.report.note(
-                    "schedule",
-                    f"{kmy.name!r}: '{kmy.occurrence}-day' recurrence imported as "
-                    f"every {interval} days",
-                    source_id=kmy.id,
-                )
 
     def _close_accounts(self) -> None:
         for kmy_id, kmy in self.source.accounts.items():
