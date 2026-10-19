@@ -765,10 +765,12 @@ balance: the budget *report* is the period table with, on every budgeted row,
 the subtree's allowance and what is left of it (`budget - spent`, both in the
 account's natural sign, each budget converted to the report's currency under
 the same policy as the actuals). A 'totals' column sums the months.
-`SetBudget` replaces the whole plan; the period-table editor uses
-`SetBudgetAmount`, which touches one figure -- one month -- 
-and creates the budget the first time a number is typed; clearing the
-default removes it. Deleting or merging the account takes the budget with it.
+`SetBudget` writes the plan: by default it merges the months named and leaves
+the rest alone (what the period-table editors do — one cell is a one-entry
+merge); `replace=True` makes `months` the whole plan. There is no
+`SetBudgetAmount`. Creating the budget happens the first time a number is
+typed; clearing a month removes that entry. Deleting or merging the account
+takes the budget with it.
 On the web the figures are edited in the report itself ("what did I spend ->
 what do I allow"), and the expenses-by-category pie grows a ring per slice,
 filled in proportion to spend and red once it is over; the desktop has a
@@ -812,8 +814,8 @@ report hands back the `Conversion` objects it used.
 ## Not here yet
 
 investment lots and cost basis (`Holding.cost`
-is the naive value-column sum) · budgets · loan amortisation · other import
-formats (OFX, QIF) · attachments · a dedicated tag-management page (tags are
+is the naive value-column sum) · loan amortisation · other import
+formats (OFX, QIF) · a dedicated tag-management page (tags are
 created and attached from the transaction form, and searched on; renaming or
 retiring one is an API call away but has no screen yet) · the desktop app's
 payee and commodity management (the web app has them under

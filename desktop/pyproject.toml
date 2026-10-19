@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pymoney-desktop"
-version = "1.0.0"
+version = "1.2.0"
 description = "The PyMoney desktop client (PySide6): online, or a local replica with an outbox"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -23,7 +23,7 @@ classifiers = [
 # its `api` extra, not on the core alone. In a checkout that is the sibling
 # directory: pip install -e '../server[api]' -e '.[dev]'.
 dependencies = [
-    "pymoney-core[api]>=1.0",
+    "pymoney-core[api]>=1.2",
     "PySide6>=6.6",
 ]
 
