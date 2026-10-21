@@ -13,4 +13,5 @@ make run              # python -m pymoney_desktop, against $PYMONEY_SERVER
 make build            # PyInstaller one-folder build into dist/PyMoney
 ```
 
-See "The desktop app" in the repository's [README](../README.md).
+Install and usage are in the repository's [README](../README.md); the offline
+client's design notes are in [docs/DESIGN.md](../docs/DESIGN.md).

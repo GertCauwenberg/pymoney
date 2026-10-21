@@ -16,6 +16,6 @@ make image            # the container image (this directory is the build context
 make help             # everything else
 ```
 
-The full story -- the design decisions, the rounding guarantee, the API's
-contract, persistence, performance -- is in the repository's
-[README](../README.md).
+Design decisions, the rounding guarantee, persistence and performance notes are
+in [docs/DESIGN.md](../docs/DESIGN.md). Install, features and configuration are
+in the repository's [README](../README.md).

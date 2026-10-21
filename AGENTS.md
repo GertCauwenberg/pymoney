@@ -2,7 +2,8 @@
 
 PyMoney: double-entry accounting. Three independently deployable components, each
 with its own Makefile, pyproject/package, tests and coverage gate. The root
-`Makefile` only delegates.
+`Makefile` only delegates. Design decisions and technical notes live in
+[docs/DESIGN.md](docs/DESIGN.md).
 
 - `server/` — Python package `pymoney-core` (`src/pymoney`): `core` (pure stdlib,
   no runtime deps), `store` (SQLAlchemy Core), `quotes`, `importers`, `api`

@@ -5,6 +5,7 @@ React clients for the PyMoney API. Two npm workspaces:
 ```
 frontend/
   packages/core/   @pymoney/core  platform-agnostic: types, API client, money
+  packages/tokens/ @pymoney/tokens design tokens (colours, radii, chart palette)
                                   formatting, periods, React Query hooks. No DOM.
   apps/web/        @pymoney/web   the web app: Vite + React + react-router
 ```
@@ -127,7 +128,7 @@ client types cannot change without the frontend build noticing. No hand-written
 wire types anywhere: `packages/core/src/types.ts` only gives the generated ones
 friendlier names.
 
-## What the core honours (see the main README, "What the web and desktop clients have to honour")
+## What the core honours (see [docs/DESIGN.md](../docs/DESIGN.md), "What the web and desktop clients have to honour")
 
 - **Amounts are never floats.** `Amount.minor` and `Amount.scale` are integers
   and every formatting operation in `money.ts` is BigInt string manipulation.
