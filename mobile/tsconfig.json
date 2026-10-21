@@ -1,0 +1,14 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@/*": ["./*"],
+      "@pymoney/core": ["../frontend/packages/core/src/index.ts"],
+      "@pymoney/core/hooks": ["../frontend/packages/core/src/hooks/index.ts"],
+      "@pymoney/tokens": ["../frontend/packages/tokens/src/index.ts"]
+    }
+  },
+  "include": ["app/**/*.ts", "app/**/*.tsx", "src/**/*.ts", "src/**/*.tsx", "spike/**/*.ts"],
+  "exclude": ["node_modules", "android", "ios"]
+}

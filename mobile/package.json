@@ -1,0 +1,40 @@
+{
+  "name": "@pymoney/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PyMoney mobile client (Expo / React Native). Reuses @pymoney/core for money, drafts, and API types.",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "typecheck": "tsc -p tsconfig.json",
+    "check": "npm run typecheck",
+    "spike:hermes": "node spike/run-hermes-probe.mjs"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~58.0.14",
+    "@pymoney/core": "file:../frontend/packages/core",
+    "@pymoney/tokens": "file:../frontend/packages/tokens",
+    "@tanstack/react-query": "^5.102.2",
+    "expo": "~58.0.14",
+    "expo-asset": "~58.0.16",
+    "expo-constants": "~58.0.12",
+    "expo-linking": "~58.0.13",
+    "expo-router": "~58.0.23",
+    "expo-secure-store": "~58.0.2",
+    "expo-status-bar": "~58.0.3",
+    "react": "19.3.1",
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "babel-preset-expo": "^58.0.17",
+    "typescript": "~6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -12,21 +12,23 @@ COMPOSE ?= docker compose
 .DEFAULT_GOAL := help
 .PHONY: help install check test fmt i18n i18n-check clean clean-all \
         up down logs db-shell compose-config images \
-        server desktop frontend
+        server desktop frontend mobile
 
 help:  ## Show this help (component targets: make -C server help, etc.)
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-install:  ## Set up all three: one Python venv (.venv) for server + desktop, npm for the frontend
+install:  ## Set up every component: one Python venv (.venv) for server + desktop, npm for frontend + mobile
 	$(MAKE) -C server install
 	$(MAKE) -C desktop install
 	$(MAKE) -C frontend install
+	$(MAKE) -C mobile install
 
 check:  ## Everything CI checks, for all three components, plus the shared catalogue
 	$(MAKE) -C server check
 	$(MAKE) -C desktop check
 	$(MAKE) -C frontend check
+	$(MAKE) -C mobile mobile-check
 	$(MAKE) i18n-check
 
 test:  ## The fast Python suites (server, desktop) and the frontend tests
