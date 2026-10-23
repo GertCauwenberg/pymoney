@@ -14,11 +14,10 @@ import {
   type Theme,
 } from "@pymoney/tokens";
 
-export type { ColorScheme, Theme };
+import { resolveScheme } from "./scheme";
 
-function resolveScheme(scheme: string | null | undefined): ColorScheme {
-  return scheme === "dark" ? "dark" : "light";
-}
+export type { ColorScheme, Theme };
+export { resolveScheme };
 
 /** OS preference → token scheme. */
 export function useColorSchemeName(): ColorScheme {

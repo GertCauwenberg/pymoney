@@ -4,10 +4,12 @@
     python scripts/i18n.py --check    # exit 1 on a missing or stale translation (CI)
     python scripts/i18n.py --stub     # add missing keys to nl.json with "" values
 
-Keys are collected from every `t("…")` in the web app, `_("…")` in the desktop
-and `translate("…")`/`t("…")` in the server, plus the label tables that are
-translated at render time (CLASS_LABELS, period presets, account types, roles,
-commodity kinds, reconciliation marks).
+Keys are collected from every `t("…")` in the web and mobile apps, `_("…")` in
+the desktop and `translate("…")`/`t("…")` in the server, plus the label tables
+that are translated at render time (CLASS_LABELS, period presets, account types,
+roles, commodity kinds, reconciliation marks). Shared UI packages
+(`frontend/packages/ui`, `frontend/packages/sync`) are included so their strings
+are gated the moment they appear.
 """
 
 from __future__ import annotations
@@ -61,10 +63,22 @@ def label_keys() -> set[str]:
 
 def all_keys() -> set[str]:
     keys: set[str] = set()
-    for pattern in ("frontend/apps/web/src/**/*.tsx", "frontend/packages/core/src/*.ts", "desktop/src/pymoney_desktop/**/*.py",
-                    "server/src/pymoney/api/routers/auth.py"):
+    for pattern in (
+        "frontend/apps/web/src/**/*.tsx",
+        "frontend/packages/core/src/*.ts",
+        "frontend/packages/ui/src/**/*.ts",
+        "frontend/packages/ui/src/**/*.tsx",
+        "frontend/packages/sync/src/**/*.ts",
+        "frontend/packages/sync/src/**/*.tsx",
+        "mobile/app/**/*.ts",
+        "mobile/app/**/*.tsx",
+        "mobile/src/**/*.ts",
+        "mobile/src/**/*.tsx",
+        "desktop/src/pymoney_desktop/**/*.py",
+        "server/src/pymoney/api/routers/auth.py",
+    ):
         for path in ROOT.glob(pattern):
-            if "/generated/" in str(path) or "/test/" in str(path):
+            if any(part in str(path) for part in ("/generated/", "/test/", "/tests/", "/spike/", "/e2e/")):
                 continue
             keys |= keys_in(path)
     keys |= label_keys()

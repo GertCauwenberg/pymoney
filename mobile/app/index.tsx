@@ -201,7 +201,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   return (
     <View style={styles.card}>
-      <Text style={styles.label}>{t("Sign in")}</Text>
+      <Text style={styles.label}>{t("Log in")}</Text>
       <TextInput
         style={styles.input}
         autoCapitalize="none"
@@ -236,7 +236,7 @@ function LoginForm() {
         testID="login-submit"
       >
         <Text style={styles.buttonText}>
-          {login.isPending ? t("Signing in…") : t("Sign in")}
+          {login.isPending ? t("Logging in…") : t("Log in")}
         </Text>
       </Pressable>
     </View>
@@ -260,7 +260,7 @@ function BooksCard() {
       {books.data?.map((b) => (
         <View key={b.id} style={styles.bookRow} testID={`book-${b.id}`}>
           <Text style={styles.bookName}>{b.name}</Text>
-          <Text style={styles.bookRole}>{b.role ?? ""}</Text>
+          <Text style={styles.bookRole}>{b.role ? t(b.role) : ""}</Text>
         </View>
       ))}
     </View>
@@ -315,12 +315,12 @@ function Shell() {
               onPress={() => logout.mutate()}
               testID="logout"
             >
-              <Text style={styles.buttonText}>{t("Sign out")}</Text>
+              <Text style={styles.buttonText}>{t("Log out")}</Text>
             </Pressable>
           </View>
         ) : session.isPending ? null : (
           <Text style={styles.hint} testID="session-anonymous">
-            {t("Not signed in")}
+            {t("Not logged in")}
           </Text>
         )}
       </View>

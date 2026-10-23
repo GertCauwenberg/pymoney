@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help install mobile-dev mobile-ios mobile-android mobile-check mobile-e2e mobile-build clean \
-        dev ios android check typecheck test e2e build
+        dev ios android check typecheck test test-pure test-component e2e build
 
 NPM ?= npm
 NPX ?= npx
@@ -25,7 +25,7 @@ mobile-ios:  ## Run on an iOS simulator (needs macOS + Xcode)
 mobile-android:  ## Run on an Android emulator/device
 	$(NPX) expo run:android
 
-mobile-check:  ## What CI runs for mobile (typecheck + tests)
+mobile-check:  ## What CI runs for mobile (typecheck + pure + component tests)
 	$(MAKE) typecheck
 	$(MAKE) test
 
@@ -39,13 +39,14 @@ mobile-build:  ## Production export / EAS build entry point
 typecheck:  ## TypeScript check
 	$(NPM) run typecheck
 
-test:  ## Unit / component tests (E0.5 harness)
-	@if [ -d tests ] && [ -f vitest.config.ts -o -f jest.config.js ]; then \
-		$(NPM) test; \
-	else \
-		echo "no test harness yet (E0.5); typecheck only"; \
-		$(MAKE) typecheck; \
-	fi
+test:  ## Unit / component tests (E0.5: vitest pure + jest-expo components)
+	$(NPM) test
+
+test-pure:  ## Pure-logic tests only (vitest, no React Native)
+	$(NPM) run test:pure
+
+test-component:  ## Component tests only (jest-expo + Testing Library)
+	$(NPM) run test:component
 
 clean:  ## Remove Expo/Metro caches and native build output
 	rm -rf .expo dist android/build android/app/build ios/build node_modules/.cache

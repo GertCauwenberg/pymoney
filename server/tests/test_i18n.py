@@ -36,13 +36,14 @@ class TestCatalogue:
         not (ROOT / "scripts" / "i18n.py").exists()
         or not (ROOT / "frontend").is_dir()
         or not (ROOT / "desktop").is_dir(),
-        reason="needs the whole checkout: the catalogue covers the web and desktop clients too",
+        reason="needs the whole checkout: the catalogue covers the web, mobile and desktop clients too",
     )
     def test_every_string_in_the_code_has_a_dutch_translation(self):
         """scripts/i18n.py --check is what CI runs; the catalogue must be complete
         and free of stale keys, and the frontend's copy identical. A check across
-        all three components, so it runs only in a full checkout -- not in the
-        server's container image, which holds the server alone."""
+        every client (web, mobile, desktop) and the server, so it runs only in a
+        full checkout -- not in the server's container image, which holds the
+        server alone."""
         result = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "i18n.py"), "--check"],
             capture_output=True,

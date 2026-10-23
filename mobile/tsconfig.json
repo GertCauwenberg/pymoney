@@ -1,7 +1,8 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": "expo/tsconfig.base.json",
   "compilerOptions": {
     "strict": true,
+    "types": ["jest"],
     "paths": {
       "@/*": ["./*"],
       "@pymoney/core": ["../frontend/packages/core/src/index.ts"],
@@ -9,6 +10,6 @@
       "@pymoney/tokens": ["../frontend/packages/tokens/src/index.ts"]
     }
   },
-  "include": ["app/**/*.ts", "app/**/*.tsx", "src/**/*.ts", "src/**/*.tsx", "spike/**/*.ts"],
+  "include": ["app/**/*.ts", "app/**/*.tsx", "src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "spike/**/*.ts", "vitest.config.ts"],
   "exclude": ["node_modules", "android", "ios"]
 }

@@ -24,8 +24,14 @@ make -C server test-all   # adds postgres
 make -C server test-thorough  # 5000 Hypothesis examples; run when touching rounding
 make -C desktop test      # sets QT_QPA_PLATFORM=offscreen itself
 make -C frontend check    # generate types + drift check + typecheck + test + build
+make -C mobile mobile-check  # typecheck + vitest pure + jest-expo components
 run.sh                    # starts API + Vite dev server together
 ```
+
+Mobile tests are two layers: `tests/pure` (vitest, no RN imports) and
+`tests/component` (jest-expo + `@testing-library/react-native`@13 — v14 breaks
+against jest-expo's `react-test-renderer`). Both run under `mobile-check`, which
+`make check` already gates.
 
 Single test (server): `.venv/bin/pytest tests/test_posting.py -k name --stores=memory`.
 `--stores` is a repo-local pytest option (`memory,sqlite,sqlite-file,postgres`);
@@ -48,8 +54,10 @@ skip. `pgserver` gives a local throwaway PostgreSQL.
 
 - **i18n**: `server/src/pymoney/i18n/nl.json` is the single catalogue, keyed by the
   English source string. Every user-visible string needs a Dutch translation:
-  `t("…")` (web), `_("…")` (desktop), `translate("…")` (server). `make i18n-check`
-  fails on missing/stale keys or a stale frontend copy.
+  `t("…")` (web + mobile), `_("…")` (desktop), `translate("…")` (server).
+  `scripts/i18n.py` globs cover `frontend/apps/web`, `frontend/packages/{core,ui,sync}`,
+  `mobile/{app,src}`, and the desktop. `make i18n-check` fails on missing/stale
+  keys or a stale frontend copy.
 - **Warnings are errors** in both pytest configs (`filterwarnings = ["error"]`).
 - Coverage gates: server `fail_under = 90`, desktop `85`. `pymoney.core` measures
   as the source path `src/pymoney`.
