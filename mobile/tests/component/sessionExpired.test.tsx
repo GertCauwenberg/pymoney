@@ -7,7 +7,7 @@
  */
 import { useState } from "react";
 import { Pressable, Text } from "react-native";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { render, screen, userEvent } from "@testing-library/react-native";
 
 import { I18nProvider, useT } from "@pymoney/core/hooks";
 
@@ -49,15 +49,15 @@ function Harness({ locale, event }: { locale: "en" | "nl"; event: UnauthorizedEv
 }
 
 describe("session-expiry banner", () => {
-  it("shows the English copy and dismisses on press", () => {
-    render(<Harness locale="en" event={{ at: 1 }} />);
+  it("shows the English copy and dismisses on press", async () => {
+    await render(<Harness locale="en" event={{ at: 1 }} />);
     expect(screen.getByText("Session expired — sign in to sync")).toBeTruthy();
-    fireEvent.press(screen.getByTestId("session-expired"));
+    await userEvent.press(screen.getByTestId("session-expired"));
     expect(screen.getByText("Log in")).toBeTruthy();
   });
 
-  it("renders Dutch through the shared catalogue", () => {
-    render(<Harness locale="nl" event={{ at: 1 }} />);
+  it("renders Dutch through the shared catalogue", async () => {
+    await render(<Harness locale="nl" event={{ at: 1 }} />);
     expect(screen.getByText("Sessie verlopen — meld u aan om te synchroniseren")).toBeTruthy();
   });
 
