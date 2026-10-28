@@ -7,6 +7,10 @@
  * - the forgot-password request is non-disclosure and links back to login
  * - log out lands on the login screen with the token gone
  *
+ * Since E1.2 the signed-in surface is the book shell: the session and log out
+ * live on the More tab, and a book name on Home is what "the app resumed"
+ * looks like.
+ *
  * `renderRouter` switches jest to fake timers and keeps them on: wait with
  * `findBy*` (timer-aware) and interact via `userEvent` with `advanceTimers`.
  */
@@ -22,9 +26,12 @@ jest.mock("expo-secure-store", () => ({
     delete mockSecureData[key];
   }),
 }));
+jest.mock("expo-sqlite", () => require("./expoSqliteMock"));
 
 import { screen, userEvent } from "@testing-library/react-native";
 import { renderRouter } from "expo-router/testing-library";
+
+import { mockKv } from "./expoSqliteMock";
 
 const CREDENTIALS_KEY = "pymoney.credentials";
 
@@ -40,15 +47,14 @@ const session = {
   csrf_token: "csrf-live",
   expires_at: "2099-01-01T00:00:00Z",
 };
-const books = [
-  {
-    id: "0192a000-0000-7000-8000-000000000002",
-    name: "Personal",
-    role: "owner",
-    base_currency_id: "eur",
-    revision: 4,
-  },
-];
+const book = {
+  id: "0192a000-0000-7000-8000-000000000002",
+  name: "Personal",
+  role: "owner",
+  base_currency_id: "eur",
+  revision: 4,
+};
+const books = [book];
 
 function json(status: number, body: unknown): Response {
   return {
@@ -73,6 +79,7 @@ const mockFetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) =
 
 beforeEach(() => {
   for (const key of Object.keys(mockSecureData)) delete mockSecureData[key];
+  for (const key of Object.keys(mockKv)) delete mockKv[key];
   mockHandlers = {};
   mockFetch.mockClear();
   globalThis.fetch = mockFetch as unknown as typeof fetch;
@@ -88,9 +95,10 @@ describe("auth flow (E1.1)", () => {
     mockHandlers = {
       "GET /auth/me": () => json(200, user),
       "GET /books": () => json(200, books),
+      [`GET /books/${book.id}`]: () => json(200, book),
     };
     await renderRouter("app", { initialUrl: "/" });
-    expect(await screen.findByText("gert@example.com")).toBeTruthy();
+    expect(await screen.findByText(book.name)).toBeTruthy();
     const me = mockFetch.mock.calls.find(([input]) => String(input).includes("/auth/me"));
     expect(me).toBeTruthy();
     const headers = (me![1] as RequestInit).headers as Record<string, string>;
@@ -126,12 +134,14 @@ describe("auth flow (E1.1)", () => {
 
     mockHandlers["POST /auth/login"] = () => json(200, session);
     mockHandlers["GET /books"] = () => json(200, books);
+    mockHandlers[`GET /books/${book.id}`] = () => json(200, book);
     const a = actor();
     await a.type(await screen.findByTestId("login-email"), "gert@example.com");
     await a.type(screen.getByTestId("login-password"), "correct horse battery");
     await a.press(screen.getByTestId("login-submit"));
 
-    expect(await screen.findByText("gert@example.com")).toBeTruthy();
+    // Resumed: back inside the book shell with live data.
+    expect(await screen.findByText(book.name)).toBeTruthy();
     expect(screen.queryByTestId("session-expired")).toBeNull();
   });
 
@@ -158,10 +168,12 @@ describe("auth flow (E1.1)", () => {
     mockHandlers = {
       "GET /auth/me": () => json(200, user),
       "GET /books": () => json(200, books),
+      [`GET /books/${book.id}`]: () => json(200, book),
       "POST /auth/logout": () => json(204, null),
     };
     await renderRouter("app", { initialUrl: "/" });
     const a = actor();
+    await a.press(await screen.findByText("More"));
     await a.press(await screen.findByTestId("logout"));
     expect(await screen.findByTestId("login-submit")).toBeTruthy();
     expect(mockSecureData[CREDENTIALS_KEY]).toBeUndefined();

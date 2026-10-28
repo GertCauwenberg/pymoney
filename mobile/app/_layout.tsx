@@ -1,9 +1,10 @@
 /**
  * Root layout: the one place that owns the API client, the secure auth store,
- * and the `onUnauthorized` hook point (E0.2). The auth gate (E1.1) is
- * structural: `Stack.Protected` on the session, so a dead token routes to
- * `(auth)/login` and re-login resumes — never a `useSegments` redirect.
- * Colours come from `@pymoney/tokens` via `src/theme` (E0.3).
+ * the `onUnauthorized` hook point (E0.2) and the device book prefs (E1.2).
+ * The auth gate (E1.1) is structural: `Stack.Protected` on the session, so a
+ * dead token routes to `(auth)/login` and re-login resumes — never a
+ * `useSegments` redirect. Colours come from `@pymoney/tokens` via
+ * `src/theme` (E0.3).
  */
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -19,6 +20,9 @@ import {
   type UnauthorizedEvent,
 } from "../src/api/unauthorized";
 import { useAuthFlag } from "../src/auth/useAuthFlag";
+import { BookPrefs } from "../src/data/bookPrefs";
+import { BookPrefsProvider } from "../src/data/BookPrefsProvider";
+import { SqliteKvStore } from "../src/data/sqliteKv";
 import { useColorSchemeName, useTheme, useThemedStyles, type Theme } from "../src/theme";
 
 function createRootStyles(theme: Theme) {
@@ -57,7 +61,9 @@ function AppStack() {
       }}
     >
       <Stack.Protected guard={authed}>
-        <Stack.Screen name="index" options={{ title: t("PyMoney") }} />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="books" options={{ title: t("Your books") }} />
+        <Stack.Screen name="(book)/[bookId]" options={{ headerShown: false }} />
       </Stack.Protected>
       <Stack.Protected guard={!authed}>
         <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
@@ -70,6 +76,7 @@ function AppStack() {
 export default function RootLayout() {
   const [locale, setLocale] = useState<Locale>("en");
   const [authReady, setAuthReady] = useState(false);
+  const [prefs, setPrefs] = useState<BookPrefs | null>(null);
   const [event, setEvent] = useState<UnauthorizedEvent | null>(null);
 
   const scheme = useColorSchemeName();
@@ -102,18 +109,36 @@ export default function RootLayout() {
     };
   }, [auth]);
 
+  // E1.2: the book prefs live in the same `pymoney.db` the offline mirror
+  // (E5.1) will use. Hydrated before the first screen so the initial-book
+  // redirect never races the read.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const kv = await SqliteKvStore.open();
+      const opened = new BookPrefs(kv);
+      await opened.hydrate();
+      if (!cancelled) setPrefs(opened);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const consume = useCallback(() => setEvent(null), []);
   const unauthorized = useMemo(() => ({ event, consume }), [event, consume]);
 
-  if (!authReady) return <Splash />;
+  if (!authReady || !prefs) return <Splash />;
 
   return (
     <UnauthorizedProvider value={unauthorized}>
       <ApiProvider client={client} queryClient={queryClient}>
-        <I18nProvider locale={locale} onChange={setLocale}>
-          <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-          <AppStack />
-        </I18nProvider>
+        <BookPrefsProvider prefs={prefs}>
+          <I18nProvider locale={locale} onChange={setLocale}>
+            <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+            <AppStack />
+          </I18nProvider>
+        </BookPrefsProvider>
       </ApiProvider>
     </UnauthorizedProvider>
   );

@@ -8,6 +8,12 @@ import { SecureAuthStore } from "./secureAuthStore";
  */
 export const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
+/**
+ * The web app — where onboarding lives (book creation, registration). Mobile
+ * v1 links there rather than duplicating those flows (E1.2 empty state).
+ */
+export const WEB_BASE = process.env.EXPO_PUBLIC_WEB_BASE ?? "http://127.0.0.1:5173";
+
 export interface MobileClientOptions {
   baseUrl?: string;
   auth?: AuthStore;
